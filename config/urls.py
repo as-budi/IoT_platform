@@ -1,0 +1,23 @@
+"""
+URL utama project.
+
+Alur sebuah request: browser meminta alamat -> Django mencocokkannya dengan
+daftar `urlpatterns` di bawah, dari atas ke bawah -> view yang cocok dijalankan.
+
+`include()` mendelegasikan sisa alamat ke urls.py milik sebuah app, sehingga
+setiap app mengurus URL-nya sendiri.
+"""
+from django.contrib import admin
+from django.urls import include, path
+from django.views.generic import RedirectView
+
+urlpatterns = [
+    # Situs admin bawaan Django (alat internal untuk mengelola data mentah).
+    path("admin/", admin.site.urls),
+    # /accounts/...  -> login, logout, manajemen pengguna
+    path("accounts/", include("accounts.urls")),
+    # /devices/...   -> daftar & detail device
+    path("devices/", include("devices.urls")),
+    # Halaman depan langsung diarahkan ke daftar device.
+    path("", RedirectView.as_view(pattern_name="devices:list"), name="home"),
+]

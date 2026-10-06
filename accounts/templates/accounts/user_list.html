@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Pengguna · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Pengguna</h1>
+  <a class="btn btn-primary" href="{% url 'accounts:user_add' %}">Tambah pengguna</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Username</th>
+          <th>Nama</th>
+          <th>Email</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th class="text-end">Device</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {# `users` dikirim oleh UserListView (context_object_name). #}
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}</td>
+          <td>{{ u.get_full_name|default:"—" }}</td>
+          <td>{{ u.email|default:"—" }}</td>
+          <td>
+            <span class="badge {% if u.is_admin %}text-bg-primary{% else %}text-bg-secondary{% endif %}">
+              {{ u.get_role_display }}
+            </span>
+          </td>
+          <td>{% if u.is_active %}Aktif{% else %}<span class="text-muted">Nonaktif</span>{% endif %}</td>
+          <td class="text-end">{{ u.device_count }}</td>
+          <td class="text-end text-nowrap">
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:user_edit' u.pk %}">Ubah</a>
+            {% if u.pk != user.pk %}
+            <a class="btn btn-sm btn-outline-danger" href="{% url 'accounts:user_delete' u.pk %}">Hapus</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

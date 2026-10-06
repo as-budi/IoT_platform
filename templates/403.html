@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Akses ditolak · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="text-center py-5">
+  <h1 class="h3">Akses ditolak</h1>
+  <p class="text-muted">Halaman ini hanya untuk Admin.</p>
+  <a class="btn btn-primary" href="{% url 'home' %}">Kembali ke daftar device</a>
+</div>
+{% endblock %}

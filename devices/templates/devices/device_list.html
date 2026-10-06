@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Device · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">{% if user.is_admin %}Semua device{% else %}Device saya{% endif %}</h1>
+  <a class="btn btn-primary" href="{% url 'devices:add' %}">Tambah device</a>
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Nama</th>
+          <th>Variabel</th>
+          <th class="text-end">Nilai terkini</th>
+          {% if user.is_admin %}<th>Pemilik</th>{% endif %}
+          <th>Status</th>
+          <th>Data terakhir</th>
+        </tr>
+      </thead>
+      <tbody>
+        {# {% for %} ... {% empty %} : bagian empty tampil bila daftarnya kosong. #}
+        {% for device in devices %}
+        <tr>
+          <td><a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a></td>
+          <td>{{ device.variable }}</td>
+          <td class="text-end">
+            {# last_value dihitung oleh Subquery di DeviceListView. #}
+            {% if device.last_value is not None %}
+            {{ device.last_value|floatformat:2 }} {{ device.unit }}
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          {% if user.is_admin %}<td>{{ device.owner.username }}</td>{% endif %}
+          <td>
+            {% if device.is_active %}
+            <span class="badge text-bg-success">Aktif</span>
+            {% else %}
+            <span class="badge text-bg-secondary">Nonaktif</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if device.last_seen %}
+            {{ device.last_seen|timesince }} lalu
+            {% else %}
+            <span class="text-muted">Belum ada data</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">Belum ada device.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Hapus device · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h4">Hapus device {{ device.name }}?</h1>
+        <p class="text-muted">
+          Seluruh data telemetri device ini ikut terhapus. Tindakan ini tidak bisa dibatalkan.
+        </p>
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">Ya, hapus</button>
+          <a class="btn btn-link" href="{% url 'devices:detail' device.pk %}">Batal</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,27 @@
+{% comment %}
+  Potongan template untuk menampilkan semua field sebuah form dengan gaya
+  Bootstrap. Dipakai ulang lewat {% include "includes/form_fields.html" %}.
+{% endcomment %}
+{% for error in form.non_field_errors %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endfor %}
+
+{% for field in form %}
+<div class="mb-3">
+  {% if field.widget_type == "checkbox" %}
+  <div class="form-check">
+    {{ field }}
+    <label class="form-check-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  </div>
+  {% else %}
+  <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {{ field }}
+  {% endif %}
+  {% if field.help_text %}
+  <div class="form-text">{{ field.help_text|safe }}</div>
+  {% endif %}
+  {% for error in field.errors %}
+  <div class="text-danger small">{{ error }}</div>
+  {% endfor %}
+</div>
+{% endfor %}

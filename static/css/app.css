@@ -1,0 +1,22 @@
+/* Gaya tambahan di atas Bootstrap. */
+body {
+  background-color: #f5f7fa;
+}
+
+.value-card .value {
+  font-size: 2rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.value-card .key {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.75rem;
+}
+
+.value-card .unit {
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: #6c757d;
+}
