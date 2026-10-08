@@ -16,6 +16,7 @@ Penjelasan konsep:
 - [docs/tahap-01b-device-kontrol.md](docs/tahap-01b-device-kontrol.md) — aktuator: desired/reported state dan command
 - [docs/tahap-02-http-api.md](docs/tahap-02-http-api.md) — device sungguhan mengirim data lewat HTTP (access token, curl, ESP32)
 - [docs/tahap-02b-auto-refresh-dan-periode-chart.md](docs/tahap-02b-auto-refresh-dan-periode-chart.md) — auto-refresh (polling) dan pilihan periode chart dengan agregasi
+- [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md) — komunikasi dua arah lewat MQTT (broker, topik, mqtt_bridge, ESP32)
 
 ## Prasyarat
 
@@ -151,6 +152,22 @@ versi 10.4, di bawah syarat minimum Django 5.2 (10.5).
 Bila suatu saat ingin kembali ke MariaDB (10.5+): tidak ada kode yang perlu
 diubah; cukup sediakan driver `mysqlclient` yang dibangun terhadap MariaDB
 Connector/C.
+
+## Komunikasi MQTT (tahap 3)
+
+Pengaturan broker ada di `.env` (`MQTT_HOST`, `MQTT_PORT`, `MQTT_TOPIC_PREFIX`, ...).
+Bawaannya broker publik `broker.emqx.io`: hanya untuk belajar, karena siapa pun bisa
+membaca pesannya.
+
+```bash
+pip install paho-mqtt                         # sekali saja
+python manage.py mqtt_bridge                  # terminal terpisah dari runserver
+python scripts/fake_mqtt_device.py TOKEN      # device tiruan dua arah
+```
+
+Topik setiap device ditampilkan di halaman device (bagian *Connect a device*).
+Contoh firmware ESP32: `firmware/esp32_mqtt/esp32_mqtt.ino`.
+Penjelasan lengkap: [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md).
 
 ## Struktur project
 

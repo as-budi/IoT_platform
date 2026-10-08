@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
@@ -20,6 +21,7 @@ from django.views.generic import (
 )
 
 from accounts.mixins import AdminRequiredMixin
+from mqtt_bridge import topics as mqtt_topics
 
 from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
 from .forms import (
@@ -192,6 +194,20 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         context["telemetry_url"] = self.request.build_absolute_uri(
             reverse("api:telemetry", args=[device.access_token])
         )
+        # Alamat broker dan topik MQTT device ini (lihat mqtt_bridge/topics.py).
+        prefix, token = settings.MQTT_TOPIC_PREFIX, device.access_token
+        context["mqtt"] = {
+            "host": settings.MQTT_HOST,
+            "port": settings.MQTT_PORT,
+            "tls": settings.MQTT_TLS,
+            "telemetry": mqtt_topics.telemetry(prefix, token),
+            "desired": mqtt_topics.desired(prefix, token),
+            "commands": mqtt_topics.command(prefix, token, "+"),
+            "command_response": mqtt_topics.command_response(prefix, token, "<id>"),
+            "errors": mqtt_topics.errors(prefix, token),
+            "all": mqtt_topics.device_base(prefix, token) + "/#",
+        }
+
         # Untuk auto-refresh: versi data saat halaman ini dibuat.
         context["data_version"] = data_version(device)
         context["updates_url"] = reverse("devices:updates", args=[device.pk])

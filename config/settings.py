@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     "accounts",  # pengguna & role
     "devices",   # device & telemetri
     "api",       # API untuk device (HTTP), tanpa login/CSRF, pakai access token
+    "mqtt_bridge",  # komunikasi device lewat MQTT (perintah: manage.py mqtt_bridge)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -144,3 +145,23 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+
+
+# --- MQTT -------------------------------------------------------------------
+# Semua nilai dibaca dari .env, sehingga broker bisa diganti tanpa mengubah kode.
+# Bawaan: broker publik EMQX. Broker publik bisa dibaca SIAPA SAJA, jadi hanya
+# untuk belajar; lihat docs/tahap-03-mqtt.md.
+
+MQTT_HOST = os.getenv("MQTT_HOST", "broker.emqx.io")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
+MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")
+# True = koneksi terenkripsi (biasanya port 8883).
+MQTT_TLS = os.getenv("MQTT_TLS", "False") == "True"
+# Awal semua topik. Di broker publik WAJIB unik, mis. "filkom-iot-7f3a9c".
+MQTT_TOPIC_PREFIX = os.getenv("MQTT_TOPIC_PREFIX", "django-iot-demo").strip("/")
+# Kosong = nama klien dibuat acak oleh pustaka paho-mqtt.
+MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "")
+# Detik antar "ping" ke broker untuk menjaga koneksi tetap hidup.
+MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
+
