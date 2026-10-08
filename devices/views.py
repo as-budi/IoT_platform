@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
@@ -15,6 +17,11 @@ from .forms import DeviceForm
 from .models import Device, Telemetry
 
 HISTORY_PAGE_SIZE = 25
+# Chart menampilkan 24 jam terakhir, dihitung mundur dari data terbaru
+# (bukan dari "sekarang"), supaya device yang lama diam tetap punya grafik.
+CHART_WINDOW = timedelta(hours=24)
+# Batas atas jumlah titik, supaya browser tidak menerima data terlalu besar.
+CHART_MAX_POINTS = 1000
 
 
 class OwnedDeviceMixin(LoginRequiredMixin):
@@ -64,9 +71,27 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         device = self.object
 
         # 1) Card: nilai terkini (satu device = satu variabel).
-        context["latest"] = device.latest
+        latest = device.latest
+        context["latest"] = latest
 
-        # 2) Tabel history. Paginator memotong data menjadi halaman-halaman
+        # 2) Chart: deret titik {x: waktu dalam milidetik, y: nilai}, urut
+        # dari lama ke baru. Format ini langsung dipahami Chart.js.
+        chart_points = []
+        if latest is not None:
+            rows = list(
+                device.telemetry.filter(ts__gte=latest.ts - CHART_WINDOW)
+                .order_by("-ts")
+                .values_list("ts", "value")[:CHART_MAX_POINTS]
+            )
+            # Diambil dari yang terbaru (agar batas jumlah memotong data
+            # lama), lalu dibalik supaya garis digambar dari kiri ke kanan.
+            chart_points = [
+                {"x": int(ts.timestamp() * 1000), "y": value}
+                for ts, value in reversed(rows)
+            ]
+        context["chart_points"] = chart_points
+
+        # 3) Tabel history. Paginator memotong data menjadi halaman-halaman
         # (?page=2, dst.) supaya ribuan baris tidak dimuat sekaligus.
         paginator = Paginator(device.telemetry.all(), HISTORY_PAGE_SIZE)
         context["page_obj"] = paginator.get_page(self.request.GET.get("page"))

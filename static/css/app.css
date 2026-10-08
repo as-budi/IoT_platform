@@ -20,3 +20,9 @@ body {
   font-weight: 400;
   color: #6c757d;
 }
+
+/* Tinggi area chart; Chart.js mengisi kotak ini (maintainAspectRatio: false). */
+.chart-box {
+  position: relative;
+  height: 280px;
+}

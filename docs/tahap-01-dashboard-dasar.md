@@ -84,6 +84,11 @@ Aturan rancangan project ini: **satu device = satu variabel**.
   didaftarkan sebagai beberapa device.
 - `Telemetry` hanya menyimpan deret waktu `(device, value, ts)`.
 - **Card** — `Device.latest` mengambil baris terbaru device itu.
+- **Chart** — di bawah card, garis 24 jam terakhir (dihitung mundur dari data
+  terbaru). View menyiapkan `chart_points` berupa list `{x: milidetik, y: nilai}`;
+  template mengirimnya ke browser dengan filter `json_script`, lalu Chart.js
+  (dimuat dari CDN) menggambarnya. Inilah pola umum "data dari Django, gambar oleh
+  JavaScript". Script khusus halaman ini diletakkan di `{% block extra_js %}`.
 - **Tabel history** — `Paginator` memotong data per 25 baris; `?page=` memilih halaman.
 - **Daftar device** — nilai terkini tiap device diambil dengan `Subquery`
   (lihat `DeviceListView`), sehingga tetap satu query untuk seluruh daftar.

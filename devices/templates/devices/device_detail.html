@@ -56,6 +56,23 @@
   </div>
 </div>
 
+{# ---------- Chart history ---------- #}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <h2 class="h5 mb-1">{{ device.variable }}{% if device.unit %} ({{ device.unit }}){% endif %}</h2>
+    <p class="small text-muted mb-3">Last 24 hours of data</p>
+    {% if chart_points %}
+    <div class="chart-box">
+      <canvas id="history-chart" role="img"
+              data-variable="{{ device.variable }}" data-unit="{{ device.unit }}"
+              aria-label="Line chart of {{ device.variable }} over the last 24 hours. The same data is listed in the table below."></canvas>
+    </div>
+    {% else %}
+    <div class="text-muted">No data to plot yet.</div>
+    {% endif %}
+  </div>
+</div>
+
 {# ---------- Tabel history ---------- #}
 <h2 class="h5 mb-3">Data history</h2>
 
@@ -107,5 +124,86 @@
     {% endif %}
   </ul>
 </nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if chart_points %}
+{% comment %}
+  json_script menulis data Python sebagai JSON di dalam <script type="application/json">
+  dengan aman (karakter berbahaya di-escape). JavaScript lalu membacanya kembali.
+  Cara ini lebih aman daripada menempelkan {{ data }} langsung ke dalam kode JS.
+{% endcomment %}
+{{ chart_points|json_script:"chart-data" }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const canvas = document.getElementById("history-chart");
+    const points = JSON.parse(document.getElementById("chart-data").textContent);
+    const unit = canvas.dataset.unit;  // dari atribut data-unit di <canvas>
+    const label = canvas.dataset.variable;
+
+    const fmtValue = (v) => v.toFixed(2) + (unit ? " " + unit : "");
+    const fmtTime = (ms) =>
+      new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const fmtDateTime = (ms) =>
+      new Date(ms).toLocaleString([], {
+        day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+
+    const ink = "#52514e";        // teks sekunder (sumbu)
+    const grid = "#ebebe8";       // garis bantu tipis
+    const series = "#2a78d6";     // warna satu-satunya seri
+
+    new Chart(canvas, {
+      type: "line",
+      data: {
+        datasets: [{
+          label: label,
+          data: points,           // [{x: milidetik, y: nilai}, ...]
+          borderColor: series,
+          backgroundColor: series,
+          borderWidth: 2,
+          pointRadius: 0,         // titik disembunyikan, muncul saat disorot
+          pointHoverRadius: 5,
+          pointHoverBorderWidth: 2,
+          pointHoverBorderColor: "#ffffff",
+          tension: 0.25,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        parsing: false,           // data sudah berbentuk {x, y}
+        // Tooltip mengikuti posisi mouse di sumbu x (tanpa harus tepat di garis).
+        interaction: { mode: "nearest", axis: "x", intersect: false },
+        plugins: {
+          legend: { display: false },  // satu seri: judul kartu sudah menamainya
+          tooltip: {
+            displayColors: false,
+            callbacks: {
+              title: (items) => fmtDateTime(items[0].parsed.x),
+              label: (item) => fmtValue(item.parsed.y),
+            },
+          },
+        },
+        scales: {
+          x: {
+            type: "linear",       // waktu sebagai angka milidetik
+            ticks: { color: ink, maxTicksLimit: 8, callback: (v) => fmtTime(v) },
+            grid: { display: false },
+            border: { color: grid },
+          },
+          y: {
+            ticks: { color: ink, callback: (v) => v + (unit ? " " + unit : "") },
+            grid: { color: grid },
+            border: { display: false },
+          },
+        },
+      },
+    });
+  })();
+</script>
 {% endif %}
 {% endblock %}

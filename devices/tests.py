@@ -103,11 +103,29 @@ class DeviceDetailTests(TestCase):
         self.assertContains(response, "temperature")
         self.assertContains(response, "°C")
 
+    def test_chart_points_are_oldest_first(self):
+        response = self.client.get(self.url)
+        points = response.context["chart_points"]
+        self.assertEqual(len(points), 30)
+        self.assertEqual(points[-1]["y"], 29)
+        xs = [p["x"] for p in points]
+        self.assertEqual(xs, sorted(xs))
+        self.assertContains(response, 'id="chart-data"')
+
+    def test_chart_only_covers_last_24_hours(self):
+        Telemetry.objects.create(
+            device=self.device, value=-1, ts=timezone.now() - timedelta(days=3)
+        )
+        response = self.client.get(self.url)
+        self.assertEqual(len(response.context["chart_points"]), 30)
+
     def test_device_without_data_renders(self):
         empty = Device.objects.create(owner=self.budi, name="Kosong", variable="x")
         response = self.client.get(reverse("devices:detail", args=[empty.pk]))
         self.assertEqual(response.status_code, 200)
         self.assertIsNone(response.context["latest"])
+        self.assertEqual(response.context["chart_points"], [])
+        self.assertNotContains(response, 'id="chart-data"')
 
     def test_history_is_paginated_newest_first(self):
         response = self.client.get(self.url)
