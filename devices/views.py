@@ -90,7 +90,7 @@ class DeviceFormMixin(OwnedDeviceMixin, SuccessMessageMixin):
 
 
 class DeviceCreateView(DeviceFormMixin, CreateView):
-    success_message = "Device %(name)s berhasil ditambahkan."
+    success_message = "Device %(name)s was added."
 
     def form_valid(self, form):
         # Pengguna biasa tidak memilih pemilik: device otomatis jadi miliknya.
@@ -101,11 +101,11 @@ class DeviceCreateView(DeviceFormMixin, CreateView):
 
 class DeviceUpdateView(DeviceFormMixin, UpdateView):
     context_object_name = "device"
-    success_message = "Device %(name)s berhasil diperbarui."
+    success_message = "Device %(name)s was updated."
 
 
 class DeviceDeleteView(OwnedDeviceMixin, SuccessMessageMixin, DeleteView):
     template_name = "devices/device_confirm_delete.html"
     context_object_name = "device"
     success_url = reverse_lazy("devices:list")
-    success_message = "Device berhasil dihapus."
+    success_message = "Device was deleted."

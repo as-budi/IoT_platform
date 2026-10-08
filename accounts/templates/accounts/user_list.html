@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Pengguna · IoT Platform{% endblock %}
+{% block title %}Users · IoT Platform{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">Pengguna</h1>
-  <a class="btn btn-primary" href="{% url 'accounts:user_add' %}">Tambah pengguna</a>
+  <h1 class="h3 mb-0">Users</h1>
+  <a class="btn btn-primary" href="{% url 'accounts:user_add' %}">Add user</a>
 </div>
 
 <div class="card shadow-sm">
@@ -14,11 +14,11 @@
       <thead class="table-light">
         <tr>
           <th>Username</th>
-          <th>Nama</th>
+          <th>Name</th>
           <th>Email</th>
           <th>Role</th>
           <th>Status</th>
-          <th class="text-end">Device</th>
+          <th class="text-end">Devices</th>
           <th></th>
         </tr>
       </thead>
@@ -34,12 +34,12 @@
               {{ u.get_role_display }}
             </span>
           </td>
-          <td>{% if u.is_active %}Aktif{% else %}<span class="text-muted">Nonaktif</span>{% endif %}</td>
+          <td>{% if u.is_active %}Active{% else %}<span class="text-muted">Inactive</span>{% endif %}</td>
           <td class="text-end">{{ u.device_count }}</td>
           <td class="text-end text-nowrap">
-            <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:user_edit' u.pk %}">Ubah</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:user_edit' u.pk %}">Edit</a>
             {% if u.pk != user.pk %}
-            <a class="btn btn-sm btn-outline-danger" href="{% url 'accounts:user_delete' u.pk %}">Hapus</a>
+            <a class="btn btn-sm btn-outline-danger" href="{% url 'accounts:user_delete' u.pk %}">Delete</a>
             {% endif %}
           </td>
         </tr>

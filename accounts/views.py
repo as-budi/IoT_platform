@@ -23,7 +23,7 @@ class RegisterView(SuccessMessageMixin, CreateView):
     form_class = RegisterForm
     template_name = "accounts/register.html"
     success_url = reverse_lazy("devices:list")
-    success_message = "Selamat datang, %(username)s! Akun Anda sudah aktif."
+    success_message = "Welcome, %(username)s! Your account is ready."
 
     def dispatch(self, request, *args, **kwargs):
         # dispatch() adalah method pertama yang dijalankan sebuah view.
@@ -59,7 +59,7 @@ class UserCreateView(AdminRequiredMixin, SuccessMessageMixin, CreateView):
     template_name = "accounts/user_form.html"
     # reverse_lazy mengubah NAMA url menjadi alamat ("/accounts/users/").
     success_url = reverse_lazy("accounts:user_list")
-    success_message = "Pengguna %(username)s berhasil dibuat."
+    success_message = "User %(username)s was created."
 
 
 class UserUpdateView(AdminRequiredMixin, SuccessMessageMixin, UpdateView):
@@ -68,14 +68,14 @@ class UserUpdateView(AdminRequiredMixin, SuccessMessageMixin, UpdateView):
     template_name = "accounts/user_form.html"
     context_object_name = "target_user"
     success_url = reverse_lazy("accounts:user_list")
-    success_message = "Pengguna %(username)s berhasil diperbarui."
+    success_message = "User %(username)s was updated."
 
 
 class UserDeleteView(AdminRequiredMixin, SuccessMessageMixin, DeleteView):
     template_name = "accounts/user_confirm_delete.html"
     context_object_name = "target_user"
     success_url = reverse_lazy("accounts:user_list")
-    success_message = "Pengguna berhasil dihapus."
+    success_message = "User was deleted."
 
     def get_queryset(self):
         # Admin tidak boleh menghapus akunnya sendiri: akun itu dikeluarkan

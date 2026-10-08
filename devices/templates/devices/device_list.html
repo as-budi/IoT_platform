@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Device · IoT Platform{% endblock %}
+{% block title %}Devices · IoT Platform{% endblock %}
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">{% if user.is_admin %}Semua device{% else %}Device saya{% endif %}</h1>
-  <a class="btn btn-primary" href="{% url 'devices:add' %}">Tambah device</a>
+  <h1 class="h3 mb-0">{% if user.is_admin %}All devices{% else %}My devices{% endif %}</h1>
+  <a class="btn btn-primary" href="{% url 'devices:add' %}">Add device</a>
 </div>
 
 <div class="card shadow-sm">
@@ -13,12 +13,12 @@
     <table class="table table-hover align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th>Nama</th>
-          <th>Variabel</th>
-          <th class="text-end">Nilai terkini</th>
-          {% if user.is_admin %}<th>Pemilik</th>{% endif %}
+          <th>Name</th>
+          <th>Variable</th>
+          <th class="text-end">Latest value</th>
+          {% if user.is_admin %}<th>Owner</th>{% endif %}
           <th>Status</th>
-          <th>Data terakhir</th>
+          <th>Last data</th>
         </tr>
       </thead>
       <tbody>
@@ -38,22 +38,22 @@
           {% if user.is_admin %}<td>{{ device.owner.username }}</td>{% endif %}
           <td>
             {% if device.is_active %}
-            <span class="badge text-bg-success">Aktif</span>
+            <span class="badge text-bg-success">Active</span>
             {% else %}
-            <span class="badge text-bg-secondary">Nonaktif</span>
+            <span class="badge text-bg-secondary">Inactive</span>
             {% endif %}
           </td>
           <td>
             {% if device.last_seen %}
-            {{ device.last_seen|timesince }} lalu
+            {{ device.last_seen|timesince }} ago
             {% else %}
-            <span class="text-muted">Belum ada data</span>
+            <span class="text-muted">No data yet</span>
             {% endif %}
           </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">Belum ada device.</td>
+          <td colspan="6" class="text-center text-muted py-4">No devices yet.</td>
         </tr>
         {% endfor %}
       </tbody>

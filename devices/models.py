@@ -19,37 +19,37 @@ class Device(models.Model):
     # itulah cara baku merujuk model user kustom.
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        verbose_name="pemilik",
+        verbose_name="owner",
         on_delete=models.CASCADE,  # pengguna dihapus -> device-nya ikut terhapus
         related_name="devices",    # memungkinkan: user.devices.all()
     )
-    name = models.CharField("nama", max_length=100)
+    name = models.CharField("name", max_length=100)
     device_type = models.CharField(
-        "tipe",
+        "type",
         max_length=50,
         blank=True,
-        help_text="Contoh: sensor suhu, power meter.",
+        help_text="Example: temperature sensor, power meter.",
     )
     # Variabel tunggal yang diukur device ini, beserta satuannya.
     variable = models.CharField(
-        "variabel",
+        "variable",
         max_length=50,
-        help_text="Besaran yang diukur. Contoh: temperature.",
+        help_text="The measured quantity. Example: temperature.",
     )
     unit = models.CharField(
-        "satuan",
+        "unit",
         max_length=20,
         blank=True,
-        help_text="Contoh: °C, %, V. Boleh dikosongkan.",
+        help_text="Example: °C, %, V. May be left blank.",
     )
-    description = models.TextField("deskripsi", blank=True)
-    is_active = models.BooleanField("aktif", default=True)
-    created_at = models.DateTimeField("dibuat", auto_now_add=True)
+    description = models.TextField("description", blank=True)
+    is_active = models.BooleanField("active", default=True)
+    created_at = models.DateTimeField("created", auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
         verbose_name = "device"
-        verbose_name_plural = "device"
+        verbose_name_plural = "devices"
 
     def __str__(self):
         return self.name
@@ -71,13 +71,13 @@ class Telemetry(models.Model):
     )
     # Tidak ada kolom nama variabel di sini: variabelnya sudah ditentukan
     # oleh device. Tahap ini hanya mendukung nilai angka.
-    value = models.FloatField("nilai")
-    ts = models.DateTimeField("waktu", default=timezone.now)
+    value = models.FloatField("value")
+    ts = models.DateTimeField("time", default=timezone.now)
 
     class Meta:
         ordering = ["-ts"]  # terbaru lebih dulu
-        verbose_name = "telemetri"
-        verbose_name_plural = "telemetri"
+        verbose_name = "telemetry"
+        verbose_name_plural = "telemetry"
         indexes = [
             # Index mempercepat pencarian "data device X, urut waktu".
             models.Index(fields=["device", "ts"], name="telemetry_dev_ts"),

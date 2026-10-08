@@ -31,11 +31,11 @@ DEMO_USERS = {
 # Satu device = satu variabel.
 # (pemilik, nama device, tipe, variabel, satuan, nilai tengah, simpangan)
 DEMO_DEVICES = [
-    ("budi", "Suhu Ruang Server", "sensor suhu", "temperature", "°C", 24, 3),
-    ("budi", "Kelembapan Ruang Server", "sensor kelembapan", "humidity", "%", 55, 10),
-    ("budi", "Tegangan Panel Lab", "power meter", "voltage", "V", 220, 5),
-    ("siti", "Suhu Greenhouse", "sensor suhu", "temperature", "°C", 29, 5),
-    ("siti", "Kelembapan Tanah Greenhouse", "sensor tanah", "soil_moisture", "%", 40, 15),
+    ("budi", "Server Room Temperature", "temperature sensor", "temperature", "°C", 24, 3),
+    ("budi", "Server Room Humidity", "humidity sensor", "humidity", "%", 55, 10),
+    ("budi", "Lab Panel Voltage", "power meter", "voltage", "V", 220, 5),
+    ("siti", "Greenhouse Temperature", "temperature sensor", "temperature", "°C", 29, 5),
+    ("siti", "Greenhouse Soil Moisture", "soil sensor", "soil_moisture", "%", 40, 15),
 ]
 
 INTERVAL_MINUTES = 10
@@ -43,7 +43,7 @@ HOURS = 24
 
 
 class Command(BaseCommand):
-    help = "Mengisi data contoh (pengguna, device, telemetri 24 jam terakhir)."
+    help = "Seed demo data (users, devices, last 24 hours of telemetry)."
 
     def handle(self, *args, **options):
         users = {}
@@ -60,7 +60,7 @@ class Command(BaseCommand):
                     user.is_staff = True
                     user.is_superuser = True
                 user.save()
-                self.stdout.write(f"Pengguna dibuat: {username} / {DEMO_PASSWORD}")
+                self.stdout.write(f"User created: {username} / {DEMO_PASSWORD}")
             users[username] = user
 
         now = timezone.now()
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                 },
             )
             if device.telemetry.exists():
-                self.stdout.write(f"Lewati {name}: telemetri sudah ada.")
+                self.stdout.write(f"Skipping {name}: telemetry already exists.")
                 continue
 
             rows = []
@@ -90,6 +90,6 @@ class Command(BaseCommand):
                 rows.append(Telemetry(device=device, value=round(value, 2), ts=ts))
             # bulk_create menyimpan ratusan baris dalam sedikit query.
             Telemetry.objects.bulk_create(rows, batch_size=500)
-            self.stdout.write(f"{name}: {len(rows)} baris telemetri dibuat.")
+            self.stdout.write(f"{name}: {len(rows)} telemetry rows created.")
 
-        self.stdout.write(self.style.SUCCESS("Selesai."))
+        self.stdout.write(self.style.SUCCESS("Done."))

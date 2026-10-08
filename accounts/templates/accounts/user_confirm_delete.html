@@ -1,21 +1,21 @@
 {% extends "base.html" %}
 
-{% block title %}Hapus pengguna · IoT Platform{% endblock %}
+{% block title %}Delete user · IoT Platform{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-6">
     <div class="card shadow-sm">
       <div class="card-body">
-        <h1 class="h4">Hapus pengguna {{ target_user.username }}?</h1>
+        <h1 class="h4">Delete user {{ target_user.username }}?</h1>
         <p class="text-muted">
-          Semua device milik pengguna ini beserta data telemetrinya ikut terhapus.
-          Tindakan ini tidak bisa dibatalkan.
+          All devices owned by this user, and their telemetry data, will be deleted too.
+          This action cannot be undone.
         </p>
         <form method="post">
           {% csrf_token %}
-          <button type="submit" class="btn btn-danger">Ya, hapus</button>
-          <a class="btn btn-link" href="{% url 'accounts:user_list' %}">Batal</a>
+          <button type="submit" class="btn btn-danger">Yes, delete</button>
+          <a class="btn btn-link" href="{% url 'accounts:user_list' %}">Cancel</a>
         </form>
       </div>
     </div>

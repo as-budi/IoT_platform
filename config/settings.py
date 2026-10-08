@@ -129,7 +129,7 @@ LOGOUT_REDIRECT_URL = "accounts:login"   # tujuan setelah logout
 
 # --- Bahasa & zona waktu ----------------------------------------------------
 
-LANGUAGE_CODE = "id"
+LANGUAGE_CODE = "en-us"
 TIME_ZONE = "Asia/Jakarta"
 USE_I18N = True
 # USE_TZ=True: waktu disimpan sebagai UTC di database, lalu dikonversi ke

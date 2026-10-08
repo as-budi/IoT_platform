@@ -1,19 +1,19 @@
 {% extends "base.html" %}
 
-{% block title %}{% if target_user %}Ubah{% else %}Tambah{% endif %} pengguna · IoT Platform{% endblock %}
+{% block title %}{% if target_user %}Edit{% else %}Add{% endif %} user · IoT Platform{% endblock %}
 
 {% block content %}
 {# Template ini dipakai dua view: tambah (target_user kosong) dan ubah. #}
 <div class="row justify-content-center">
   <div class="col-lg-6">
-    <h1 class="h3 mb-3">{% if target_user %}Ubah pengguna {{ target_user.username }}{% else %}Tambah pengguna{% endif %}</h1>
+    <h1 class="h3 mb-3">{% if target_user %}Edit user {{ target_user.username }}{% else %}Add user{% endif %}</h1>
     <div class="card shadow-sm">
       <div class="card-body">
         <form method="post">
           {% csrf_token %}
           {% include "includes/form_fields.html" %}
-          <button type="submit" class="btn btn-primary">Simpan</button>
-          <a class="btn btn-link" href="{% url 'accounts:user_list' %}">Batal</a>
+          <button type="submit" class="btn btn-primary">Save</button>
+          <a class="btn btn-link" href="{% url 'accounts:user_list' %}">Cancel</a>
         </form>
       </div>
     </div>

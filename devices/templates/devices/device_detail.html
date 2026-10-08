@@ -5,7 +5,7 @@
 {% block content %}
 <nav aria-label="breadcrumb">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="{% url 'devices:list' %}">Device</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'devices:list' %}">Devices</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{ device.name }}</li>
   </ol>
 </nav>
@@ -15,24 +15,24 @@
     <h1 class="h3 mb-1">
       {{ device.name }}
       {% if device.is_active %}
-      <span class="badge text-bg-success fs-6 align-middle">Aktif</span>
+      <span class="badge text-bg-success fs-6 align-middle">Active</span>
       {% else %}
-      <span class="badge text-bg-secondary fs-6 align-middle">Nonaktif</span>
+      <span class="badge text-bg-secondary fs-6 align-middle">Inactive</span>
       {% endif %}
     </h1>
     <div class="text-muted">
-      {{ device.device_type|default:"Tanpa tipe" }} · pemilik: {{ device.owner.username }}
+      {{ device.device_type|default:"No type" }} · owner: {{ device.owner.username }}
     </div>
     {% if device.description %}<p class="mt-2 mb-0">{{ device.description }}</p>{% endif %}
   </div>
   <div class="text-nowrap">
-    <a class="btn btn-outline-secondary" href="{% url 'devices:edit' device.pk %}">Ubah</a>
-    <a class="btn btn-outline-danger" href="{% url 'devices:delete' device.pk %}">Hapus</a>
+    <a class="btn btn-outline-secondary" href="{% url 'devices:edit' device.pk %}">Edit</a>
+    <a class="btn btn-outline-danger" href="{% url 'devices:delete' device.pk %}">Delete</a>
   </div>
 </div>
 
 {# ---------- Card nilai terkini ---------- #}
-<h2 class="h5 mb-3">Nilai terkini</h2>
+<h2 class="h5 mb-3">Latest value</h2>
 <div class="row g-3 mb-4">
   <div class="col-12 col-md-6 col-lg-4">
     <div class="card shadow-sm value-card h-100">
@@ -45,11 +45,11 @@
           {% if device.unit %}<span class="unit">{{ device.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted" title="{{ latest.ts|date:'d M Y H:i:s' }}">
-          {{ latest.ts|timesince }} lalu
+          {{ latest.ts|timesince }} ago
         </div>
         {% else %}
         <div class="value text-muted">—</div>
-        <div class="small text-muted">Device ini belum mengirim data.</div>
+        <div class="small text-muted">This device has not sent any data yet.</div>
         {% endif %}
       </div>
     </div>
@@ -57,14 +57,14 @@
 </div>
 
 {# ---------- Tabel history ---------- #}
-<h2 class="h5 mb-3">History data</h2>
+<h2 class="h5 mb-3">Data history</h2>
 
 <div class="card shadow-sm">
   <div class="table-responsive">
     <table class="table table-sm table-striped align-middle mb-0">
       <thead class="table-light">
         <tr>
-          <th>Waktu</th>
+          <th>Time</th>
           <th class="text-end">{{ device.variable }}{% if device.unit %} ({{ device.unit }}){% endif %}</th>
         </tr>
       </thead>
@@ -76,7 +76,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="2" class="text-center text-muted py-4">Tidak ada data.</td>
+          <td colspan="2" class="text-center text-muted py-4">No data.</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -85,25 +85,25 @@
 </div>
 
 {% if page_obj.paginator.num_pages > 1 %}
-<nav class="mt-3 d-flex justify-content-between align-items-center" aria-label="Halaman history">
+<nav class="mt-3 d-flex justify-content-between align-items-center" aria-label="History pages">
   <span class="text-muted small">
-    Halaman {{ page_obj.number }} dari {{ page_obj.paginator.num_pages }}
-    ({{ page_obj.paginator.count }} baris)
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+    ({{ page_obj.paginator.count }} rows)
   </span>
   <ul class="pagination pagination-sm mb-0">
     {% if page_obj.has_previous %}
     <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Sebelumnya</a>
+      <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
     </li>
     {% else %}
-    <li class="page-item disabled"><span class="page-link">Sebelumnya</span></li>
+    <li class="page-item disabled"><span class="page-link">Previous</span></li>
     {% endif %}
     {% if page_obj.has_next %}
     <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.next_page_number }}">Berikutnya</a>
+      <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
     </li>
     {% else %}
-    <li class="page-item disabled"><span class="page-link">Berikutnya</span></li>
+    <li class="page-item disabled"><span class="page-link">Next</span></li>
     {% endif %}
   </ul>
 </nav>

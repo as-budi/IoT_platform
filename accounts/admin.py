@@ -14,8 +14,8 @@ from .models import User
 class UserAdmin(BaseUserAdmin):
     list_display = (*BaseUserAdmin.list_display, "role")
     list_filter = (*BaseUserAdmin.list_filter, "role")
-    fieldsets = (*BaseUserAdmin.fieldsets, ("Role platform", {"fields": ("role",)}))
+    fieldsets = (*BaseUserAdmin.fieldsets, ("Platform role", {"fields": ("role",)}))
     add_fieldsets = (
         *BaseUserAdmin.add_fieldsets,
-        ("Role platform", {"fields": ("role",)}),
+        ("Platform role", {"fields": ("role",)}),
     )
