@@ -6,7 +6,8 @@ tahap punya catatan penjelasan di folder `docs/`.
 
 **Tahap 1 (saat ini): dashboard dasar** — manajemen pengguna (Admin & User),
 daftar device per pemilik, card nilai terkini, dan tabel history.
-Setiap device mengukur tepat satu variabel (mis. suhu) dengan satuannya.
+Setiap device (alat fisik) bisa punya beberapa variabel, masing-masing dengan satuannya;
+ada tampilan per device dan per variabel.
 Komunikasi dengan device belum ada; datanya diisi dengan perintah `seed_demo`.
 
 Penjelasan konsep: [docs/tahap-01-dashboard-dasar.md](docs/tahap-01-dashboard-dasar.md)
@@ -100,8 +101,8 @@ Buka <http://127.0.0.1:8000/> dan masuk dengan salah satu akun contoh
 | Username | Role  | Yang terlihat                                  |
 |----------|-------|------------------------------------------------|
 | `admin`  | Admin | semua device, menu Pengguna, situs `/admin/`   |
-| `budi`   | User  | 3 device miliknya                              |
-| `siti`   | User  | 2 device miliknya                              |
+| `budi`   | User  | 2 device miliknya (5 variabel)                 |
+| `siti`   | User  | 1 device miliknya (3 variabel)                 |
 
 ## Menjalankan tes
 

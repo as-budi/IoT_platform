@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # Filter tampilan angka/waktu, mis. intcomma (1234 -> 1,234).
+    "django.contrib.humanize",
     # App milik project ini:
     "accounts",  # pengguna & role
     "devices",   # device & telemetri

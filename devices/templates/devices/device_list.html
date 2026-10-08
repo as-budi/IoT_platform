@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load humanize %}
 
 {% block title %}Devices · IoT Platform{% endblock %}
 
@@ -14,10 +15,11 @@
       <thead class="table-light">
         <tr>
           <th>Name</th>
-          <th>Variable</th>
-          <th class="text-end">Latest value</th>
+          <th>Location</th>
+          <th>Variables</th>
           {% if user.is_admin %}<th>Owner</th>{% endif %}
           <th>Status</th>
+          <th class="text-end">Rows</th>
           <th>Last data</th>
         </tr>
       </thead>
@@ -26,14 +28,16 @@
         {% for device in devices %}
         <tr>
           <td><a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a></td>
-          <td>{{ device.variable }}</td>
-          <td class="text-end">
-            {# last_value dihitung oleh Subquery di DeviceListView. #}
-            {% if device.last_value is not None %}
-            {{ device.last_value|floatformat:2 }} {{ device.unit }}
-            {% else %}
+          <td>{{ device.location|default:"—" }}</td>
+          <td>
+            {# device.variables.all tidak memicu query baru: sudah diambil sekaligus #}
+            {# oleh prefetch_related("variables") di DeviceListView. #}
+            {% for variable in device.variables.all %}
+            <a class="badge text-bg-light border text-decoration-none"
+               href="{% url 'devices:variable_detail' device.pk variable.pk %}">{{ variable.display_name }}</a>
+            {% empty %}
             <span class="text-muted">—</span>
-            {% endif %}
+            {% endfor %}
           </td>
           {% if user.is_admin %}<td>{{ device.owner.username }}</td>{% endif %}
           <td>
@@ -43,6 +47,9 @@
             <span class="badge text-bg-secondary">Inactive</span>
             {% endif %}
           </td>
+          {# telemetry_count dihitung oleh Subquery di DeviceListView. #}
+          {# intcomma: 1234 -> 1,234 (butuh django.contrib.humanize). #}
+          <td class="text-end">{{ device.telemetry_count|intcomma }}</td>
           <td>
             {% if device.last_seen %}
             {{ device.last_seen|timesince }} ago
@@ -53,7 +60,7 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="6" class="text-center text-muted py-4">No devices yet.</td>
+          <td colspan="7" class="text-center text-muted py-4">No devices yet.</td>
         </tr>
         {% endfor %}
       </tbody>

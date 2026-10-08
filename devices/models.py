@@ -1,14 +1,19 @@
 """
-Model data device dan telemetri.
+Model data device, variabel, dan telemetri.
 
-Aturan rancangan: SATU device = SATU variabel. Sebuah device mengukur tepat
-satu besaran (mis. suhu), yang nama dan satuannya dicatat di model Device.
-Alat fisik yang mengukur beberapa besaran didaftarkan sebagai beberapa device.
-Telemetri cukup menyimpan deret waktu (waktu, nilai) milik device itu.
+Struktur (mengikuti pola platform IoT pada umumnya, mis. ThingsBoard):
 
-Ini berbeda dari ThingsBoard, yang mengizinkan banyak "key" per device.
+    Device      = alat fisik yang terhubung ke jaringan (mis. ESP32 + DHT22).
+                  Satu token, satu koneksi, satu status online.
+      Variable  = besaran yang diukur alat itu (temperature, humidity, ...),
+                  lengkap dengan satuan dan label tampilannya.
+        Telemetry = deret waktu (waktu, nilai) untuk satu variabel.
+
+Jadi satu device bisa punya banyak variabel, dan setiap variabel punya
+riwayat datanya sendiri.
 """
 from django.conf import settings
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -30,17 +35,13 @@ class Device(models.Model):
         blank=True,
         help_text="Example: temperature sensor, power meter.",
     )
-    # Variabel tunggal yang diukur device ini, beserta satuannya.
-    variable = models.CharField(
-        "variable",
-        max_length=50,
-        help_text="The measured quantity. Example: temperature.",
-    )
-    unit = models.CharField(
-        "unit",
-        max_length=20,
+    # Lokasi pemasangan, teks bebas. blank=True: boleh dikosongkan, sehingga
+    # device lama otomatis berisi "" saat kolom ini ditambahkan lewat migrasi.
+    location = models.CharField(
+        "location",
+        max_length=100,
         blank=True,
-        help_text="Example: °C, %, V. May be left blank.",
+        help_text="Where the device is installed. Example: Server room, Building A.",
     )
     description = models.TextField("description", blank=True)
     is_active = models.BooleanField("active", default=True)
@@ -54,23 +55,74 @@ class Device(models.Model):
     def __str__(self):
         return self.name
 
+
+
+# Nama variabel dipakai di payload JSON dan nanti di topic MQTT, jadi dibatasi
+# ke huruf, angka, dan garis bawah (tanpa spasi), mis. "soil_moisture".
+key_validator = RegexValidator(
+    r"^[A-Za-z][A-Za-z0-9_]*$",
+    "Use letters, digits and underscores only, starting with a letter.",
+)
+
+
+class Variable(models.Model):
+    device = models.ForeignKey(
+        Device,
+        verbose_name="device",
+        on_delete=models.CASCADE,   # device dihapus -> variabelnya ikut terhapus
+        related_name="variables",   # memungkinkan: device.variables.all()
+    )
+    key = models.CharField(
+        "key",
+        max_length=50,
+        validators=[key_validator],
+        help_text="Name used in the data the device sends. Example: temperature.",
+    )
+    label = models.CharField(
+        "label",
+        max_length=100,
+        blank=True,
+        help_text="Display name. Leave blank to show the key.",
+    )
+    unit = models.CharField(
+        "unit",
+        max_length=20,
+        blank=True,
+        help_text="Example: °C, %, V. May be left blank.",
+    )
+    created_at = models.DateTimeField("created", auto_now_add=True)
+
+    class Meta:
+        ordering = ["key"]
+        verbose_name = "variable"
+        verbose_name_plural = "variables"
+        constraints = [
+            # Dalam satu device, nama variabel tidak boleh kembar.
+            models.UniqueConstraint(fields=["device", "key"], name="unique_variable_key_per_device"),
+        ]
+
+    def __str__(self):
+        return f"{self.device} · {self.key}"
+
+    @property
+    def display_name(self):
+        """Label bila diisi, kalau tidak pakai key."""
+        return self.label or self.key
+
     @property
     def latest(self):
-        """Baris telemetri terbaru device ini (None bila belum ada data).
-
-        Dipakai untuk card "nilai terkini" di halaman detail.
-        """
+        """Baris telemetri terbaru variabel ini (None bila belum ada data)."""
         return self.telemetry.order_by("-ts").first()
 
 
 class Telemetry(models.Model):
-    device = models.ForeignKey(
-        Device,
+    variable = models.ForeignKey(
+        Variable,
+        verbose_name="variable",
         on_delete=models.CASCADE,
-        related_name="telemetry",  # memungkinkan: device.telemetry.all()
+        related_name="telemetry",  # memungkinkan: variable.telemetry.all()
     )
-    # Tidak ada kolom nama variabel di sini: variabelnya sudah ditentukan
-    # oleh device. Tahap ini hanya mendukung nilai angka.
+    # Tahap ini hanya mendukung nilai angka.
     value = models.FloatField("value")
     ts = models.DateTimeField("time", default=timezone.now)
 
@@ -79,9 +131,9 @@ class Telemetry(models.Model):
         verbose_name = "telemetry"
         verbose_name_plural = "telemetry"
         indexes = [
-            # Index mempercepat pencarian "data device X, urut waktu".
-            models.Index(fields=["device", "ts"], name="telemetry_dev_ts"),
+            # Index mempercepat pencarian "data variabel X, urut waktu".
+            models.Index(fields=["variable", "ts"], name="telemetry_var_ts"),
         ]
 
     def __str__(self):
-        return f"{self.device}: {self.value}"
+        return f"{self.variable}: {self.value}"
