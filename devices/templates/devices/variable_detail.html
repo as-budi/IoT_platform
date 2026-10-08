@@ -41,11 +41,12 @@
         {% if latest %}
         {# show_value: filter buatan sendiri (devices/templatetags/device_tags.py) #}
         {# yang menampilkan ON/OFF untuk boolean, atau angka 2 desimal. #}
-        <div class="value">
+        {# data-ts: waktu bacaan dalam milidetik, dipakai pembaruan langsung. #}
+        <div class="value" data-live="latest-value" data-ts="{{ latest.ts|date:'U' }}000">
           {{ latest.value|show_value:variable }}
           {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
-        <div class="small text-muted" title="{{ latest.ts|date:'d M Y H:i:s' }}">
+        <div class="small text-muted" data-live="latest-meta" title="{{ latest.ts|date:'d M Y H:i:s' }}">
           {{ latest.ts|timesince }} ago
         </div>
         {% else %}
@@ -170,14 +171,14 @@
           <th class="text-end">{{ variable.display_name }}{% if variable.unit %} ({{ variable.unit }}){% endif %}</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="history-rows">
         {% for row in page_obj %}
         <tr>
           <td>{{ row.ts|date:"d M Y H:i:s" }}</td>
           <td class="text-end">{{ row.value|show_value:variable }}</td>
         </tr>
         {% empty %}
-        <tr>
+        <tr data-empty-row>
           <td colspan="2" class="text-center text-muted py-4">No data.</td>
         </tr>
         {% endfor %}
@@ -291,7 +292,7 @@
     // Tombol Reset hanya aktif bila chart sedang di-zoom atau digeser.
     const updateResetButton = ({ chart }) => { resetButton.disabled = !chart.isZoomedOrPanned(); };
 
-    const chart = new Chart(canvas, {
+    const chart = window.historyChart = new Chart(canvas, {
       type: "line",
       data: {
         datasets: [{
@@ -397,4 +398,78 @@
   })();
 </script>
 {% endif %}
+
+{{ live_config|json_script:"live-config" }}
+<script>
+  // Pembaruan langsung untuk halaman variabel (lihat static/js/auto_refresh.js).
+  (function () {
+    const config = JSON.parse(document.getElementById("live-config").textContent);
+
+    AutoRefresh.on("telemetry", (event) => {
+      const mine = event.points
+        .filter((p) => p.variable === config.variable)
+        .sort((a, b) => a.ts - b.ts);
+      if (!mine.length) return true;                 // variabel lain: tidak ada yang berubah di sini
+      if (mine[0].kind === "ACTUATOR") return false; // status sync ikut berubah: muat ulang
+
+      const valueEl = document.querySelector('[data-live="latest-value"]');
+      if (!valueEl) return false;                    // data pertama: muat ulang agar chart dibuat
+      // Data lama yang baru terkirim (mis. tertahan saat Wi-Fi putus) harus
+      // diselipkan di tengah tabel; lebih sederhana dimuat ulang.
+      if (mine[0].ts < Number(valueEl.dataset.ts)) return false;
+
+      // 1) Card nilai terkini
+      const latest = mine[mine.length - 1];
+      valueEl.dataset.ts = latest.ts;
+      valueEl.textContent = LiveFormat.value(latest.value, config.boolean) + " ";
+      if (config.unit) {
+        const unit = document.createElement("span");
+        unit.className = "unit";
+        unit.textContent = config.unit;
+        valueEl.appendChild(unit);
+      }
+      const metaEl = document.querySelector('[data-live="latest-meta"]');
+      metaEl.title = LiveFormat.dateTime(latest.ts);
+      metaEl.dataset.liveTs = latest.ts;
+      metaEl.textContent = LiveFormat.ago(latest.ts);
+
+      // 2) Tabel history: baris baru di atas (hanya di halaman pertama).
+      if (config.firstPage) {
+        const tbody = document.getElementById("history-rows");
+        const empty = tbody.querySelector("[data-empty-row]");
+        if (empty) empty.remove();
+        for (const point of mine) {
+          const row = tbody.insertRow(0);
+          row.insertCell().textContent = LiveFormat.dateTime(point.ts);
+          const cell = row.insertCell();
+          cell.className = "text-end";
+          cell.textContent = LiveFormat.value(point.value, config.boolean);
+        }
+        while (tbody.rows.length > config.pageSize) tbody.deleteRow(-1);
+      }
+
+      // 3) Chart: tambahkan titik, lalu geser jendela waktu ke "sekarang".
+      if (config.chartLive) {
+        const chart = window.historyChart;
+        if (!chart) return false;
+        const data = chart.data.datasets[0].data;
+        for (const point of mine) data.push({ x: point.ts, y: point.value });
+        // Saat pengguna sedang men-zoom, tampilan tidak digeser.
+        if (!chart.isZoomedOrPanned()) {
+          const now = Date.now();
+          chart.options.scales.x.min = now - config.periodMs;
+          chart.options.scales.x.max = now;
+          while (data.length && data[0].x < now - config.periodMs) data.shift();
+        }
+        chart.update("none");
+      }
+      return true;
+    });
+
+    // Desired state variabel ini berubah -> muat ulang; variabel lain -> abaikan.
+    AutoRefresh.on("desired", (event) => event.variable !== config.variable);
+    // Command tidak ditampilkan di halaman variabel.
+    AutoRefresh.on("command", () => true);
+  })();
+</script>
 {% endblock %}

@@ -1,30 +1,36 @@
 /*
- * Auto-refresh: muat ulang halaman ketika ada data baru.
+ * Pembaruan langsung (live updates) untuk halaman device dan halaman variabel.
  *
- * Cara kerjanya disebut "polling":
- *   1. Saat halaman dibuat, server menulis "versi data" ke atribut
- *      data-version pada elemen #auto-refresh.
- *   2. Setiap beberapa detik, skrip ini meminta versi terbaru ke
- *      data-url (view devices.views.device_updates), balasannya JSON kecil:
- *          {"version": "1532-4-17-0-0"}
- *   3. Bila versinya berbeda, ada sesuatu yang baru -> halaman dimuat ulang.
+ * Jalur utama: WebSocket.
+ *   Browser membuka koneksi ws://<host>/ws/devices/<id>/ yang terus terbuka.
+ *   Begitu ada data baru, server MENGIRIM kabar tanpa ditanya, mis.
+ *       {"type": "telemetry", "points": [{"variable": 7, "value": 25.1, ...}]}
+ *   Halaman lalu memperbarui dirinya di tempat (angka di card, titik di chart)
+ *   tanpa memuat ulang. Kabar yang tidak bisa diterapkan di tempat (mis. status
+ *   command berubah) membuat halaman dimuat ulang.
  *
- * Halaman TIDAK dimuat ulang saat pengguna sedang mengetik di form atau sedang
- * men-zoom chart, supaya pekerjaannya tidak hilang. Sebagai gantinya muncul
- * tombol "Reload now".
+ * Jalur cadangan: POLLING (cara tahap 2b).
+ *   - Bila server tidak mendukung WebSocket (mis. Daphne belum dipasang),
+ *     halaman kembali bertanya ke /devices/<id>/updates/ setiap 5 detik.
+ *   - Selama WebSocket tersambung pun, versi data tetap diperiksa setiap 30
+ *     detik, untuk menangkap perubahan yang kabarnya tidak sampai (mis. data
+ *     dari mqtt_bridge saat Redis belum dipakai).
  *
- * Halaman lain bisa menambah alasan menunda lewat:
+ * Halaman mendaftarkan cara menerapkan kabar lewat:
+ *     AutoRefresh.on("telemetry", (event) => { ...; return true; });
+ *   return true  = sudah diterapkan di tempat
+ *   selain itu   = halaman perlu dimuat ulang
+ * dan alasan menunda muat ulang lewat:
  *     AutoRefresh.hold(() => kondisi ? "alasan" : "");
- *
- * Skrip ini dimuat di base.html, tetapi hanya aktif di halaman yang punya
- * elemen #auto-refresh (halaman device dan halaman variabel).
  */
 (function () {
   "use strict";
 
   const holds = [];
+  const handlers = {};
   window.AutoRefresh = {
     hold(check) { holds.push(check); },
+    on(type, handler) { (handlers[type] = handlers[type] || []).push(handler); },
   };
 
   const box = document.getElementById("auto-refresh");
@@ -33,12 +39,15 @@
   const toggle = box.querySelector("input[type=checkbox]");
   const statusText = box.querySelector("[data-status]");
   const reloadButton = box.querySelector("[data-reload]");
-  const url = box.dataset.url;
-  const intervalMs = (parseInt(box.dataset.interval, 10) || 5) * 1000;
-  const knownVersion = box.dataset.version;
+  const versionUrl = box.dataset.url;
+  const pollMs = (parseInt(box.dataset.interval, 10) || 5) * 1000;
+  const SAFETY_POLL_MS = 30 * 1000;
+  const wsUrl = box.dataset.wsPath
+    ? (location.protocol === "https:" ? "wss://" : "ws://") + location.host + box.dataset.wsPath
+    : "";
+  let knownVersion = box.dataset.version;
 
-  // Penyimpanan browser bisa tidak tersedia (mode privat, dsb.), jadi selalu
-  // dibungkus try/catch. Bila gagal, fitur tetap jalan, hanya tidak diingat.
+  // --- penyimpanan browser (bisa tidak tersedia; selalu try/catch) ------------
   const SETTING_KEY = "autoRefresh";
   const SCROLL_KEY = "autoRefreshScroll:" + location.pathname + location.search;
   function read(storage, key) {
@@ -57,7 +66,7 @@
     window.scrollTo(0, parseInt(savedScroll, 10) || 0);
   }
 
-  // Tandai bila pengguna sudah mengisi sesuatu di form mana pun.
+  // --- kapan TIDAK boleh memuat ulang ---------------------------------------------
   let formIsDirty = false;
   document.addEventListener("input", (event) => {
     if (event.target.closest("form") && !box.contains(event.target)) formIsDirty = true;
@@ -85,62 +94,163 @@
     return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   }
 
+  // --- muat ulang halaman ------------------------------------------------------------
+  let reloadNeeded = false;
+
   function reloadPage() {
     write(sessionStorage, SCROLL_KEY, String(Math.round(window.scrollY)));
     location.reload();
   }
   reloadButton.addEventListener("click", reloadPage);
 
-  let timer = null;
-  let hasNewData = false;
+  function requestReload() {
+    reloadNeeded = true;
+    tryReload();
+  }
 
-  async function check() {
-    // Tab yang tidak terlihat tidak perlu bertanya ke server.
-    if (document.hidden) return;
-    try {
-      const response = await fetch(url, {
-        headers: { Accept: "application/json" },
-        cache: "no-store",
-        credentials: "same-origin",
-      });
-      if (response.status === 401) {
-        stop();
-        setStatus("Session expired. Log in again to resume.", "danger");
-        return;
-      }
-      if (!response.ok) throw new Error("HTTP " + response.status);
-      const data = await response.json();
-      if (data.version !== knownVersion) hasNewData = true;
-    } catch (err) {
-      setStatus("Cannot reach the server, retrying…", "warning");
-      return;
-    }
-
-    if (!hasNewData) {
-      setStatus("Up to date · checked " + clock());
-      return;
-    }
+  function tryReload() {
+    if (!reloadNeeded || !toggle.checked) return;
     const reason = holdReason();
     if (!reason) {
       setStatus("New data received, refreshing…", "success");
-      stop();
+      stopAll();
       reloadPage();
       return;
     }
-    // Ditunda; dicek lagi di putaran berikutnya (mis. setelah zoom di-reset).
     setStatus("New data received. Paused because " + reason + ".", "primary");
     reloadButton.hidden = false;
   }
+  // Muat ulang yang tertunda dicoba lagi berkala (mis. setelah zoom di-reset).
+  setInterval(tryReload, 2000);
 
-  function start() {
-    if (timer) return;
-    check();
-    timer = setInterval(check, intervalMs);
+  // --- versi data (polling) --------------------------------------------------------------
+
+  async function fetchVersion() {
+    const response = await fetch(versionUrl, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      credentials: "same-origin",
+    });
+    if (response.status === 401) throw new Error("401");
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    return (await response.json()).version;
   }
 
-  function stop() {
-    clearInterval(timer);
-    timer = null;
+  // Bandingkan dengan versi yang diketahui; bila berbeda, muat ulang.
+  async function checkVersion() {
+    if (document.hidden || reloadNeeded) return;
+    try {
+      const version = await fetchVersion();
+      if (version !== knownVersion) {
+        requestReload();
+      } else if (mode === "poll") {
+        setStatus("Polling every " + pollMs / 1000 + " s · up to date at " + clock());
+      }
+    } catch (err) {
+      if (err.message === "401") {
+        stopAll();
+        setStatus("Session expired. Log in again to resume.", "danger");
+      } else if (mode === "poll") {
+        setStatus("Cannot reach the server, retrying…", "warning");
+      }
+    }
+  }
+
+  // Setelah kabar WebSocket diterapkan di tempat, catat versi barunya supaya
+  // pemeriksaan cadangan tidak menganggapnya sebagai perubahan yang terlewat.
+  async function rememberVersion() {
+    try { knownVersion = await fetchVersion(); } catch (err) { /* dicoba lagi nanti */ }
+  }
+
+  // --- WebSocket ---------------------------------------------------------------------------
+  let mode = "off";          // "ws" | "poll" | "off"
+  let socket = null;
+  let failures = 0;
+  let everOpened = false;
+  let retryTimer = null;
+  let pollTimer = null;
+
+  function handleEvent(event) {
+    const list = handlers[event.type] || [];
+    let applied = list.length > 0;
+    for (const handler of list) {
+      try {
+        if (handler(event) !== true) applied = false;
+      } catch (err) {
+        console.error("Live update handler failed", err);
+        applied = false;
+      }
+    }
+    if (applied) rememberVersion(); else requestReload();
+  }
+
+  function connect() {
+    mode = "ws";
+    socket = new WebSocket(wsUrl);
+
+    socket.addEventListener("open", () => {
+      everOpened = true;
+      failures = 0;
+      setStatus("Live (WebSocket)", "success");
+      // Perubahan antara halaman dibuat dan koneksi terbuka tidak dikabarkan;
+      // periksa sekali, lalu berkala sebagai cadangan.
+      checkVersion();
+      clearInterval(pollTimer);
+      pollTimer = setInterval(checkVersion, SAFETY_POLL_MS);
+    });
+
+    socket.addEventListener("message", (message) => {
+      let event;
+      try { event = JSON.parse(message.data); } catch (err) { return; }
+      handleEvent(event);
+      if (!reloadNeeded) setStatus("Live (WebSocket) · last update " + clock(), "success");
+    });
+
+    socket.addEventListener("close", (closeEvent) => {
+      socket = null;
+      clearInterval(pollTimer);
+      if (mode !== "ws") return;  // ditutup sengaja (saklar dimatikan)
+      if (closeEvent.code === 4401) {
+        mode = "off";
+        setStatus("Session expired. Log in again to resume.", "danger");
+        return;
+      }
+      if (closeEvent.code === 4403) {
+        mode = "off";
+        setStatus("You no longer have access to this device.", "danger");
+        return;
+      }
+      failures += 1;
+      if (!everOpened && failures >= 2) {
+        // Server tidak melayani WebSocket sama sekali -> pakai polling.
+        startPolling();
+        return;
+      }
+      const delay = Math.min(30, 2 ** failures);
+      setStatus("Connection lost, reconnecting in " + delay + " s…", "warning");
+      retryTimer = setTimeout(connect, delay * 1000);
+    });
+  }
+
+  function startPolling() {
+    mode = "poll";
+    setStatus("WebSocket unavailable; polling every " + pollMs / 1000 + " s", "warning");
+    checkVersion();
+    clearInterval(pollTimer);
+    pollTimer = setInterval(checkVersion, pollMs);
+  }
+
+  function start() {
+    reloadButton.hidden = !reloadNeeded;
+    if (wsUrl && "WebSocket" in window) connect(); else startPolling();
+  }
+
+  function stopAll() {
+    mode = "off";
+    clearTimeout(retryTimer);
+    clearInterval(pollTimer);
+    if (socket) socket.close();
+    socket = null;
   }
 
   toggle.addEventListener("change", () => {
@@ -148,17 +258,56 @@
     if (toggle.checked) {
       start();
     } else {
-      stop();
+      stopAll();
       setStatus("Off");
-      reloadButton.hidden = !hasNewData;
     }
   });
 
-  // Saat tab kembali terlihat, langsung periksa tanpa menunggu putaran berikutnya.
+  // Tab yang kembali terlihat: periksa segera (polling dihentikan saat tersembunyi).
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && timer) check();
+    if (!document.hidden && mode !== "off") checkVersion();
   });
 
   toggle.checked = read(localStorage, SETTING_KEY) !== "off";
   if (toggle.checked) start(); else setStatus("Off");
 })();
+
+/*
+ * Alat bantu tampilan yang dipakai halaman device dan variabel.
+ */
+window.LiveFormat = {
+  // Sama dengan filter show_value: ON/OFF untuk boolean, 2 desimal untuk angka.
+  value(value, isBoolean) {
+    if (value === null || value === undefined) return "—";
+    return isBoolean ? (value >= 0.5 ? "ON" : "OFF") : Number(value).toFixed(2);
+  },
+  // Sama dengan format tanggal tabel history: "08 Oct 2026 14:03:22".
+  dateTime(ms) {
+    const d = new Date(ms);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const two = (n) => String(n).padStart(2, "0");
+    return `${two(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()} ` +
+      `${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
+  },
+  // "just now", "3 minutes ago", ... untuk elemen yang diperbarui langsung.
+  ago(ms) {
+    const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (seconds < 60) return "just now";
+    const units = [[86400, "day"], [3600, "hour"], [60, "minute"]];
+    for (const [size, name] of units) {
+      if (seconds >= size) {
+        const n = Math.floor(seconds / size);
+        return `${n} ${name}${n === 1 ? "" : "s"} ago`;
+      }
+    }
+    return "just now";
+  },
+};
+
+// Teks "x ago" pada elemen ber-atribut data-live-ts diperbarui setiap 15 detik.
+setInterval(() => {
+  document.querySelectorAll("[data-live-ts]").forEach((el) => {
+    const suffix = el.dataset.liveSuffix || "";
+    el.textContent = window.LiveFormat.ago(Number(el.dataset.liveTs)) + suffix;
+  });
+}, 15000);

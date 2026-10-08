@@ -22,6 +22,8 @@ from django.views.generic import (
 
 from accounts.mixins import AdminRequiredMixin
 from mqtt_bridge import topics as mqtt_topics
+from realtime import events
+from realtime.routing import device_ws_path
 
 from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
 from .forms import (
@@ -208,9 +210,10 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
             "all": mqtt_topics.device_base(prefix, token) + "/#",
         }
 
-        # Untuk auto-refresh: versi data saat halaman ini dibuat.
+        # Pembaruan langsung: WebSocket, dengan polling versi data sebagai cadangan.
         context["data_version"] = data_version(device)
         context["updates_url"] = reverse("devices:updates", args=[device.pk])
+        context["ws_path"] = device_ws_path(device.pk)
         return context
 
 
@@ -348,11 +351,24 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         if variable.is_actuator:
             context["desired_log"] = variable.desired_log.select_related("changed_by")[:20]
 
-        # 5) Auto-refresh: versi data variabel ini saat halaman dibuat.
-        context["data_version"] = data_version(self.get_device(), variable)
-        context["updates_url"] = (
-            reverse("devices:updates", args=[self.get_device().pk]) + f"?variable={variable.pk}"
-        )
+        # 5) Pembaruan langsung (WebSocket + polling cadangan).
+        device = self.get_device()
+        context["data_version"] = data_version(device, variable)
+        context["updates_url"] = reverse("devices:updates", args=[device.pk]) + f"?variable={variable.pk}"
+        context["ws_path"] = device_ws_path(device.pk)
+        # Pengaturan untuk JavaScript halaman ini (dikirim lewat json_script).
+        context["live_config"] = {
+            "variable": variable.pk,
+            "boolean": variable.is_boolean,
+            "unit": "" if variable.is_boolean else variable.unit,
+            # Titik baru hanya ditambahkan ke chart bila chart menampilkan data
+            # asli (bukan rata-rata) dan periodenya berakhir di "sekarang".
+            "chartLive": not series["bucket_seconds"] and not context["custom_end"],
+            "periodMs": int((end - start).total_seconds() * 1000),
+            # Baris baru hanya disisipkan ke tabel di halaman pertama.
+            "firstPage": context["page_obj"].number == 1,
+            "pageSize": HISTORY_PAGE_SIZE,
+        }
         return context
 
 
@@ -452,6 +468,7 @@ class CommandCreateView(LoginRequiredMixin, View):
                 created_by=request.user,
                 expires_at=timezone.now() + form.ttl_delta,
             )
+            events.command_changed(command)
             messages.success(request, f"Command {command.method} queued.")
         else:
             # Form ini tidak dirender ulang (kita redirect), jadi error-nya

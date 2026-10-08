@@ -17,6 +17,8 @@ Penjelasan konsep:
 - [docs/tahap-02-http-api.md](docs/tahap-02-http-api.md) — device sungguhan mengirim data lewat HTTP (access token, curl, ESP32)
 - [docs/tahap-02b-auto-refresh-dan-periode-chart.md](docs/tahap-02b-auto-refresh-dan-periode-chart.md) — auto-refresh (polling) dan pilihan periode chart dengan agregasi
 - [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md) — komunikasi dua arah lewat MQTT (broker, topik, mqtt_bridge, ESP32)
+- [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md) — dashboard real-time lewat WebSocket (Django Channels, Daphne, Redis)
+- [docs/tahap-04b-channels-daphne-redis.md](docs/tahap-04b-channels-daphne-redis.md) — peran Daphne, Channels, channels-redis, dan Redis
 
 ## Prasyarat
 
@@ -168,6 +170,20 @@ python scripts/fake_mqtt_device.py TOKEN      # device tiruan dua arah
 Topik setiap device ditampilkan di halaman device (bagian *Connect a device*).
 Contoh firmware ESP32: `firmware/esp32_mqtt/esp32_mqtt.ino`.
 Penjelasan lengkap: [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md).
+
+## Dashboard real-time (tahap 4)
+
+Halaman device dan variabel menerima data baru lewat WebSocket tanpa memuat ulang.
+
+```bash
+pip install channels daphne channels-redis    # sekali saja
+python manage.py runserver                    # harus tertulis "ASGI/Daphne"
+```
+
+Agar data dari `mqtt_bridge` juga tampil seketika, pasang Redis
+(`brew install redis && brew services start redis`) lalu isi
+`REDIS_URL=redis://127.0.0.1:6379/0` di `.env`.
+Penjelasan lengkap: [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md).
 
 ## Struktur project
 

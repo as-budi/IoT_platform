@@ -34,6 +34,8 @@ from django.core.validators import MaxValueValidator, MinValueValidator, RegexVa
 from django.db import models, transaction
 from django.utils import timezone
 
+from realtime import events
+
 
 def generate_access_token():
     """Token acak untuk autentikasi device, mis. "q3Zr8-kP2mXv0aLt9yBc".
@@ -289,6 +291,8 @@ class Variable(models.Model):
                 version=variable.desired_version,
                 changed_by=user,
             )
+            # Kabari dashboard lain yang sedang terbuka (WebSocket).
+            events.desired_changed(variable)
         return variable
 
 
@@ -423,6 +427,7 @@ class Command(models.Model):
         self.status = CommandStatus.SENT
         self.sent_at = timezone.now()
         self.save(update_fields=["status", "sent_at"])
+        events.command_changed(self)
 
     def complete(self, succeeded, response=None):
         """Catat hasil dari device. Command yang sudah final tidak diubah lagi."""
@@ -432,4 +437,5 @@ class Command(models.Model):
         self.response = response
         self.completed_at = timezone.now()
         self.save(update_fields=["status", "response", "completed_at"])
+        events.command_changed(self)
         return True

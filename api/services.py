@@ -2,6 +2,7 @@
 from django.db import transaction
 
 from devices.models import Telemetry, Variable
+from realtime import events
 
 
 def save_telemetry(device, rows):
@@ -14,6 +15,11 @@ def save_telemetry(device, rows):
     Untuk variabel AKTUATOR, telemetri ini adalah "reported state": laporan
     keadaan sebenarnya dari device. Karena itu status desired/reported di
     dashboard otomatis ikut diperbarui.
+
+    Setelah tersimpan, browser yang sedang membuka halaman device ini diberi
+    kabar lewat WebSocket (realtime/events.py). Karena HTTP API, mqtt_bridge,
+    dan simulator sama-sama menyimpan lewat fungsi ini, semuanya ikut tampil
+    seketika di dashboard.
 
     Mengembalikan daftar key yang baru dibuat.
     """
@@ -29,4 +35,6 @@ def save_telemetry(device, rows):
         Telemetry.objects.bulk_create(
             [Telemetry(variable=variables[key], value=value, ts=ts) for key, value, ts in rows]
         )
+        # Dikirim setelah transaksi selesai (lihat events.emit).
+        events.telemetry_saved(device, [(variables[key], value, ts) for key, value, ts in rows])
     return created_keys

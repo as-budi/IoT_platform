@@ -57,6 +57,14 @@ class Command(BaseCommand):
 
         prefix = settings.MQTT_TOPIC_PREFIX
         outbox = Outbox(prefix)
+        if "InMemory" in settings.CHANNEL_LAYERS["default"]["BACKEND"]:
+            # Kabar WebSocket dari proses ini tidak bisa sampai ke proses runserver
+            # tanpa Redis (lihat docs/tahap-04-websocket.md).
+            self.log(
+                "REDIS_URL is not set: open dashboards will show MQTT data only "
+                "through their 30-second fallback check.",
+                self.style.WARNING,
+            )
         # Penanda dari thread jaringan ke thread utama: "baru saja tersambung".
         just_connected = threading.Event()
 

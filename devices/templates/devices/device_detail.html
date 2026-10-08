@@ -81,23 +81,26 @@
 <div class="row g-3 mb-4">
   {% for variable in sensors %}
   <div class="col-12 col-sm-6 col-lg-4">
-    <div class="card shadow-sm value-card h-100">
+    {# data-live-*: dipakai JavaScript di bawah untuk memperbarui card tanpa memuat ulang. #}
+    <div class="card shadow-sm value-card h-100"
+         data-live-variable="{{ variable.pk }}" data-live-count="{{ variable.telemetry_count }}"
+         data-boolean="{% if variable.is_boolean %}1{% endif %}" data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}">
       <div class="card-body">
         <div class="key text-muted">
           {{ variable.display_name }}
           {% if variable.label %}<code class="ms-1 text-lowercase">{{ variable.key }}</code>{% endif %}
         </div>
         {% if variable.last_value is not None %}
-        <div class="value">
+        <div class="value" data-live="value">
           {{ variable.last_value|show_value:variable }}
           {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
-        <div class="small text-muted" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
+        <div class="small text-muted" data-live="meta" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
           {{ variable.last_seen|timesince }} ago · {{ variable.telemetry_count|intcomma }} rows
         </div>
         {% else %}
-        <div class="value text-muted">—</div>
-        <div class="small text-muted">No data yet</div>
+        <div class="value text-muted" data-live="value">—</div>
+        <div class="small text-muted" data-live="meta">No data yet</div>
         {% endif %}
         {# stretched-link: seluruh card menjadi tautan ke halaman variabel. #}
         <a class="stretched-link" href="{% url 'devices:variable_detail' device.pk variable.pk %}"
@@ -232,6 +235,47 @@
 
 {% block extra_js %}
 <script>
+  // Pembaruan langsung (lihat static/js/auto_refresh.js).
+  // Telemetri SENSOR diterapkan langsung ke card-nya. Telemetri aktuator,
+  // desired state, dan command mengubah banyak bagian halaman (status sync,
+  // tabel command), jadi untuk itu halaman dimuat ulang saja.
+  AutoRefresh.on("telemetry", (event) => {
+    // Kelompokkan per variabel: ambil bacaan terbaru dan jumlah baris barunya.
+    const byVariable = new Map();
+    for (const point of event.points) {
+      if (point.kind === "ACTUATOR") return false;
+      const entry = byVariable.get(point.variable) || { latest: point, count: 0 };
+      if (point.ts >= entry.latest.ts) entry.latest = point;
+      entry.count += 1;
+      byVariable.set(point.variable, entry);
+    }
+    for (const [variableId, { latest, count }] of byVariable) {
+      const card = document.querySelector(`[data-live-variable="${variableId}"]`);
+      if (!card) return false;  // variabel baru (dibuat otomatis): perlu muat ulang
+      const isBoolean = card.dataset.boolean === "1";
+      const valueEl = card.querySelector('[data-live="value"]');
+      valueEl.classList.remove("text-muted");
+      valueEl.textContent = LiveFormat.value(latest.value, isBoolean) + " ";
+      if (card.dataset.unit) {
+        const unit = document.createElement("span");
+        unit.className = "unit";
+        unit.textContent = card.dataset.unit;
+        valueEl.appendChild(unit);
+      }
+      const total = Number(card.dataset.liveCount) + count;
+      card.dataset.liveCount = total;
+      const metaEl = card.querySelector('[data-live="meta"]');
+      metaEl.title = LiveFormat.dateTime(latest.ts);
+      metaEl.dataset.liveTs = latest.ts;
+      metaEl.dataset.liveSuffix = " · " + total.toLocaleString("en-US") + " rows";
+      metaEl.textContent = LiveFormat.ago(latest.ts) + metaEl.dataset.liveSuffix;
+      // Sorot sebentar supaya perubahan terlihat.
+      card.classList.add("live-flash");
+      setTimeout(() => card.classList.remove("live-flash"), 1200);
+    }
+    return true;
+  });
+
   // Tombol "Copy": salin isi elemen yang id-nya ditulis di data-copy-target.
   document.querySelectorAll("[data-copy-target]").forEach((button) => {
     button.addEventListener("click", async () => {

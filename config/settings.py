@@ -38,6 +38,9 @@ ALLOWED_HOSTS = [
 # urusan. App buatan kita sendiri didaftarkan di bagian bawah.
 
 INSTALLED_APPS = [
+    # Daphne harus PALING ATAS: ia mengganti perintah runserver bawaan dengan
+    # server ASGI yang juga bisa melayani WebSocket.
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -51,6 +54,7 @@ INSTALLED_APPS = [
     "devices",   # device & telemetri
     "api",       # API untuk device (HTTP), tanpa login/CSRF, pakai access token
     "mqtt_bridge",  # komunikasi device lewat MQTT (perintah: manage.py mqtt_bridge)
+    "realtime",     # dashboard real-time lewat WebSocket (Django Channels)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -88,6 +92,8 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "config.wsgi.application"
+# Dipakai Daphne/Channels: aplikasi ASGI yang melayani HTTP dan WebSocket.
+ASGI_APPLICATION = "config.asgi.application"
 
 
 # --- Database ---------------------------------------------------------------
@@ -164,4 +170,25 @@ MQTT_TOPIC_PREFIX = os.getenv("MQTT_TOPIC_PREFIX", "django-iot-demo").strip("/")
 MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "")
 # Detik antar "ping" ke broker untuk menjaga koneksi tetap hidup.
 MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
+
+
+# --- WebSocket (Django Channels) ---------------------------------------------
+# Channel layer = "papan pengumuman" tempat kabar data baru dikirim ke browser.
+# - REDIS_URL kosong: InMemoryChannelLayer. Hanya bekerja di dalam proses
+#   runserver: data dari API HTTP dan tombol dashboard langsung tampil, tetapi
+#   data dari `mqtt_bridge` (proses lain) baru tampil lewat pemeriksaan
+#   cadangan tiap 30 detik.
+# - REDIS_URL diisi (mis. redis://127.0.0.1:6379/0): RedisChannelLayer, lintas
+#   proses. Semua data, termasuk dari MQTT, tampil seketika.
+
+REDIS_URL = os.getenv("REDIS_URL", "")
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
