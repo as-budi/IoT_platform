@@ -25,6 +25,7 @@
       <div class="collapse navbar-collapse" id="mainNav">
         <ul class="navbar-nav me-auto">
           <li class="nav-item"><a class="nav-link" href="{% url 'devices:list' %}">Devices</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'devices:location_list' %}">Locations</a></li>
           {# Menu ini hanya muncul untuk Admin. Pengamanan sebenarnya tetap ada di view. #}
           {% if user.is_admin %}
           <li class="nav-item"><a class="nav-link" href="{% url 'accounts:user_list' %}">Users</a></li>

@@ -1,0 +1,20 @@
+{% load device_tags %}
+{% comment %}
+  Status desired vs reported untuk satu aktuator. Dipakai dengan:
+    {% include "devices/includes/sync_badge.html" with variable=v %}
+  Warna status selalu disertai teks, supaya tidak hanya mengandalkan warna.
+{% endcomment %}
+{% with status=variable.sync_status %}
+{% if status %}
+<div class="small mt-1">
+  Requested: <strong>{{ variable.desired_value|show_value:variable }}{% if variable.unit and not variable.is_boolean %} {{ variable.unit }}{% endif %}</strong>
+  {% if status == "SYNCED" %}
+  <span class="badge text-bg-success">In sync</span>
+  {% elif status == "PENDING" %}
+  <span class="badge text-bg-warning">Waiting for device</span>
+  {% else %}
+  <span class="badge text-bg-danger">Mismatch</span>
+  {% endif %}
+</div>
+{% endif %}
+{% endwith %}

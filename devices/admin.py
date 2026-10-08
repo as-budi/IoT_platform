@@ -6,7 +6,7 @@ cepat untuk memasukkan data telemetri secara manual saat mencoba-coba.
 """
 from django.contrib import admin
 
-from .models import Device, Telemetry, Variable
+from .models import Command, DesiredStateLog, Device, Location, Telemetry, Variable
 
 
 class VariableInline(admin.TabularInline):
@@ -14,21 +14,21 @@ class VariableInline(admin.TabularInline):
 
     model = Variable
     extra = 0
-    fields = ("key", "label", "unit")
+    fields = ("key", "label", "unit", "kind", "value_type")
 
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
     list_display = ("name", "device_type", "location", "owner", "is_active")
-    list_filter = ("is_active", "device_type")
-    search_fields = ("name", "location", "owner__username")
+    list_filter = ("is_active", "location", "device_type")
+    search_fields = ("name", "location__name", "owner__username")
     inlines = [VariableInline]
 
 
 @admin.register(Variable)
 class VariableAdmin(admin.ModelAdmin):
-    list_display = ("key", "label", "unit", "device")
-    list_filter = ("device",)
+    list_display = ("key", "label", "unit", "kind", "value_type", "desired_value", "device")
+    list_filter = ("kind", "value_type", "device")
     search_fields = ("key", "label", "device__name")
 
 
@@ -40,3 +40,22 @@ class TelemetryAdmin(admin.ModelAdmin):
     # Menampilkan daftar variabel sebagai kotak pencarian, bukan dropdown
     # raksasa, supaya tetap cepat walau variabelnya banyak.
     raw_id_fields = ("variable",)
+
+
+@admin.register(DesiredStateLog)
+class DesiredStateLogAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "variable", "value", "version", "changed_by")
+    list_filter = ("variable__device",)
+
+
+@admin.register(Command)
+class CommandAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "device", "method", "status", "created_by", "expires_at")
+    list_filter = ("status", "device")
+    search_fields = ("method", "device__name")
+
+
+@admin.register(Location)
+class LocationAdmin(admin.ModelAdmin):
+    list_display = ("name", "latitude", "longitude")
+    search_fields = ("name",)

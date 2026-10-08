@@ -1,0 +1,6 @@
+{% comment %}Badge status command. Warna selalu disertai teks.{% endcomment %}
+{% if status == "QUEUED" %}<span class="badge text-bg-secondary">Queued</span>
+{% elif status == "SENT" %}<span class="badge text-bg-info">Sent</span>
+{% elif status == "SUCCEEDED" %}<span class="badge text-bg-success">Succeeded</span>
+{% elif status == "FAILED" %}<span class="badge text-bg-danger">Failed</span>
+{% else %}<span class="badge text-bg-light border">Expired</span>{% endif %}

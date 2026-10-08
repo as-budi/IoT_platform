@@ -1,0 +1,33 @@
+{% load device_tags %}
+{% comment %}
+  Form kontrol satu aktuator (pola 1: desired state). Mengirim POST ke
+  SetDesiredView; field `next` membawa pengguna kembali ke halaman ini.
+{% endcomment %}
+<form method="post" action="{% url 'devices:variable_set' variable.device_id variable.pk %}" class="mt-3">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  {% if variable.is_boolean %}
+  {# Dua tombol submit dengan name sama: yang diklik menentukan nilai yang terkirim. #}
+  <div class="btn-group w-100" role="group" aria-label="Set {{ variable.display_name }}">
+    <button type="submit" name="value" value="1"
+            class="btn btn-outline-success{% if variable.desired_value == 1 %} active{% endif %}">ON</button>
+    <button type="submit" name="value" value="0"
+            class="btn btn-outline-secondary{% if variable.desired_value == 0 %} active{% endif %}">OFF</button>
+  </div>
+  {% else %}
+  <div class="input-group">
+    <input type="number" step="any" name="value" class="form-control" required
+           aria-label="New value for {{ variable.display_name }}"
+           value="{{ variable.desired_value|plain_number }}"
+           {% if variable.min_value is not None %}min="{{ variable.min_value|plain_number }}"{% endif %}
+           {% if variable.max_value is not None %}max="{{ variable.max_value|plain_number }}"{% endif %}>
+    {% if variable.unit %}<span class="input-group-text">{{ variable.unit }}</span>{% endif %}
+    <button type="submit" class="btn btn-primary">Set</button>
+  </div>
+  {% if variable.min_value is not None or variable.max_value is not None %}
+  <div class="form-text">
+    Allowed range: {{ variable.min_value|plain_number|default:"−∞" }} to {{ variable.max_value|plain_number|default:"∞" }}
+  </div>
+  {% endif %}
+  {% endif %}
+</form>

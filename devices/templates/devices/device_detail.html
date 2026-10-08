@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize device_tags %}
 
 {% block title %}{{ device.name }} · IoT Platform{% endblock %}
 
@@ -22,7 +22,7 @@
       {% endif %}
     </h1>
     <div class="text-muted">
-      {{ device.device_type|default:"No type" }}{% if device.location %} · {{ device.location }}{% endif %} · owner: {{ device.owner.username }}
+      {{ device.device_type|default:"No type" }}{% if device.location %} · <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% endif %} · owner: {{ device.owner.username }}
     </div>
     {% if device.description %}<p class="mt-2 mb-0">{{ device.description }}</p>{% endif %}
   </div>
@@ -32,15 +32,52 @@
   </div>
 </div>
 
-{# ---------- Satu card per variabel ---------- #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="h5 mb-0">Variables</h2>
   <a class="btn btn-sm btn-primary" href="{% url 'devices:variable_add' device.pk %}">Add variable</a>
 </div>
 
-<div class="row g-3">
-  {# `variables` disiapkan DeviceDetailView, lengkap dengan nilai terbaru. #}
-  {% for variable in variables %}
+{% if not actuators and not sensors %}
+<div class="alert alert-light border">
+  This device has no variables yet.
+  <a href="{% url 'devices:variable_add' device.pk %}">Add the first one</a>.
+</div>
+{% endif %}
+
+{# ---------- Pola 1: kontrol aktuator (desired / reported state) ---------- #}
+{% if actuators %}
+<h3 class="h6 text-muted text-uppercase mb-2">Controls</h3>
+<div class="row g-3 mb-4">
+  {% for variable in actuators %}
+  <div class="col-12 col-sm-6 col-lg-4">
+    <div class="card shadow-sm value-card h-100 border-primary-subtle">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start">
+          <div class="key text-muted">{{ variable.display_name }}</div>
+          <a class="small" href="{% url 'devices:variable_detail' device.pk variable.pk %}">Details</a>
+        </div>
+        {# Yang besar adalah nilai REPORTED: keadaan yang benar-benar terjadi. #}
+        <div class="value">
+          {{ variable.last_value|show_value:variable }}
+          {% if variable.unit and not variable.is_boolean and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+        </div>
+        <div class="small text-muted">
+          {% if variable.last_seen %}Reported {{ variable.last_seen|timesince }} ago{% else %}No report from device yet{% endif %}
+        </div>
+        {% include "devices/includes/sync_badge.html" with variable=variable %}
+        {% include "devices/includes/control_form.html" with variable=variable %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Sensor: satu card per variabel ---------- #}
+{% if sensors %}
+<h3 class="h6 text-muted text-uppercase mb-2">Sensors</h3>
+<div class="row g-3 mb-4">
+  {% for variable in sensors %}
   <div class="col-12 col-sm-6 col-lg-4">
     <div class="card shadow-sm value-card h-100">
       <div class="card-body">
@@ -50,8 +87,8 @@
         </div>
         {% if variable.last_value is not None %}
         <div class="value">
-          {{ variable.last_value|floatformat:2 }}
-          {% if variable.unit %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+          {{ variable.last_value|show_value:variable }}
+          {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
           {{ variable.last_seen|timesince }} ago · {{ variable.telemetry_count|intcomma }} rows
@@ -66,13 +103,68 @@
       </div>
     </div>
   </div>
-  {% empty %}
-  <div class="col-12">
-    <div class="alert alert-light border mb-0">
-      This device has no variables yet.
-      <a href="{% url 'devices:variable_add' device.pk %}">Add the first one</a>.
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---------- Pola 2: command (aksi sekali jalan) ---------- #}
+<h2 class="h5 mb-3" id="commands">Commands</h2>
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <form method="post" action="{% url 'devices:command_add' device.pk %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-12 col-md-3">
+        <label class="form-label" for="{{ command_form.method.id_for_label }}">Method</label>
+        {{ command_form.method }}
+      </div>
+      <div class="col-12 col-md-5">
+        <label class="form-label" for="{{ command_form.params.id_for_label }}">Parameters (JSON)</label>
+        {{ command_form.params }}
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label" for="{{ command_form.ttl.id_for_label }}">{{ command_form.ttl.label }}</label>
+        {{ command_form.ttl }}
+      </div>
+      <div class="col-6 col-md-2">
+        <button type="submit" class="btn btn-primary w-100">Send</button>
+      </div>
+    </form>
+    <div class="form-text mt-2">
+      A command that has not finished before it expires is never run later.
     </div>
   </div>
-  {% endfor %}
+</div>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Created</th>
+          <th>Method</th>
+          <th>Parameters</th>
+          <th>Status</th>
+          <th>Response</th>
+          <th>By</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for command in commands %}
+        <tr>
+          <td class="text-nowrap" title="Expires {{ command.expires_at|date:'d M Y H:i:s' }}">{{ command.created_at|date:"d M H:i:s" }}</td>
+          <td><code>{{ command.method }}</code></td>
+          <td class="small"><code>{{ command.params|as_json }}</code></td>
+          <td>{% include "devices/includes/command_status.html" with status=command.status %}</td>
+          <td class="small"><code>{{ command.response|as_json }}</code></td>
+          <td>{{ command.created_by.username|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr>
+          <td colspan="6" class="text-center text-muted py-4">No commands sent yet.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

@@ -26,3 +26,9 @@ body {
   position: relative;
   height: 280px;
 }
+
+/* Kotak peta Leaflet; tingginya harus ditentukan, kalau tidak peta tidak tampil. */
+.map-box {
+  height: 360px;
+  border-radius: 0.375rem;
+}

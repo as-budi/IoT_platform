@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load device_tags %}
 
 {% block title %}{{ variable.display_name }} · {{ device.name }} · IoT Platform{% endblock %}
 
@@ -13,7 +14,10 @@
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
   <div>
-    <h1 class="h3 mb-1">{{ variable.display_name }}</h1>
+    <h1 class="h3 mb-1">
+      {{ variable.display_name }}
+      {% if variable.is_actuator %}<span class="badge text-bg-primary fs-6 align-middle">Actuator</span>{% endif %}
+    </h1>
     <div class="text-muted">
       key <code>{{ variable.key }}</code>{% if variable.unit %} · unit {{ variable.unit }}{% endif %}
       · device <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
@@ -26,17 +30,18 @@
 </div>
 
 {# ---------- Card nilai terkini ---------- #}
-<h2 class="h5 mb-3">Latest value</h2>
+<h2 class="h5 mb-3">{% if variable.is_actuator %}State{% else %}Latest value{% endif %}</h2>
 <div class="row g-3 mb-4">
   <div class="col-12 col-md-6 col-lg-4">
     <div class="card shadow-sm value-card h-100">
       <div class="card-body">
-        <div class="key text-muted">{{ variable.display_name }}</div>
+        <div class="key text-muted">{% if variable.is_actuator %}Reported by device{% else %}{{ variable.display_name }}{% endif %}</div>
         {% if latest %}
-        {# floatformat:2 = tampilkan angka dengan 2 desimal #}
+        {# show_value: filter buatan sendiri (devices/templatetags/device_tags.py) #}
+        {# yang menampilkan ON/OFF untuk boolean, atau angka 2 desimal. #}
         <div class="value">
-          {{ latest.value|floatformat:2 }}
-          {% if variable.unit %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+          {{ latest.value|show_value:variable }}
+          {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted" title="{{ latest.ts|date:'d M Y H:i:s' }}">
           {{ latest.ts|timesince }} ago
@@ -48,6 +53,25 @@
       </div>
     </div>
   </div>
+  {% if variable.is_actuator %}
+  {# Pola 1: desired state. Nilai di atas = reported; form ini = desired. #}
+  <div class="col-12 col-md-6 col-lg-4">
+    <div class="card shadow-sm h-100 border-primary-subtle">
+      <div class="card-body">
+        <div class="value-card"><div class="key text-muted">Requested by user</div></div>
+        {% if variable.desired_value is None %}
+        <div class="small text-muted mt-1">Nothing has been requested yet.</div>
+        {% else %}
+        {% include "devices/includes/sync_badge.html" with variable=variable %}
+        <div class="small text-muted">
+          {{ variable.desired_at|timesince }} ago by {{ variable.desired_by.username|default:"—" }} · version {{ variable.desired_version }}
+        </div>
+        {% endif %}
+        {% include "devices/includes/control_form.html" with variable=variable %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
 {# ---------- Chart history ---------- #}
@@ -58,7 +82,8 @@
     {% if chart_points %}
     <div class="chart-box">
       <canvas id="history-chart" role="img"
-              data-variable="{{ variable.display_name }}" data-unit="{{ variable.unit }}"
+              data-variable="{{ variable.display_name }}" data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}"
+              data-boolean="{% if variable.is_boolean %}1{% endif %}"
               aria-label="Line chart of {{ variable.display_name }} over the last 24 hours. The same data is listed in the table below."></canvas>
     </div>
     {% else %}
@@ -83,7 +108,7 @@
         {% for row in page_obj %}
         <tr>
           <td>{{ row.ts|date:"d M Y H:i:s" }}</td>
-          <td class="text-end">{{ row.value|floatformat:2 }}</td>
+          <td class="text-end">{{ row.value|show_value:variable }}</td>
         </tr>
         {% empty %}
         <tr>
@@ -119,6 +144,31 @@
   </ul>
 </nav>
 {% endif %}
+{% if variable.is_actuator %}
+{# ---------- Jejak audit permintaan ---------- #}
+<h2 class="h5 mt-4 mb-3">Request history</h2>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Time</th><th class="text-end">Requested value</th><th>Version</th><th>By</th></tr>
+      </thead>
+      <tbody>
+        {% for entry in desired_log %}
+        <tr>
+          <td>{{ entry.created_at|date:"d M Y H:i:s" }}</td>
+          <td class="text-end">{{ entry.value|show_value:variable }}</td>
+          <td>{{ entry.version }}</td>
+          <td>{{ entry.changed_by.username|default:"—" }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-muted py-4">No requests yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}
@@ -135,9 +185,11 @@
     const canvas = document.getElementById("history-chart");
     const points = JSON.parse(document.getElementById("chart-data").textContent);
     const unit = canvas.dataset.unit;  // dari atribut data-unit di <canvas>
+    const isBoolean = canvas.dataset.boolean === "1";
     const label = canvas.dataset.variable;
 
-    const fmtValue = (v) => v.toFixed(2) + (unit ? " " + unit : "");
+    const fmtValue = (v) =>
+      isBoolean ? (v >= 0.5 ? "ON" : "OFF") : v.toFixed(2) + (unit ? " " + unit : "");
     const fmtTime = (ms) =>
       new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const fmtDateTime = (ms) =>
@@ -162,7 +214,9 @@
           pointHoverRadius: 5,
           pointHoverBorderWidth: 2,
           pointHoverBorderColor: "#ffffff",
-          tension: 0.25,
+          // Nilai ON/OFF digambar sebagai tangga, bukan garis miring.
+          tension: isBoolean ? 0 : 0.25,
+          stepped: isBoolean ? "before" : false,
         }],
       },
       options: {
@@ -190,7 +244,11 @@
             border: { color: grid },
           },
           y: {
-            ticks: { color: ink, callback: (v) => v + (unit ? " " + unit : "") },
+            ticks: isBoolean
+              ? { color: ink, stepSize: 1, callback: (v) => (v === 1 ? "ON" : v === 0 ? "OFF" : "") }
+              : { color: ink, callback: (v) => v + (unit ? " " + unit : "") },
+            min: isBoolean ? 0 : undefined,
+            max: isBoolean ? 1 : undefined,
             grid: { color: grid },
             border: { display: false },
           },

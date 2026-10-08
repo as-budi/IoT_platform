@@ -10,7 +10,10 @@ Setiap device (alat fisik) bisa punya beberapa variabel, masing-masing dengan sa
 ada tampilan per device dan per variabel.
 Komunikasi dengan device belum ada; datanya diisi dengan perintah `seed_demo`.
 
-Penjelasan konsep: [docs/tahap-01-dashboard-dasar.md](docs/tahap-01-dashboard-dasar.md)
+Penjelasan konsep:
+
+- [docs/tahap-01-dashboard-dasar.md](docs/tahap-01-dashboard-dasar.md) — struktur project, pengguna, device, telemetri
+- [docs/tahap-01b-device-kontrol.md](docs/tahap-01b-device-kontrol.md) — aktuator: desired/reported state dan command
 
 ## Prasyarat
 
@@ -101,8 +104,18 @@ Buka <http://127.0.0.1:8000/> dan masuk dengan salah satu akun contoh
 | Username | Role  | Yang terlihat                                  |
 |----------|-------|------------------------------------------------|
 | `admin`  | Admin | semua device, menu Pengguna, situs `/admin/`   |
-| `budi`   | User  | 2 device miliknya (5 variabel)                 |
-| `siti`   | User  | 1 device miliknya (3 variabel)                 |
+| `budi`   | User  | 3 device miliknya, termasuk Lab Relay Board    |
+| `siti`   | User  | 1 device (sensor + pompa yang bisa dikontrol)  |
+
+## Mensimulasikan device
+
+Komunikasi dengan device sungguhan belum ada. Untuk melihat aktuator dan command
+bekerja, jalankan simulator di terminal kedua:
+
+```bash
+python manage.py simulate_devices          # satu putaran
+python manage.py simulate_devices --loop   # terus-menerus, tiap 5 detik
+```
 
 ## Menjalankan tes
 

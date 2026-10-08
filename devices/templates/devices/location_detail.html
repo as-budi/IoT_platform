@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ location.name }} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'devices:location_list' %}">Locations</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ location.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ location.name }}</h1>
+    <div class="text-muted font-monospace">{{ location.latitude }}, {{ location.longitude }}</div>
+    {% if location.description %}<p class="mt-2 mb-0">{{ location.description }}</p>{% endif %}
+  </div>
+  {% if user.is_admin %}
+  <div class="text-nowrap">
+    <a class="btn btn-outline-secondary" href="{% url 'devices:location_edit' location.pk %}">Edit</a>
+    <a class="btn btn-outline-danger" href="{% url 'devices:location_delete' location.pk %}">Delete</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div id="location-map" class="map-box" role="img"
+       aria-label="Map showing {{ location.name }} at {{ location.latitude }}, {{ location.longitude }}"></div>
+</div>
+
+<h2 class="h5 mb-3">Devices at this location</h2>
+{% include "devices/includes/device_table.html" with empty_message="No devices at this location." %}
+{% endblock %}
+
+{% block extra_js %}
+{{ map_points|json_script:"map-points" }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="{% static 'js/location_map.js' %}"></script>
+<script>
+  LocationMap.show("location-map", JSON.parse(document.getElementById("map-points").textContent), { zoom: 16 });
+</script>
+{% endblock %}

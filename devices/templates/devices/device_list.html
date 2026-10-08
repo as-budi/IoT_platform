@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load humanize %}
 
 {% block title %}Devices · IoT Platform{% endblock %}
 
@@ -9,62 +8,24 @@
   <a class="btn btn-primary" href="{% url 'devices:add' %}">Add device</a>
 </div>
 
-<div class="card shadow-sm">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Name</th>
-          <th>Location</th>
-          <th>Variables</th>
-          {% if user.is_admin %}<th>Owner</th>{% endif %}
-          <th>Status</th>
-          <th class="text-end">Rows</th>
-          <th>Last data</th>
-        </tr>
-      </thead>
-      <tbody>
-        {# {% for %} ... {% empty %} : bagian empty tampil bila daftarnya kosong. #}
-        {% for device in devices %}
-        <tr>
-          <td><a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a></td>
-          <td>{{ device.location|default:"—" }}</td>
-          <td>
-            {# device.variables.all tidak memicu query baru: sudah diambil sekaligus #}
-            {# oleh prefetch_related("variables") di DeviceListView. #}
-            {% for variable in device.variables.all %}
-            <a class="badge text-bg-light border text-decoration-none"
-               href="{% url 'devices:variable_detail' device.pk variable.pk %}">{{ variable.display_name }}</a>
-            {% empty %}
-            <span class="text-muted">—</span>
-            {% endfor %}
-          </td>
-          {% if user.is_admin %}<td>{{ device.owner.username }}</td>{% endif %}
-          <td>
-            {% if device.is_active %}
-            <span class="badge text-bg-success">Active</span>
-            {% else %}
-            <span class="badge text-bg-secondary">Inactive</span>
-            {% endif %}
-          </td>
-          {# telemetry_count dihitung oleh Subquery di DeviceListView. #}
-          {# intcomma: 1234 -> 1,234 (butuh django.contrib.humanize). #}
-          <td class="text-end">{{ device.telemetry_count|intcomma }}</td>
-          <td>
-            {% if device.last_seen %}
-            {{ device.last_seen|timesince }} ago
-            {% else %}
-            <span class="text-muted">No data yet</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="7" class="text-center text-muted py-4">No devices yet.</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+{# Penyaring lokasi. Form GET: pilihan dikirim sebagai ?location=... di URL. #}
+<form method="get" class="d-flex flex-wrap gap-2 align-items-center mb-3">
+  <label class="form-label mb-0" for="location-filter">Location</label>
+  <select id="location-filter" name="location" class="form-select form-select-sm w-auto">
+    <option value="">All locations</option>
+    {% for location in locations %}
+    {# stringformat:"d" mengubah id (angka) menjadi teks, supaya bisa dibandingkan dengan nilai dari URL. #}
+    <option value="{{ location.pk }}" {% if selected_location == location.pk|stringformat:"d" %}selected{% endif %}>{{ location.name }}</option>
+    {% endfor %}
+    <option value="{{ no_location }}" {% if selected_location == no_location %}selected{% endif %}>— No location —</option>
+  </select>
+  <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
+  {% if selected_location %}<a class="btn btn-sm btn-link" href="{% url 'devices:list' %}">Clear</a>{% endif %}
+</form>
+
+{% if selected_location %}
+{% include "devices/includes/device_table.html" with empty_message="No devices at this location." %}
+{% else %}
+{% include "devices/includes/device_table.html" %}
+{% endif %}
 {% endblock %}

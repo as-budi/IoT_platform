@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from devices.models import Device, Telemetry, Variable
+from devices.models import DesiredStateLog, Device, Location, Telemetry, Variable
 
 User = get_user_model()
 
@@ -26,6 +26,14 @@ DEMO_USERS = {
     "admin": (User.Role.ADMIN, "Admin"),
     "budi": (User.Role.USER, "Budi"),
     "siti": (User.Role.USER, "Siti"),
+}
+
+# Lokasi contoh: nama -> (latitude, longitude, deskripsi).
+# Koordinatnya hanya contoh; ubah lewat halaman Locations bila perlu.
+DEMO_LOCATIONS = {
+    "Server room": (-7.952900, 112.614500, "Main server room, ground floor."),
+    "Electronics lab": (-7.953300, 112.614100, "Teaching laboratory."),
+    "Greenhouse A": (-7.946500, 112.609800, "Research greenhouse."),
 }
 
 # Satu device = satu alat fisik, dengan beberapa variabel.
@@ -47,8 +55,25 @@ DEMO_DEVICES = [
     ]),
 ]
 
+# Aktuator: (pemilik, nama device, tipe, lokasi,
+#            [(key, label, satuan, tipe nilai, min, maks, pilihan keadaan), ...])
+# Device yang sama boleh muncul di DEMO_DEVICES dan di sini: Greenhouse Node
+# punya sensor sekaligus aktuator (pompa).
+BOOLEAN, NUMBER = Variable.ValueType.BOOLEAN, Variable.ValueType.NUMBER
+DEMO_ACTUATORS = [
+    ("budi", "Lab Relay Board", "ESP32 + 2-channel relay", "Electronics lab", [
+        ("lamp", "Lamp", "", BOOLEAN, None, None, [0, 1]),
+        ("fan_speed", "Fan speed", "%", NUMBER, 0, 100, [0, 25, 50, 75, 100]),
+    ]),
+    ("siti", "Greenhouse Node", "ESP32 + soil sensor", "Greenhouse A", [
+        ("pump", "Water pump", "", BOOLEAN, None, None, [0, 1]),
+    ]),
+]
+
 INTERVAL_MINUTES = 10
 HOURS = 24
+# Keadaan aktuator contoh berganti setiap 3 jam.
+CHANGE_EVERY_STEPS = 3 * 60 // INTERVAL_MINUTES
 
 
 class Command(BaseCommand):
@@ -72,6 +97,13 @@ class Command(BaseCommand):
                 self.stdout.write(f"User created: {username} / {DEMO_PASSWORD}")
             users[username] = user
 
+        locations = {}
+        for name, (lat, lng, description) in DEMO_LOCATIONS.items():
+            locations[name], _ = Location.objects.get_or_create(
+                name=name,
+                defaults={"latitude": lat, "longitude": lng, "description": description},
+            )
+
         now = timezone.now()
         steps = HOURS * 60 // INTERVAL_MINUTES
 
@@ -79,7 +111,7 @@ class Command(BaseCommand):
             device, _ = Device.objects.get_or_create(
                 owner=users[owner_name],
                 name=name,
-                defaults={"device_type": device_type, "location": location},
+                defaults={"device_type": device_type, "location": locations[location]},
             )
             for key, label, unit, center, spread in variables:
                 variable, _ = Variable.objects.get_or_create(
@@ -105,4 +137,60 @@ class Command(BaseCommand):
                 Telemetry.objects.bulk_create(rows, batch_size=500)
                 self.stdout.write(f"{name} · {key}: {len(rows)} telemetry rows created.")
 
+        for owner_name, name, device_type, location, variables in DEMO_ACTUATORS:
+            owner = users[owner_name]
+            device, _ = Device.objects.get_or_create(
+                owner=owner,
+                name=name,
+                defaults={"device_type": device_type, "location": locations[location]},
+            )
+            for key, label, unit, value_type, low, high, states in variables:
+                variable, _ = Variable.objects.get_or_create(
+                    device=device,
+                    key=key,
+                    defaults={
+                        "label": label,
+                        "unit": unit,
+                        "kind": Variable.Kind.ACTUATOR,
+                        "value_type": value_type,
+                        "min_value": low,
+                        "max_value": high,
+                    },
+                )
+                if variable.telemetry.exists():
+                    self.stdout.write(f"Skipping {name} · {key}: telemetry already exists.")
+                    continue
+                self.seed_actuator(variable, owner, states, now, steps)
+
         self.stdout.write(self.style.SUCCESS("Done."))
+
+    def seed_actuator(self, variable, owner, states, now, steps):
+        """Riwayat 24 jam: device melapor keadaannya tiap 10 menit, keadaan
+        berganti tiap 3 jam. Desired diset ke keadaan terakhir, sehingga
+        statusnya "In sync"."""
+        rows = []
+        last_change_ts = None
+        state = states[0]
+        # Dari yang paling lama ke yang terbaru.
+        for step in range(steps - 1, -1, -1):
+            ts = now - timedelta(minutes=INTERVAL_MINUTES * step)
+            if step % CHANGE_EVERY_STEPS == 0:
+                state = random.choice([s for s in states if s != state])
+                last_change_ts = ts
+            rows.append(Telemetry(variable=variable, value=state, ts=ts))
+        Telemetry.objects.bulk_create(rows, batch_size=500)
+
+        # Permintaan terakhir terjadi tepat sebelum perubahan terakhir.
+        requested_at = last_change_ts - timedelta(seconds=5)
+        variable.desired_value = state
+        variable.desired_at = requested_at
+        variable.desired_by = owner
+        variable.desired_version = 1
+        variable.save()
+        log = DesiredStateLog.objects.create(
+            variable=variable, value=state, version=1, changed_by=owner
+        )
+        # created_at memakai auto_now_add (selalu "sekarang"); untuk data contoh
+        # waktunya diubah lewat update(), yang tidak memicu auto_now_add.
+        DesiredStateLog.objects.filter(pk=log.pk).update(created_at=requested_at)
+        self.stdout.write(f"{variable.device.name} · {variable.key}: {len(rows)} state reports created.")

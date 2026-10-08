@@ -121,6 +121,8 @@ Model ini sudah berganti dua kali, dan keduanya memakai pola yang sama:
 | `0002`–`0004` | ke "satu device = satu variabel" (device ber-banyak-key dipecah) |
 | `0005`–`0006` | label bahasa Inggris, kolom `location` |
 | `0007`–`0009` | kembali ke "satu device = banyak variabel", kini dengan model `Variable` |
+| `0010` | aktuator, desired state, command (dibuat Django; lihat tahap 1b) |
+| `0011`–`0013` | lokasi menjadi tabel `Location` dengan koordinat |
 
 Pada `0007`–`0009`: `0007` membuat tabel `Variable` dan kolom `telemetry.variable`
 (sementara boleh kosong), `0008` (*migrasi data*, `RunPython`) membuat satu
@@ -131,6 +133,32 @@ Alasan kembali ke banyak variabel per device: satu alat fisik memiliki satu
 koneksi, satu token, satu firmware, dan satu status online — semua itu milik alat,
 bukan milik tiap sensornya. Device hasil pemecahan lama tidak digabung otomatis,
 karena Django tidak bisa tahu mana yang sebenarnya satu alat.
+
+### Lokasi
+
+- `Location` (nama unik, latitude, longitude, deskripsi) adalah tabel tersendiri;
+  `Device.location` berupa `ForeignKey` ke tabel itu, bukan teks bebas. Akibatnya
+  "Server room" dan "server room " tidak lagi menjadi dua lokasi berbeda.
+- **Memilih, bukan mengetik.** Karena `ForeignKey`, Django otomatis membuat dropdown
+  (`ModelChoiceField`) di `DeviceForm`, dan menolak nilai apa pun yang tidak ada di
+  tabel `Location`. Tidak ada kode khusus untuk "melarang" lokasi baru: aturan itu
+  datang dari tipe field-nya. Tesnya: `test_device_form_cannot_create_new_location`.
+- **Pengelola.** Semua pengguna boleh melihat daftar lokasi; hanya Admin yang boleh
+  menambah, mengubah, dan menghapus (`AdminRequiredMixin` di view lokasi).
+- **`on_delete=PROTECT`.** Lokasi yang masih dipakai device tidak bisa dihapus.
+  Django melempar `ProtectedError`, yang ditangkap `LocationDeleteView` dan diubah
+  menjadi pesan untuk pengguna.
+- **Tampilan per lokasi:** daftar device bisa disaring (`?location=<id>` atau
+  `?location=none`), dan setiap lokasi punya halaman sendiri berisi peta dan device
+  di lokasi itu. Hitungan device memakai `Count(..., filter=Q(...))`, sehingga
+  pengguna biasa hanya melihat jumlah device miliknya sendiri.
+- **Peta** memakai Leaflet + OpenStreetMap, dengan kode di `static/js/location_map.js`
+  (file *static*: disajikan apa adanya ke browser). Di form lokasi, klik peta untuk
+  mengisi koordinat.
+- **Migrasi `0011`–`0013`** memakai pola tambah → pindahkan → hapus lagi. Teks lokasi
+  lama menjadi baris `Location` dengan koordinat 0, 0 dan catatan untuk diperbaiki.
+  Langkah terakhir memakai `RenameField`: kolom sementara `site` diganti nama menjadi
+  `location` setelah kolom teks lama dihapus.
 
 ## 6. Latihan
 

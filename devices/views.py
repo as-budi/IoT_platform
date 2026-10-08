@@ -1,22 +1,29 @@
 from datetime import timedelta
 
+from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
-from django.db.models import F, Func, IntegerField, OuterRef, Subquery
+from django.db.models import Count, F, Func, IntegerField, OuterRef, Q, Subquery
+from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Coalesce
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.generic import (
     CreateView,
     DeleteView,
     DetailView,
     ListView,
     UpdateView,
+    View,
 )
 
-from .forms import DeviceForm, VariableForm
-from .models import Device, Telemetry
+from accounts.mixins import AdminRequiredMixin
+
+from .forms import CommandForm, DeviceForm, LocationForm, SetDesiredForm, VariableForm
+from .models import Command, Device, Location, Telemetry, Variable
 
 HISTORY_PAGE_SIZE = 25
 # Chart menampilkan 24 jam terakhir, dihitung mundur dari data terbaru
@@ -24,6 +31,8 @@ HISTORY_PAGE_SIZE = 25
 CHART_WINDOW = timedelta(hours=24)
 # Batas atas jumlah titik, supaya browser tidak menerima data terlalu besar.
 CHART_MAX_POINTS = 1000
+# Jumlah command terakhir yang ditampilkan di halaman device.
+RECENT_COMMANDS = 20
 
 
 # --- Aturan kepemilikan ------------------------------------------------------
@@ -34,7 +43,7 @@ def visible_devices(user):
     Inilah SATU-SATUNYA tempat aturan kepemilikan ditulis. Semua view device
     maupun variabel mengambil datanya lewat fungsi ini.
     """
-    queryset = Device.objects.select_related("owner")
+    queryset = Device.objects.select_related("owner", "location")
     if user.is_admin:
         return queryset
     return queryset.filter(owner=user)
@@ -77,37 +86,70 @@ class OwnedDeviceMixin(LoginRequiredMixin):
         return visible_devices(self.request.user)
 
 
+def with_device_summary(devices):
+    """Tambahkan variabel (prefetch), last_seen, dan telemetry_count ke tiap device.
+
+    Dipakai daftar device dan halaman lokasi, supaya tabelnya sama persis.
+    """
+    # Telemetri milik device ini = telemetri dari semua variabelnya.
+    # Dua garis bawah (variable__device) berarti "ikuti relasi":
+    # telemetry -> variable -> device.
+    rows = Telemetry.objects.filter(variable__device=OuterRef("pk"))
+    return (
+        devices
+        # prefetch_related mengambil variabel SEMUA device dalam satu
+        # query tambahan, bukan satu query per device di template.
+        .prefetch_related("variables")
+        .annotate(
+            last_seen=Subquery(rows.order_by("-ts").values("ts")[:1]),
+            telemetry_count=count_rows(rows),
+        )
+    )
+
+
 class DeviceListView(OwnedDeviceMixin, ListView):
     template_name = "devices/device_list.html"
     context_object_name = "devices"
 
+    # Nilai khusus di ?location= untuk "device tanpa lokasi".
+    NO_LOCATION = "none"
+
     def get_queryset(self):
-        # Telemetri milik device ini = telemetri dari semua variabelnya.
-        # Dua garis bawah (variable__device) berarti "ikuti relasi":
-        # telemetry -> variable -> device.
-        rows = Telemetry.objects.filter(variable__device=OuterRef("pk"))
-        return (
-            super()
-            .get_queryset()
-            # prefetch_related mengambil variabel SEMUA device dalam satu
-            # query tambahan, bukan satu query per device di template.
-            .prefetch_related("variables")
-            .annotate(
-                last_seen=Subquery(rows.order_by("-ts").values("ts")[:1]),
-                telemetry_count=count_rows(rows),
-            )
-        )
+        devices = with_device_summary(super().get_queryset())
+        # Saring berdasarkan lokasi lewat parameter URL, mis. ?location=3
+        selected = self.request.GET.get("location", "")
+        if selected == self.NO_LOCATION:
+            devices = devices.filter(location__isnull=True)
+        elif selected.isdigit():
+            devices = devices.filter(location_id=int(selected))
+        return devices
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["locations"] = Location.objects.all()
+        context["selected_location"] = self.request.GET.get("location", "")
+        context["no_location"] = self.NO_LOCATION
+        return context
 
 
 class DeviceDetailView(OwnedDeviceMixin, DetailView):
-    """Tampilan per device: satu card nilai terkini untuk setiap variabel."""
+    """Tampilan per device: kontrol aktuator, card sensor, dan daftar command."""
 
     template_name = "devices/device_detail.html"
     context_object_name = "device"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["variables"] = with_latest_values(self.object.variables.all())
+        device = self.object
+        variables = list(with_latest_values(device.variables.all()))
+        # Dipisah di Python (bukan dua query) karena daftarnya sudah di tangan.
+        context["actuators"] = [v for v in variables if v.is_actuator]
+        context["sensors"] = [v for v in variables if not v.is_actuator]
+
+        # Bereskan command yang kedaluwarsa dulu, supaya statusnya akurat.
+        device.commands.expire_due()
+        context["commands"] = device.commands.select_related("created_by")[:RECENT_COMMANDS]
+        context["command_form"] = CommandForm()
         return context
 
 
@@ -211,6 +253,10 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         # (?page=2, dst.) supaya ribuan baris tidak dimuat sekaligus.
         paginator = Paginator(variable.telemetry.all(), HISTORY_PAGE_SIZE)
         context["page_obj"] = paginator.get_page(self.request.GET.get("page"))
+
+        # 4) Khusus aktuator: riwayat permintaan (siapa meminta apa, kapan).
+        if variable.is_actuator:
+            context["desired_log"] = variable.desired_log.select_related("changed_by")[:20]
         return context
 
 
@@ -251,3 +297,165 @@ class VariableDeleteView(OwnedVariableMixin, SuccessMessageMixin, DeleteView):
 
     def get_success_url(self):
         return reverse("devices:detail", args=[self.get_device().pk])
+
+
+# --- Kontrol: desired state & command ----------------------------------------
+
+def redirect_back(request, fallback_url):
+    """Kembali ke halaman asal (field `next` di form), bila alamatnya aman.
+
+    url_has_allowed_host_and_scheme mencegah "open redirect": tanpa
+    pemeriksaan ini, seseorang bisa membuat tautan yang mengarahkan pengguna
+    ke situs lain setelah menekan tombol di aplikasi kita.
+    """
+    target = request.POST.get("next")
+    if target and url_has_allowed_host_and_scheme(
+        target, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return redirect(target)
+    return redirect(fallback_url)
+
+
+class SetDesiredView(OwnedVariableMixin, View):
+    """Pola 1 — mengubah desired state sebuah aktuator. Hanya menerima POST.
+
+    View ini TIDAK mengubah reported state: itu tugas device. Ia hanya
+    mencatat permintaan; status "Waiting for device" bertahan sampai device
+    melaporkan nilai baru.
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request, device_pk, pk):
+        variable = get_object_or_404(
+            self.get_queryset().filter(kind=Variable.Kind.ACTUATOR), pk=pk
+        )
+        form = SetDesiredForm(request.POST, variable=variable)
+        if form.is_valid():
+            variable = variable.set_desired(form.cleaned_data["value"], request.user)
+            messages.success(request, f"{variable.display_name}: request sent, waiting for the device.")
+        else:
+            for error in form.errors.get("value", ["Invalid value."]):
+                messages.error(request, f"{variable.display_name}: {error}")
+        return redirect_back(request, reverse("devices:detail", args=[device_pk]))
+
+
+class CommandCreateView(LoginRequiredMixin, View):
+    """Pola 2 — membuat command baru untuk device. Hanya menerima POST."""
+
+    http_method_names = ["post"]
+
+    def post(self, request, device_pk):
+        device = get_object_or_404(visible_devices(request.user), pk=device_pk)
+        form = CommandForm(request.POST)
+        if form.is_valid():
+            command = Command.objects.create(
+                device=device,
+                method=form.cleaned_data["method"],
+                params=form.cleaned_data["params"],
+                created_by=request.user,
+                expires_at=timezone.now() + form.ttl_delta,
+            )
+            messages.success(request, f"Command {command.method} queued.")
+        else:
+            # Form ini tidak dirender ulang (kita redirect), jadi error-nya
+            # disampaikan lewat messages. form[field].label = label tampilan.
+            for field, errors in form.errors.items():
+                label = form[field].label if field in form.fields else "Command"
+                for error in errors:
+                    messages.error(request, f"{label}: {error}")
+        return redirect(reverse("devices:detail", args=[device.pk]) + "#commands")
+
+
+# --- Lokasi -------------------------------------------------------------------
+#
+# Semua pengguna yang login boleh MELIHAT lokasi (untuk memilihnya di form
+# device dan menyaring tampilan). Hanya Admin yang boleh menambah, mengubah,
+# dan menghapus lokasi, supaya daftar lokasi tetap rapi dan tidak kembar.
+
+def location_points(locations):
+    """Ubah lokasi menjadi list dict sederhana untuk peta (dikirim lewat json_script)."""
+    return [
+        {
+            "name": location.name,
+            "lat": float(location.latitude),
+            "lng": float(location.longitude),
+            "url": reverse("devices:location_detail", args=[location.pk]),
+        }
+        for location in locations
+    ]
+
+
+class LocationListView(LoginRequiredMixin, ListView):
+    template_name = "devices/location_list.html"
+    context_object_name = "locations"
+
+    def get_queryset(self):
+        user = self.request.user
+        # Count dengan filter: yang dihitung hanya device yang boleh dilihat
+        # pengguna ini, supaya jumlah device milik orang lain tidak bocor.
+        # Untuk Admin tanpa filter (None = hitung semua device).
+        visible = None if user.is_admin else Q(devices__owner=user)
+        return Location.objects.annotate(device_count=Count("devices", filter=visible))
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["map_points"] = location_points(context["locations"])
+        return context
+
+
+class LocationDetailView(LoginRequiredMixin, DetailView):
+    """Tampilan per lokasi: peta dan device (yang boleh dilihat) di lokasi itu."""
+
+    model = Location
+    template_name = "devices/location_detail.html"
+    context_object_name = "location"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["devices"] = with_device_summary(
+            visible_devices(self.request.user).filter(location=self.object)
+        )
+        context["map_points"] = location_points([self.object])
+        return context
+
+
+class LocationFormMixin(AdminRequiredMixin, SuccessMessageMixin):
+    model = Location
+    form_class = LocationForm
+    template_name = "devices/location_form.html"
+
+    def get_success_url(self):
+        return reverse("devices:location_detail", args=[self.object.pk])
+
+
+class LocationCreateView(LocationFormMixin, CreateView):
+    success_message = "Location %(name)s was added."
+
+
+class LocationUpdateView(LocationFormMixin, UpdateView):
+    context_object_name = "location"
+    success_message = "Location %(name)s was updated."
+
+
+class LocationDeleteView(AdminRequiredMixin, DeleteView):
+    model = Location
+    template_name = "devices/location_confirm_delete.html"
+    context_object_name = "location"
+    success_url = reverse_lazy("devices:location_list")
+
+    def form_valid(self, form):
+        # on_delete=PROTECT membuat database menolak penghapusan lokasi yang
+        # masih dipakai device; Django menyampaikannya sebagai ProtectedError.
+        try:
+            response = super().form_valid(form)
+        except ProtectedError:
+            count = self.object.devices.count()
+            messages.error(
+                self.request,
+                f"{self.object.name} is still used by {count} device(s). "
+                "Move those devices to another location first.",
+            )
+            return redirect("devices:location_detail", pk=self.object.pk)
+        messages.success(self.request, "Location was deleted.")
+        return response
