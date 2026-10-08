@@ -172,3 +172,15 @@ class PageTests(TestCase):
         self.assertContains(response, 'id="live-config"')
         self.assertEqual(response.context["live_config"]["variable"], variable.pk)
         self.assertTrue(response.context["live_config"]["chartLive"])
+
+
+class RedisSettingsTests(TestCase):
+    def test_read_timeout_is_longer_than_blocking_receive(self):
+        # Consumer menunggu pesan dengan BZPOPMIN selama brpop_timeout detik.
+        # Bila batas baca socket tidak lebih panjang, setiap penantian yang
+        # kosong berakhir dengan TimeoutError dan WebSocket terputus.
+        from channels_redis.core import RedisChannelLayer
+        from django.conf import settings
+
+        self.assertGreater(settings.REDIS_SOCKET_TIMEOUT, RedisChannelLayer.brpop_timeout)
+

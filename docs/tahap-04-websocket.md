@@ -89,6 +89,16 @@ redis-cli ping                 # harus menjawab PONG
 Lalu tambahkan ke `.env`: `REDIS_URL=redis://127.0.0.1:6379/0`, dan jalankan ulang
 `runserver` dan `mqtt_bridge`.
 
+**Masalah yang pernah terjadi: WebSocket putus setiap ±5 detik.** Log `runserver`
+menampilkan `redis.exceptions.TimeoutError: Timeout reading from 127.0.0.1:6379`.
+Penyebabnya, setiap consumer menunggu pesan dengan perintah Redis `BZPOPMIN` yang
+memang menggantung sampai 5 detik bila tidak ada pesan (`brpop_timeout` di
+channels-redis). Mulai redis-py 8, batas waktu membaca socket bawaannya juga 5 detik.
+Keduanya berlomba, dan bila batas baca habis lebih dulu, consumer berhenti dengan error
+sehingga Daphne menutup WebSocket. Perbaikannya ada di `config/settings.py`:
+`socket_timeout` dinaikkan menjadi 15 detik (`REDIS_SOCKET_TIMEOUT`), lebih panjang dari
+penantian BZPOPMIN. Tes `RedisSettingsTests` menjaga agar aturan ini tidak terlanggar.
+
 ## 5. Keamanan WebSocket
 
 - **Login.** `AuthMiddlewareStack` membaca cookie sesi yang sama dengan halaman web, sehingga

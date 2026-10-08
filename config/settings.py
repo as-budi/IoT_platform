@@ -182,11 +182,25 @@ MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
 #   proses. Semua data, termasuk dari MQTT, tampil seketika.
 
 REDIS_URL = os.getenv("REDIS_URL", "")
+# Batas waktu membaca balasan Redis (detik). HARUS lebih besar dari 5 detik:
+# setiap consumer WebSocket menunggu pesan dengan perintah Redis BZPOPMIN yang
+# memang "menggantung" sampai 5 detik (brpop_timeout di channels-redis).
+# Sejak redis-py 8, batas baca bawaannya juga 5 detik, sehingga keduanya
+# berlomba: "Timeout reading from 127.0.0.1:6379", consumer berhenti, dan
+# WebSocket terputus setiap beberapa detik. Lihat docs/tahap-04-websocket.md.
+REDIS_SOCKET_TIMEOUT = 15
 if REDIS_URL:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
-            "CONFIG": {"hosts": [REDIS_URL]},
+            "CONFIG": {
+                # Bentuk dict (bukan teks URL saja) supaya bisa membawa opsi koneksi.
+                "hosts": [{
+                    "address": REDIS_URL,
+                    "socket_timeout": REDIS_SOCKET_TIMEOUT,
+                    "socket_connect_timeout": 5,
+                }],
+            },
         }
     }
 else:
