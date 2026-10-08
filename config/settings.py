@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     # App milik project ini:
     "accounts",  # pengguna & role
     "devices",   # device & telemetri
+    "api",       # API untuk device (HTTP), tanpa login/CSRF, pakai access token
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view

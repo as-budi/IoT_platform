@@ -1,12 +1,11 @@
-from datetime import timedelta
-
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Func, IntegerField, OuterRef, Q, Subquery
+from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.deletion import ProtectedError
 from django.db.models.functions import Coalesce
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -22,15 +21,19 @@ from django.views.generic import (
 
 from accounts.mixins import AdminRequiredMixin
 
-from .forms import CommandForm, DeviceForm, LocationForm, SetDesiredForm, VariableForm
+from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
+from .forms import (
+    ChartPeriodForm,
+    CommandForm,
+    DeviceForm,
+    LocationForm,
+    SetDesiredForm,
+    VariableForm,
+)
 from .models import Command, Device, Location, Telemetry, Variable
 
 HISTORY_PAGE_SIZE = 25
-# Chart menampilkan 24 jam terakhir, dihitung mundur dari data terbaru
-# (bukan dari "sekarang"), supaya variabel yang lama diam tetap punya grafik.
-CHART_WINDOW = timedelta(hours=24)
-# Batas atas jumlah titik, supaya browser tidak menerima data terlalu besar.
-CHART_MAX_POINTS = 1000
+# Periode chart dan peringkasan titiknya ada di devices/charts.py.
 # Jumlah command terakhir yang ditampilkan di halaman device.
 RECENT_COMMANDS = 20
 
@@ -71,6 +74,39 @@ def with_latest_values(variables):
         last_seen=Subquery(newest.values("ts")[:1]),
         telemetry_count=count_rows(rows),
     )
+
+
+def data_version(device, variable=None):
+    """"Sidik jari" data sebuah device (atau satu variabelnya), berupa teks pendek.
+
+    Nilainya berubah setiap kali ada sesuatu yang baru:
+    - telemetri baru  -> id terbesar di tabel Telemetry bertambah
+    - desired state   -> jumlah desired_version bertambah
+    - command         -> id command terbaru, atau waktu dikirim/selesai, berubah
+    Halaman cukup membandingkan teks ini dengan yang ia terima sebelumnya;
+    bila berbeda, halaman dimuat ulang (lihat static/js/auto_refresh.js).
+    Ini jauh lebih ringan daripada mengirim ulang seluruh data setiap beberapa detik.
+    """
+    telemetry = Telemetry.objects.filter(variable__device=device)
+    variables = device.variables.all()
+    if variable is not None:
+        telemetry = telemetry.filter(variable=variable)
+        variables = variables.filter(pk=variable.pk)
+
+    parts = [
+        telemetry.aggregate(last=Max("pk"))["last"],
+        variables.aggregate(total=Sum("desired_version"))["total"],
+    ]
+    if variable is None:
+        commands = device.commands.aggregate(
+            last=Max("pk"), sent=Max("sent_at"), done=Max("completed_at")
+        )
+        parts += [
+            commands["last"],
+            commands["sent"] and commands["sent"].timestamp(),
+            commands["done"] and commands["done"].timestamp(),
+        ]
+    return "-".join(str(part or 0) for part in parts)
 
 
 # --- Device -----------------------------------------------------------------
@@ -150,7 +186,35 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         device.commands.expire_due()
         context["commands"] = device.commands.select_related("created_by")[:RECENT_COMMANDS]
         context["command_form"] = CommandForm()
+
+        # Alamat lengkap endpoint telemetri device ini, untuk contoh curl/ESP32.
+        # build_absolute_uri menambahkan http://host:port di depan path.
+        context["telemetry_url"] = self.request.build_absolute_uri(
+            reverse("api:telemetry", args=[device.access_token])
+        )
+        # Untuk auto-refresh: versi data saat halaman ini dibuat.
+        context["data_version"] = data_version(device)
+        context["updates_url"] = reverse("devices:updates", args=[device.pk])
         return context
+
+
+def device_updates(request, pk):
+    """GET /devices/<pk>/updates/[?variable=<id>] -> {"version": "..."} (JSON).
+
+    Dipanggil JavaScript halaman device/variabel setiap beberapa detik
+    ("polling"). Bila sesi login habis, balasannya JSON 401, bukan redirect
+    ke halaman login, karena pemanggilnya adalah JavaScript, bukan manusia.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not logged in."}, status=401)
+    device = get_object_or_404(visible_devices(request.user), pk=pk)
+    variable = None
+    variable_id = request.GET.get("variable", "")
+    if variable_id:
+        if not variable_id.isdigit():
+            return JsonResponse({"error": "Invalid variable."}, status=400)
+        variable = get_object_or_404(device.variables, pk=int(variable_id))
+    return JsonResponse({"version": data_version(device, variable)})
 
 
 class DeviceFormMixin(OwnedDeviceMixin, SuccessMessageMixin):
@@ -219,7 +283,7 @@ class OwnedVariableMixin(LoginRequiredMixin):
 
 
 class VariableDetailView(OwnedVariableMixin, DetailView):
-    """Tampilan per variabel: nilai terkini, chart 24 jam, dan tabel history."""
+    """Tampilan per variabel: nilai terkini, chart per periode, dan tabel history."""
 
     template_name = "devices/variable_detail.html"
     context_object_name = "variable"
@@ -232,22 +296,32 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         latest = variable.latest
         context["latest"] = latest
 
-        # 2) Chart: deret titik {x: waktu dalam milidetik, y: nilai}, urut
-        # dari lama ke baru. Format ini langsung dipahami Chart.js.
-        chart_points = []
-        if latest is not None:
-            rows = list(
-                variable.telemetry.filter(ts__gte=latest.ts - CHART_WINDOW)
-                .order_by("-ts")
-                .values_list("ts", "value")[:CHART_MAX_POINTS]
-            )
-            # Diambil dari yang terbaru (agar batas jumlah memotong data
-            # lama), lalu dibalik supaya garis digambar dari kiri ke kanan.
-            chart_points = [
-                {"x": int(ts.timestamp() * 1000), "y": value}
-                for ts, value in reversed(rows)
-            ]
-        context["chart_points"] = chart_points
+        # 2) Chart. Periode dibaca dari URL (?period=5m, ?period=custom&start=...).
+        # Rentangnya berakhir di "sekarang", sehingga data yang baru masuk
+        # langsung terlihat di ujung kanan chart.
+        period_form = ChartPeriodForm(self.request.GET)
+        period, start, end = period_form.get_window(timezone.now())
+        series = chart_series(variable, start, end)
+        # Titik {x: waktu dalam milidetik, y: nilai}, urut lama -> baru.
+        context["chart_points"] = series["points"]
+        context["chart"] = {
+            "period": period,
+            "label": PERIODS[period][0],
+            "start": start,
+            "end": end,
+            "rows": series["rows"],
+            "bucket": describe_seconds(series["bucket_seconds"]) if series["bucket_seconds"] else "",
+            # Batas sumbu x = seluruh periode, walau datanya hanya sebagian.
+            "range": {"min": int(start.timestamp() * 1000), "max": int(end.timestamp() * 1000)},
+        }
+        context["period_form"] = period_form
+        context["periods"] = [(key, label) for key, (label, _) in PERIODS.items()]
+        context["custom_period"] = CUSTOM
+        # Kotak custom terbuka bila dipilih, atau bila isiannya salah.
+        context["custom_open"] = period == CUSTOM or self.request.GET.get("period") == CUSTOM
+        # Isian awal kotak custom: nilai dari URL, atau rentang yang sedang tampil.
+        context["custom_start"] = self.request.GET.get("start") or timezone.localtime(start).strftime("%Y-%m-%dT%H:%M")
+        context["custom_end"] = self.request.GET.get("end", "")
 
         # 3) Tabel history. Paginator memotong data menjadi halaman-halaman
         # (?page=2, dst.) supaya ribuan baris tidak dimuat sekaligus.
@@ -257,6 +331,12 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         # 4) Khusus aktuator: riwayat permintaan (siapa meminta apa, kapan).
         if variable.is_actuator:
             context["desired_log"] = variable.desired_log.select_related("changed_by")[:20]
+
+        # 5) Auto-refresh: versi data variabel ini saat halaman dibuat.
+        context["data_version"] = data_version(self.get_device(), variable)
+        context["updates_url"] = (
+            reverse("devices:updates", args=[self.get_device().pk]) + f"?variable={variable.pk}"
+        )
         return context
 
 
@@ -459,3 +539,22 @@ class LocationDeleteView(AdminRequiredMixin, DeleteView):
             return redirect("devices:location_detail", pk=self.object.pk)
         messages.success(self.request, "Location was deleted.")
         return response
+
+
+class DeviceTokenRegenerateView(OwnedDeviceMixin, View):
+    """Membuat access token baru untuk device. Hanya menerima POST.
+
+    Dipakai bila token bocor. Device fisik harus diisi token baru, karena
+    token lama langsung ditolak oleh API.
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        device = get_object_or_404(self.get_queryset(), pk=pk)
+        device.regenerate_token()
+        messages.success(
+            request,
+            f"New access token created for {device.name}. Update the device with the new token.",
+        )
+        return redirect(reverse("devices:detail", args=[device.pk]) + "#connect")

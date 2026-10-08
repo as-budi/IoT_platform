@@ -27,11 +27,21 @@ Untuk aksi sekali jalan yang tidak meninggalkan keadaan (restart, buka katup
 5 detik, ...) dipakai model Command (setara "RPC" di ThingsBoard).
 """
 from django.conf import settings
+import secrets
 from decimal import Decimal
 
 from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models, transaction
 from django.utils import timezone
+
+
+def generate_access_token():
+    """Token acak untuk autentikasi device, mis. "q3Zr8-kP2mXv0aLt9yBc".
+
+    secrets (bukan random) dipakai karena menghasilkan angka acak yang aman
+    untuk keperluan keamanan. 15 byte acak -> 20 karakter URL-safe.
+    """
+    return secrets.token_urlsafe(15)
 
 
 class Location(models.Model):
@@ -98,6 +108,17 @@ class Device(models.Model):
     description = models.TextField("description", blank=True)
     is_active = models.BooleanField("active", default=True)
     created_at = models.DateTimeField("created", auto_now_add=True)
+    # Kredensial device untuk API (seperti "access token" di ThingsBoard).
+    # Device mengirim data ke /api/v1/<access_token>/telemetry; siapa pun yang
+    # tahu token ini bisa mengirim data atas nama device, jadi perlakukan
+    # seperti password. editable=False: tidak muncul di form biasa.
+    access_token = models.CharField(
+        "access token",
+        max_length=40,
+        unique=True,
+        default=generate_access_token,
+        editable=False,
+    )
 
     class Meta:
         ordering = ["name"]
@@ -107,6 +128,10 @@ class Device(models.Model):
     def __str__(self):
         return self.name
 
+    def regenerate_token(self):
+        """Ganti token (mis. bila bocor). Token lama langsung tidak berlaku."""
+        self.access_token = generate_access_token()
+        self.save(update_fields=["access_token"])
 
 
 # Nama variabel dipakai di payload JSON dan nanti di topic MQTT, jadi dibatasi

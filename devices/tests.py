@@ -1,6 +1,7 @@
 """Tes aturan kepemilikan, tampilan, desired state, command, dan simulator."""
 import io
 from datetime import timedelta
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -9,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .models import Command, CommandStatus, DesiredStateLog, Device, Location, Telemetry, Variable
+from .views import data_version
 
 User = get_user_model()
 
@@ -580,3 +582,188 @@ class LocationTests(TestCase):
         response = self.client.get(reverse("devices:location_list"))
         counts = {loc.name: loc.device_count for loc in response.context["locations"]}
         self.assertEqual(counts["Electronics lab"], 2)
+
+
+class ChartPeriodTests(TestCase):
+    """Pilihan periode chart di halaman variabel."""
+
+    # Umur tiap bacaan dan nilainya. Sengaja jauh dari batas periode.
+    AGES = [
+        (timedelta(minutes=2), 10),
+        (timedelta(minutes=20), 20),
+        (timedelta(hours=2), 30),
+        (timedelta(days=2), 40),
+        (timedelta(days=20), 50),
+        (timedelta(days=200), 60),
+    ]
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+        cls.temperature = Variable.objects.create(device=cls.device, key="temperature")
+        now = timezone.now()
+        Telemetry.objects.bulk_create(
+            Telemetry(variable=cls.temperature, value=value, ts=now - age) for age, value in cls.AGES
+        )
+
+    def setUp(self):
+        self.client.force_login(self.budi)
+        self.url = reverse("devices:variable_detail", args=[self.device.pk, self.temperature.pk])
+
+    def points(self, **params):
+        return self.client.get(self.url, params).context["chart_points"]
+
+    def test_each_period_shows_only_its_window(self):
+        expected = {"5m": 1, "10m": 1, "30m": 2, "1h": 2, "1d": 3, "1w": 4, "1mo": 5, "1y": 6}
+        for period, count in expected.items():
+            self.assertEqual(len(self.points(period=period)), count, period)
+
+    def test_default_period_is_one_day(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["chart"]["period"], "1d")
+        self.assertEqual(len(response.context["chart_points"]), 3)
+
+    def test_unknown_period_falls_back_to_default(self):
+        response = self.client.get(self.url, {"period": "2 days"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["chart"]["period"], "1d")
+
+    def test_custom_range(self):
+        fmt = "%Y-%m-%dT%H:%M"
+        now = timezone.now()
+        response = self.client.get(self.url, {
+            "period": "custom",
+            "start": timezone.localtime(now - timedelta(hours=3)).strftime(fmt),
+            "end": timezone.localtime(now - timedelta(hours=1)).strftime(fmt),
+        })
+        self.assertEqual(response.context["chart"]["period"], "custom")
+        self.assertEqual([p["y"] for p in response.context["chart_points"]], [30])
+
+    def test_custom_without_end_runs_until_now(self):
+        start = timezone.localtime(timezone.now() - timedelta(hours=3)).strftime("%Y-%m-%dT%H:%M")
+        points = self.points(period="custom", start=start)
+        self.assertEqual([p["y"] for p in points], [30, 20, 10])
+
+    def test_custom_start_after_end_is_rejected(self):
+        response = self.client.get(self.url, {
+            "period": "custom", "start": "2026-10-07T12:00", "end": "2026-10-07T08:00",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["custom_open"])
+        self.assertContains(response, "Start must be earlier than end.")
+
+    def test_period_buttons_are_rendered(self):
+        response = self.client.get(self.url, {"period": "1w"})
+        for label in ("5 min", "1 hour", "1 week", "1 year", "Custom"):
+            self.assertContains(response, label)
+        self.assertContains(response, "?period=1y")
+
+    def test_many_points_are_averaged(self):
+        # Batas titik dikecilkan menjadi 2, sehingga 3 bacaan dalam 1 hari
+        # harus diringkas. Lebar ember = 12 jam; ketiganya jatuh di ember
+        # yang sama (2 jam terakhir), jadi hasilnya satu titik rata-rata.
+        with mock.patch("devices.charts.CHART_MAX_POINTS", 2):
+            response = self.client.get(self.url, {"period": "1d"})
+        chart = response.context["chart"]
+        self.assertEqual(chart["rows"], 3)
+        self.assertEqual(chart["bucket"], "12 h")
+        points = response.context["chart_points"]
+        self.assertEqual(len(points), 1)
+        self.assertAlmostEqual(points[0]["y"], 20)
+        self.assertContains(response, "average per 12 h")
+
+    def test_boolean_buckets_keep_the_highest_value(self):
+        lamp = Variable.objects.create(
+            device=self.device, key="lamp", value_type=Variable.ValueType.BOOLEAN
+        )
+        now = timezone.now()
+        for minutes, value in ((3, 0), (2, 1), (1, 0)):
+            Telemetry.objects.create(variable=lamp, value=value, ts=now - timedelta(minutes=minutes))
+        url = reverse("devices:variable_detail", args=[self.device.pk, lamp.pk])
+        with mock.patch("devices.charts.CHART_MAX_POINTS", 1):
+            points = self.client.get(url, {"period": "1h"}).context["chart_points"]
+        self.assertEqual([p["y"] for p in points], [1])
+
+
+class AutoRefreshTests(TestCase):
+    """Endpoint versi data yang dipakai auto-refresh."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.siti = User.objects.create_user("siti", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+        cls.temperature = Variable.objects.create(device=cls.device, key="temperature")
+        cls.humidity = Variable.objects.create(device=cls.device, key="humidity")
+        cls.lamp = Variable.objects.create(
+            device=cls.device, key="lamp", kind=Variable.Kind.ACTUATOR,
+            value_type=Variable.ValueType.BOOLEAN,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.budi)
+        self.url = reverse("devices:updates", args=[self.device.pk])
+
+    def version(self, **params):
+        response = self.client.get(self.url, params)
+        self.assertEqual(response.status_code, 200)
+        return response.json()["version"]
+
+    def add_reading(self, variable, value=1):
+        Telemetry.objects.create(variable=variable, value=value, ts=timezone.now())
+
+    def test_anonymous_gets_json_401(self):
+        self.client.logout()
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("error", response.json())
+
+    def test_other_users_device_is_not_found(self):
+        self.client.force_login(self.siti)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_variable_must_belong_to_device(self):
+        other = Device.objects.create(owner=self.budi, name="Other")
+        stranger = Variable.objects.create(device=other, key="x")
+        self.assertEqual(self.client.get(self.url, {"variable": stranger.pk}).status_code, 404)
+        self.assertEqual(self.client.get(self.url, {"variable": "abc"}).status_code, 400)
+
+    def test_version_is_stable_without_new_data(self):
+        self.assertEqual(self.version(), self.version())
+
+    def test_new_telemetry_changes_version(self):
+        before = self.version()
+        self.add_reading(self.temperature)
+        self.assertNotEqual(self.version(), before)
+
+    def test_variable_version_ignores_other_variables(self):
+        before = self.version(variable=self.temperature.pk)
+        self.add_reading(self.humidity)
+        self.assertEqual(self.version(variable=self.temperature.pk), before)
+        self.add_reading(self.temperature)
+        self.assertNotEqual(self.version(variable=self.temperature.pk), before)
+
+    def test_desired_state_and_commands_change_version(self):
+        before = self.version()
+        self.lamp.set_desired(1, self.budi)
+        after_desired = self.version()
+        self.assertNotEqual(after_desired, before)
+        command = Command.objects.create(
+            device=self.device, method="reboot", expires_at=timezone.now() + timedelta(minutes=5)
+        )
+        after_command = self.version()
+        self.assertNotEqual(after_command, after_desired)
+        command.mark_sent()
+        self.assertNotEqual(self.version(), after_command)
+
+    def test_pages_embed_the_current_version(self):
+        response = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(response, f'data-version="{data_version(self.device)}"')
+        self.assertContains(response, 'id="auto-refresh"')
+        url = reverse("devices:variable_detail", args=[self.device.pk, self.temperature.pk])
+        response = self.client.get(url)
+        self.assertContains(
+            response, f'data-version="{data_version(self.device, self.temperature)}"'
+        )
+

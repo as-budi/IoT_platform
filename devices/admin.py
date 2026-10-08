@@ -23,6 +23,8 @@ class DeviceAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "location", "device_type")
     search_fields = ("name", "location__name", "owner__username")
     inlines = [VariableInline]
+    # Token hanya ditampilkan, tidak bisa diketik manual di admin.
+    readonly_fields = ("access_token",)
 
 
 @admin.register(Variable)

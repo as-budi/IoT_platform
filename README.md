@@ -14,6 +14,8 @@ Penjelasan konsep:
 
 - [docs/tahap-01-dashboard-dasar.md](docs/tahap-01-dashboard-dasar.md) — struktur project, pengguna, device, telemetri
 - [docs/tahap-01b-device-kontrol.md](docs/tahap-01b-device-kontrol.md) — aktuator: desired/reported state dan command
+- [docs/tahap-02-http-api.md](docs/tahap-02-http-api.md) — device sungguhan mengirim data lewat HTTP (access token, curl, ESP32)
+- [docs/tahap-02b-auto-refresh-dan-periode-chart.md](docs/tahap-02b-auto-refresh-dan-periode-chart.md) — auto-refresh (polling) dan pilihan periode chart dengan agregasi
 
 ## Prasyarat
 

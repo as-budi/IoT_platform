@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load device_tags %}
+{% load humanize device_tags %}
 
 {% block title %}{{ variable.display_name }} · {{ device.name }} · IoT Platform{% endblock %}
 
@@ -28,6 +28,8 @@
     <a class="btn btn-outline-danger" href="{% url 'devices:variable_delete' device.pk variable.pk %}">Delete</a>
   </div>
 </div>
+
+{% include "devices/includes/auto_refresh.html" %}
 
 {# ---------- Card nilai terkini ---------- #}
 <h2 class="h5 mb-3">{% if variable.is_actuator %}State{% else %}Latest value{% endif %}</h2>
@@ -75,12 +77,20 @@
 </div>
 
 {# ---------- Chart history ---------- #}
-<div class="card shadow-sm mb-4">
+<div class="card shadow-sm mb-4" id="chart">
   <div class="card-body">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
       <div>
         <h2 class="h5 mb-1">{{ variable.display_name }}{% if variable.unit %} ({{ variable.unit }}){% endif %}</h2>
-        <p class="small text-muted mb-3">Last 24 hours of data</p>
+        <p class="small text-muted mb-2">
+          {% if chart.period == custom_period %}
+          {{ chart.start|date:"d M Y H:i" }} – {% if custom_end %}{{ chart.end|date:"d M Y H:i" }}{% else %}now{% endif %}
+          {% else %}
+          Last {{ chart.label }}
+          {% endif %}
+          · {{ chart.rows|intcomma }} reading{{ chart.rows|pluralize }}
+          {% if chart.bucket %}· {% if variable.is_boolean %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
+        </p>
       </div>
       {% if chart_points %}
       {# Tombol zoom. Dihubungkan ke chart oleh JavaScript di bawah (lewat id). #}
@@ -91,20 +101,58 @@
       </div>
       {% endif %}
     </div>
+
+    {# Pilihan periode. Setiap tombol hanyalah tautan ?period=...; #}
+    {# {% querystring %} (Django 5.1+) menyalin parameter URL lain dan #}
+    {# membuang yang bernilai None (start, end, page). #}
+    <div class="d-flex flex-wrap gap-1 mb-3" role="group" aria-label="Chart period">
+      {% for key, label in periods %}
+      <a class="btn btn-sm {% if key == chart.period %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+         href="{% querystring period=key start=None end=None page=None %}#chart"
+         {% if key == chart.period %}aria-current="true"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </div>
+
+    {% if custom_open %}
+    <form method="get" action="#chart" class="row g-2 align-items-end mb-3">
+      <input type="hidden" name="period" value="{{ custom_period }}">
+      <div class="col-12 col-sm-5 col-lg-4">
+        <label class="form-label small mb-1" for="period-start">Start</label>
+        <input type="datetime-local" class="form-control form-control-sm{% if period_form.start.errors %} is-invalid{% endif %}"
+               id="period-start" name="start" value="{{ custom_start }}" required>
+      </div>
+      <div class="col-12 col-sm-5 col-lg-4">
+        <label class="form-label small mb-1" for="period-end">End</label>
+        <input type="datetime-local" class="form-control form-control-sm{% if period_form.end.errors %} is-invalid{% endif %}"
+               id="period-end" name="end" value="{{ custom_end }}">
+      </div>
+      <div class="col-12 col-sm-2">
+        <button type="submit" class="btn btn-sm btn-primary w-100">Apply</button>
+      </div>
+      <div class="col-12 form-text mt-1">Leave End empty to follow the current time.</div>
+      {% for error in period_form.non_field_errors %}<div class="col-12 text-danger small">{{ error }}</div>{% endfor %}
+      {% for error in period_form.start.errors %}<div class="col-12 text-danger small">Start: {{ error }}</div>{% endfor %}
+      {% for error in period_form.end.errors %}<div class="col-12 text-danger small">End: {{ error }}</div>{% endfor %}
+    </form>
+    {% elif period_form.errors %}
+    <div class="text-danger small mb-3">Unknown period, showing the last {{ chart.label }} instead.</div>
+    {% endif %}
+
     {% if chart_points %}
     <div class="chart-box">
       <canvas id="history-chart" role="img"
               data-variable="{{ variable.display_name }}" data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}"
               data-boolean="{% if variable.is_boolean %}1{% endif %}"
-              aria-label="Line chart of {{ variable.display_name }} over the last 24 hours. The same data is listed in the table below."></canvas>
+              aria-label="Line chart of {{ variable.display_name }} for the selected period. The same data is listed in the table below."></canvas>
     </div>
-    {% else %}
-    <div class="text-muted">No data to plot yet.</div>
-    {% endif %}
-    {% if chart_points %}
     <div class="form-text">
       Drag across the chart to zoom into a time range. Hold Ctrl and scroll to zoom,
       or hold Ctrl and drag to move left and right. On a touch screen, pinch to zoom.
+    </div>
+    {% else %}
+    <div class="text-muted py-4 text-center">
+      No data in this period.
+      {% if latest %}The latest reading was {{ latest.ts|timesince }} ago; choose a longer period.{% endif %}
     </div>
     {% endif %}
   </div>
@@ -147,14 +195,14 @@
   <ul class="pagination pagination-sm mb-0">
     {% if page_obj.has_previous %}
     <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+      <a class="page-link" href="{% querystring page=page_obj.previous_page_number %}">Previous</a>
     </li>
     {% else %}
     <li class="page-item disabled"><span class="page-link">Previous</span></li>
     {% endif %}
     {% if page_obj.has_next %}
     <li class="page-item">
-      <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+      <a class="page-link" href="{% querystring page=page_obj.next_page_number %}">Next</a>
     </li>
     {% else %}
     <li class="page-item disabled"><span class="page-link">Next</span></li>
@@ -197,6 +245,7 @@
   Cara ini lebih aman daripada menempelkan {{ data }} langsung ke dalam kode JS.
 {% endcomment %}
 {{ chart_points|json_script:"chart-data" }}
+{{ chart.range|json_script:"chart-range" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 {# Plugin zoom untuk Chart.js. Hammer.js dibutuhkan plugin ini untuk geser (pan) dan pinch. #}
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
@@ -205,14 +254,27 @@
   (function () {
     const canvas = document.getElementById("history-chart");
     const points = JSON.parse(document.getElementById("chart-data").textContent);
+    // Awal dan akhir periode yang dipilih (milidetik). Sumbu x selalu selebar
+    // periode itu, walaupun datanya baru ada di sebagian kecil rentang.
+    const range = JSON.parse(document.getElementById("chart-range").textContent);
     const unit = canvas.dataset.unit;  // dari atribut data-unit di <canvas>
     const isBoolean = canvas.dataset.boolean === "1";
     const label = canvas.dataset.variable;
 
     const fmtValue = (v) =>
       isBoolean ? (v >= 0.5 ? "ON" : "OFF") : v.toFixed(2) + (unit ? " " + unit : "");
-    const fmtTime = (ms) =>
-      new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    // Label sumbu x menyesuaikan lebar rentang yang sedang terlihat:
+    // detik untuk <= 1 jam, jam:menit untuk <= 1 hari, tanggal untuk lebih lama.
+    const HOUR = 3600 * 1000;
+    const fmtTick = (ms, span) => {
+      const d = new Date(ms);
+      if (span <= HOUR) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      if (span <= 26 * HOUR) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      if (span <= 8 * 24 * HOUR) {
+        return d.toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      }
+      return d.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
+    };
     const fmtDateTime = (ms) =>
       new Date(ms).toLocaleString([], {
         day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit",
@@ -276,7 +338,7 @@
               onPanComplete: updateResetButton,
             },
             // Tidak bisa zoom out atau geser melewati rentang data yang ada.
-            limits: { x: { min: "original", max: "original", minRange: 60 * 1000 } },
+            limits: { x: { min: "original", max: "original", minRange: 10 * 1000 } },
           },
           tooltip: {
             displayColors: false,
@@ -289,7 +351,14 @@
         scales: {
           x: {
             type: "linear",       // waktu sebagai angka milidetik
-            ticks: { color: ink, maxTicksLimit: 8, callback: (v) => fmtTime(v) },
+            min: range.min,
+            max: range.max,
+            ticks: {
+              color: ink,
+              maxTicksLimit: 8,
+              // function biasa (bukan =>) agar `this` = sumbu x yang sedang tampil.
+              callback: function (v) { return fmtTick(v, this.max - this.min); },
+            },
             grid: { display: false },
             border: { color: grid },
           },
@@ -319,6 +388,12 @@
       chart.resetZoom();
       resetButton.disabled = true;
     });
+
+    // Jangan muat ulang halaman saat pengguna sedang memeriksa bagian chart
+    // yang di-zoom; auto-refresh menunggu sampai tombol Reset ditekan.
+    if (window.AutoRefresh) {
+      AutoRefresh.hold(() => (chart.isZoomedOrPanned() ? "the chart is zoomed" : ""));
+    }
   })();
 </script>
 {% endif %}

@@ -5,6 +5,7 @@ from django import forms
 
 from accounts.forms import BootstrapFormMixin
 
+from .charts import CUSTOM, DEFAULT_PERIOD, PERIODS
 from .models import Device, Location, Variable, key_validator
 
 
@@ -160,3 +161,50 @@ class LocationForm(BootstrapFormMixin, forms.ModelForm):
             "latitude": forms.NumberInput(attrs={"step": "any"}),
             "longitude": forms.NumberInput(attrs={"step": "any"}),
         }
+
+
+# Format nilai <input type="datetime-local">, mis. "2026-10-07T14:30".
+DATETIME_LOCAL = "%Y-%m-%dT%H:%M"
+
+
+class ChartPeriodForm(forms.Form):
+    """Pilihan periode chart, dibaca dari parameter URL (form GET).
+
+    Contoh alamat:
+        ?period=5m
+        ?period=custom&start=2026-10-07T08:00&end=2026-10-07T12:00
+    Form GET dipakai (bukan POST) karena hanya MEMBACA data; alamatnya bisa
+    disimpan sebagai bookmark atau dibagikan.
+    """
+
+    period = forms.ChoiceField(
+        choices=[(key, label) for key, (label, _) in PERIODS.items()], required=False
+    )
+    # Waktu dibaca dalam zona waktu aktif (TIME_ZONE = Asia/Jakarta), lalu
+    # Django mengubahnya menjadi datetime "aware" yang dibandingkan dalam UTC.
+    start = forms.DateTimeField(required=False, input_formats=[DATETIME_LOCAL])
+    end = forms.DateTimeField(required=False, input_formats=[DATETIME_LOCAL])
+
+    def clean(self):
+        data = super().clean()
+        start, end = data.get("start"), data.get("end")
+        if data.get("period") == CUSTOM and start and end and start >= end:
+            raise forms.ValidationError("Start must be earlier than end.")
+        return data
+
+    def get_window(self, now):
+        """Kembalikan (period, start, end) yang dipakai chart.
+
+        Input yang salah tidak membuat halaman error: chart kembali ke
+        periode bawaan, dan pesan kesalahannya ditampilkan di form.
+        """
+        data = self.cleaned_data if self.is_valid() else {}
+        period = data.get("period") or DEFAULT_PERIOD
+        if period == CUSTOM:
+            # End kosong = "sampai sekarang", sehingga data baru tetap masuk chart.
+            end = data.get("end") or now
+            start = data.get("start") or end - timedelta(days=1)
+            if start >= end:
+                start = end - timedelta(days=1)
+            return period, start, end
+        return period, now - PERIODS[period][1], now

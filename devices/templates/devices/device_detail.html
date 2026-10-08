@@ -32,6 +32,8 @@
   </div>
 </div>
 
+{% include "devices/includes/auto_refresh.html" %}
+
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="h5 mb-0">Variables</h2>
   <a class="btn btn-sm btn-primary" href="{% url 'devices:variable_add' device.pk %}">Add variable</a>
@@ -107,6 +109,35 @@
 </div>
 {% endif %}
 
+{# ---------- Koneksi device: access token & endpoint API ---------- #}
+<h2 class="h5 mb-3" id="connect">Connect a device</h2>
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <p class="small text-muted">
+      The access token identifies this device to the API. Treat it like a password:
+      anyone who has it can send data as this device.
+    </p>
+    <label class="form-label small mb-1" for="access-token">Access token</label>
+    <div class="input-group mb-3">
+      <input type="text" class="form-control font-monospace" id="access-token" value="{{ device.access_token }}" readonly>
+      <button type="button" class="btn btn-outline-secondary" data-copy-target="access-token">Copy</button>
+    </div>
+    <label class="form-label small mb-1" for="curl-example">Send telemetry from a terminal</label>
+    <div class="input-group mb-3">
+      <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
+      <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-example">Copy</button>
+    </div>
+    {% if not device.is_active %}
+    <div class="alert alert-warning small">This device is inactive, so the API will reject its data.</div>
+    {% endif %}
+    <form method="post" action="{% url 'devices:token_regenerate' device.pk %}" class="d-flex flex-wrap align-items-center gap-2">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-outline-danger">Generate new token</button>
+      <span class="small text-muted">The current token stops working immediately.</span>
+    </form>
+  </div>
+</div>
+
 {# ---------- Pola 2: command (aksi sekali jalan) ---------- #}
 <h2 class="h5 mb-3" id="commands">Commands</h2>
 <div class="card shadow-sm mb-3">
@@ -167,4 +198,24 @@
     </table>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Tombol "Copy": salin isi elemen yang id-nya ditulis di data-copy-target.
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const field = document.getElementById(button.dataset.copyTarget);
+      try {
+        await navigator.clipboard.writeText(field.value);
+        button.textContent = "Copied";
+      } catch (err) {
+        // Clipboard API butuh https atau localhost; bila gagal, pilih teksnya saja.
+        field.select();
+        button.textContent = "Press Ctrl+C";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 2000);
+    });
+  });
+</script>
 {% endblock %}

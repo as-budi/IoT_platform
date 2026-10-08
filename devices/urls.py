@@ -12,6 +12,9 @@ urlpatterns = [
     path("<int:pk>/", views.DeviceDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.DeviceUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.DeviceDeleteView.as_view(), name="delete"),
+    path("<int:pk>/token/", views.DeviceTokenRegenerateView.as_view(), name="token_regenerate"),
+    # JSON kecil untuk auto-refresh halaman (dipanggil JavaScript berkala).
+    path("<int:pk>/updates/", views.device_updates, name="updates"),
     # Variabel milik sebuah device. URL-nya bertingkat:
     #   /devices/<device_pk>/variables/<pk>/
     # sehingga dari alamatnya saja sudah jelas variabel ini milik device mana.

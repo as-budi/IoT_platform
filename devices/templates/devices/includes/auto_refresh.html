@@ -1,0 +1,14 @@
+{% comment %}
+  Saklar auto-refresh. Dipakai halaman device dan halaman variabel.
+  Perlu dua variabel dari view: updates_url dan data_version.
+  Logikanya ada di static/js/auto_refresh.js (dimuat oleh base.html).
+{% endcomment %}
+<div id="auto-refresh" class="d-flex flex-wrap align-items-center gap-2 small mb-3"
+     data-url="{{ updates_url }}" data-version="{{ data_version }}" data-interval="5">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" role="switch" id="auto-refresh-toggle" checked>
+    <label class="form-check-label" for="auto-refresh-toggle">Auto-refresh when new data arrives</label>
+  </div>
+  <span class="text-muted" data-status aria-live="polite">Checking every 5 s</span>
+  <button type="button" class="btn btn-sm btn-outline-primary py-0" data-reload hidden>Reload now</button>
+</div>

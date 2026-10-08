@@ -18,6 +18,8 @@ urlpatterns = [
     path("accounts/", include("accounts.urls")),
     # /devices/...   -> daftar & detail device
     path("devices/", include("devices.urls")),
+    # /api/...       -> API untuk device sungguhan (mis. ESP32), lihat api/urls.py
+    path("api/", include("api.urls")),
     # Halaman depan langsung diarahkan ke daftar device.
     path("", RedirectView.as_view(pattern_name="devices:list"), name="home"),
 ]
