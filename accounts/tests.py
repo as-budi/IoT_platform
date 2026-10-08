@@ -64,3 +64,47 @@ class UserManagementAccessTests(TestCase):
     def test_login_page_renders(self):
         response = self.client.get(reverse("accounts:login"))
         self.assertEqual(response.status_code, 200)
+
+
+class RegisterTests(TestCase):
+    """Pendaftaran mandiri oleh pengunjung yang belum punya akun."""
+
+    form_data = {
+        "username": "dewi",
+        "first_name": "Dewi",
+        "last_name": "",
+        "email": "",
+        "password1": "kata-Sandi-9876",
+        "password2": "kata-Sandi-9876",
+    }
+
+    def test_register_page_is_public(self):
+        response = self.client.get(reverse("accounts:register"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_register_creates_user_and_logs_in(self):
+        response = self.client.post(reverse("accounts:register"), self.form_data)
+        self.assertRedirects(response, reverse("devices:list"))
+        user = User.objects.get(username="dewi")
+        self.assertEqual(user.role, User.Role.USER)
+        self.assertFalse(user.is_staff)
+        # Sesi login sudah terbentuk: id pengguna tersimpan di session.
+        self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
+
+    def test_register_cannot_choose_admin_role(self):
+        data = {**self.form_data, "role": User.Role.ADMIN, "is_superuser": "on"}
+        self.client.post(reverse("accounts:register"), data)
+        user = User.objects.get(username="dewi")
+        self.assertEqual(user.role, User.Role.USER)
+        self.assertFalse(user.is_admin)
+
+    def test_mismatched_passwords_are_rejected(self):
+        data = {**self.form_data, "password2": "berbeda-1234"}
+        response = self.client.post(reverse("accounts:register"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="dewi").exists())
+
+    def test_logged_in_user_is_redirected_away(self):
+        self.client.force_login(User.objects.create_user("budi", password="x"))
+        response = self.client.get(reverse("accounts:register"))
+        self.assertRedirects(response, reverse("devices:list"))

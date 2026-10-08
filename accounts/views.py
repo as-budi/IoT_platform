@@ -5,14 +5,41 @@ Di sini kita memakai "class-based generic views": Django sudah menyediakan
 view siap pakai untuk pola umum (daftar, tambah, ubah, hapus). Kita tinggal
 menyebutkan model, form, dan template-nya.
 """
+from django.contrib.auth import login
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db.models import Count
+from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 
-from .forms import UserCreateForm, UserUpdateForm
+from .forms import RegisterForm, UserCreateForm, UserUpdateForm
 from .mixins import AdminRequiredMixin
 from .models import User
+
+
+class RegisterView(SuccessMessageMixin, CreateView):
+    """Pendaftaran mandiri. Sengaja TANPA mixin login: halaman ini publik."""
+
+    form_class = RegisterForm
+    template_name = "accounts/register.html"
+    success_url = reverse_lazy("devices:list")
+    success_message = "Selamat datang, %(username)s! Akun Anda sudah aktif."
+
+    def dispatch(self, request, *args, **kwargs):
+        # dispatch() adalah method pertama yang dijalankan sebuah view.
+        # Pengguna yang sudah login tidak perlu mendaftar lagi.
+        if request.user.is_authenticated:
+            return redirect("devices:list")
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        # form_valid() dipanggil bila semua isian lolos validasi.
+        # super() menyimpan akun baru ke database (hasilnya di self.object),
+        # lalu login() langsung membuatkan sesi, sehingga pengguna tidak
+        # perlu mengetik ulang username dan password di halaman login.
+        response = super().form_valid(form)
+        login(self.request, self.object)
+        return response
 
 
 class UserListView(AdminRequiredMixin, ListView):

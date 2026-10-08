@@ -43,6 +43,20 @@ class UserCreateForm(BootstrapFormMixin, UserCreationForm):
         fields = ("username", "first_name", "last_name", "email", "role")
 
 
+class RegisterForm(BootstrapFormMixin, UserCreationForm):
+    """Form pendaftaran mandiri untuk pengunjung yang belum punya akun.
+
+    Perhatikan `role` TIDAK ada di daftar field. Django hanya memproses field
+    yang terdaftar di form, jadi walaupun seseorang menyisipkan role=ADMIN ke
+    dalam data yang dikirim, nilainya diabaikan dan akun baru selalu mendapat
+    role default dari model, yaitu User.
+    """
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ("username", "first_name", "last_name", "email")
+
+
 class UserUpdateForm(BootstrapFormMixin, forms.ModelForm):
     """Form ubah pengguna (tanpa password)."""
 

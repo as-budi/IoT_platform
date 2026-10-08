@@ -52,6 +52,12 @@ Pola ini disebut **MTV**: Model (data), Template (tampilan), View (logika).
 - Login/logout memakai view bawaan (`accounts/urls.py`); kita hanya menyediakan
   template `templates/registration/login.html`.
 - `accounts/mixins.py` → `AdminRequiredMixin` menjaga halaman manajemen pengguna.
+- Pendaftaran mandiri: `/accounts/register/` → `RegisterView`. Form-nya
+  (`RegisterForm`) tidak memuat field `role`, sehingga akun baru selalu ber-role
+  User; setelah tersimpan, `login()` langsung membuatkan sesi.
+
+Jadi ada dua jalan membuat akun: pengunjung mendaftar sendiri (selalu User), atau
+Admin membuatkannya lewat menu Pengguna (boleh memilih role).
 
 Dua hal yang mudah tertukar:
 
@@ -116,5 +122,8 @@ Cara terbaik memahami alurnya adalah mengubahnya sendiri:
 - Nilai telemetri hanya angka; belum ada atribut atau tipe lain.
 - Halaman tidak memperbarui diri; perlu muat ulang untuk melihat data baru.
 - Belum ada grafik, alarm, maupun rule engine.
+- Pendaftaran terbuka tanpa verifikasi email, CAPTCHA, atau persetujuan Admin;
+  siapa pun yang bisa membuka situs bisa membuat akun.
+- Belum ada fitur lupa/ganti password oleh pengguna sendiri.
 - Admin belum bisa mengganti password pengguna lain dari dashboard
   (untuk sementara lewat `/admin/`).
