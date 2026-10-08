@@ -18,6 +18,13 @@
     const map = L.map(elementId);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
+      // Server peta OpenStreetMap menolak permintaan tanpa header Referer
+      // (aturan pemakaian ubin OSM). Django secara bawaan mengirim
+      // "Referrer-Policy: same-origin", yang membuat browser TIDAK mengirim
+      // Referer ke situs lain -> ubin diblok. Opsi ini mengizinkan browser
+      // mengirim asal situs kita (mis. http://127.0.0.1:8000) khusus untuk
+      // permintaan ubin, tanpa melonggarkan kebijakan di halaman lain.
+      referrerPolicy: "strict-origin-when-cross-origin",
       // Atribusi wajib dicantumkan menurut lisensi OpenStreetMap.
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(map);

@@ -77,8 +77,20 @@
 {# ---------- Chart history ---------- #}
 <div class="card shadow-sm mb-4">
   <div class="card-body">
-    <h2 class="h5 mb-1">{{ variable.display_name }}{% if variable.unit %} ({{ variable.unit }}){% endif %}</h2>
-    <p class="small text-muted mb-3">Last 24 hours of data</p>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+      <div>
+        <h2 class="h5 mb-1">{{ variable.display_name }}{% if variable.unit %} ({{ variable.unit }}){% endif %}</h2>
+        <p class="small text-muted mb-3">Last 24 hours of data</p>
+      </div>
+      {% if chart_points %}
+      {# Tombol zoom. Dihubungkan ke chart oleh JavaScript di bawah (lewat id). #}
+      <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
+        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-in" title="Zoom in">+</button>
+        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-out" title="Zoom out">−</button>
+        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-reset" disabled>Reset</button>
+      </div>
+      {% endif %}
+    </div>
     {% if chart_points %}
     <div class="chart-box">
       <canvas id="history-chart" role="img"
@@ -88,6 +100,12 @@
     </div>
     {% else %}
     <div class="text-muted">No data to plot yet.</div>
+    {% endif %}
+    {% if chart_points %}
+    <div class="form-text">
+      Drag across the chart to zoom into a time range. Hold Ctrl and scroll to zoom,
+      or hold Ctrl and drag to move left and right. On a touch screen, pinch to zoom.
+    </div>
     {% endif %}
   </div>
 </div>
@@ -180,6 +198,9 @@
 {% endcomment %}
 {{ chart_points|json_script:"chart-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+{# Plugin zoom untuk Chart.js. Hammer.js dibutuhkan plugin ini untuk geser (pan) dan pinch. #}
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
   (function () {
     const canvas = document.getElementById("history-chart");
@@ -201,7 +222,14 @@
     const grid = "#ebebe8";       // garis bantu tipis
     const series = "#2a78d6";     // warna satu-satunya seri
 
-    new Chart(canvas, {
+    // Daftarkan plugin zoom (aman bila sudah terdaftar otomatis).
+    if (window.ChartZoom) Chart.register(window.ChartZoom);
+
+    const resetButton = document.getElementById("chart-zoom-reset");
+    // Tombol Reset hanya aktif bila chart sedang di-zoom atau digeser.
+    const updateResetButton = ({ chart }) => { resetButton.disabled = !chart.isZoomedOrPanned(); };
+
+    const chart = new Chart(canvas, {
       type: "line",
       data: {
         datasets: [{
@@ -228,6 +256,28 @@
         interaction: { mode: "nearest", axis: "x", intersect: false },
         plugins: {
           legend: { display: false },  // satu seri: judul kartu sudah menamainya
+          // Pengaturan plugin zoom. mode "x": hanya sumbu waktu yang di-zoom,
+          // sumbu nilai tetap, supaya bentuk grafik tidak menipu.
+          zoom: {
+            zoom: {
+              mode: "x",
+              // Tarik (drag) untuk memilih rentang waktu yang ingin diperbesar.
+              drag: { enabled: true, backgroundColor: "rgba(42, 120, 214, 0.15)" },
+              // Scroll hanya men-zoom bila Ctrl ditekan, supaya scroll halaman
+              // biasa tidak ikut men-zoom chart.
+              wheel: { enabled: true, modifierKey: "ctrl" },
+              pinch: { enabled: true },
+              onZoomComplete: updateResetButton,
+            },
+            pan: {
+              enabled: true,
+              mode: "x",
+              modifierKey: "ctrl",   // Ctrl + tarik = geser kiri/kanan
+              onPanComplete: updateResetButton,
+            },
+            // Tidak bisa zoom out atau geser melewati rentang data yang ada.
+            limits: { x: { min: "original", max: "original", minRange: 60 * 1000 } },
+          },
           tooltip: {
             displayColors: false,
             callbacks: {
@@ -254,6 +304,20 @@
           },
         },
       },
+    });
+
+    // Tombol zoom: 1.5 = perbesar 1,5 kali, 1/1.5 = perkecil.
+    document.getElementById("chart-zoom-in").addEventListener("click", () => {
+      chart.zoom(1.5);
+      updateResetButton({ chart });
+    });
+    document.getElementById("chart-zoom-out").addEventListener("click", () => {
+      chart.zoom(1 / 1.5);
+      updateResetButton({ chart });
+    });
+    resetButton.addEventListener("click", () => {
+      chart.resetZoom();
+      resetButton.disabled = true;
     });
   })();
 </script>
