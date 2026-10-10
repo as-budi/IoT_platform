@@ -653,11 +653,13 @@ class ChartPeriodTests(TestCase):
         self.assertTrue(response.context["custom_open"])
         self.assertContains(response, "Start must be earlier than end.")
 
-    def test_period_buttons_are_rendered(self):
+    def test_period_dropdown_is_rendered(self):
         response = self.client.get(self.url, {"period": "1w"})
-        for label in ("5 min", "1 hour", "1 week", "1 year", "Custom"):
-            self.assertContains(response, label)
-        self.assertContains(response, "?period=1y")
+        self.assertContains(response, 'id="period-select"')
+        for key in ("5m", "10m", "30m", "1h", "1d", "1w", "1mo", "1y", "custom"):
+            self.assertContains(response, f'<option value="{key}"')
+        # Periode yang sedang tampil terpilih di dropdown.
+        self.assertContains(response, '<option value="1w" selected>Last 1 week</option>', html=True)
 
     def test_many_points_are_averaged(self):
         # Batas titik dikecilkan menjadi 2, sehingga 3 bacaan dalam 1 hari

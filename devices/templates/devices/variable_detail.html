@@ -80,10 +80,10 @@
 {# ---------- Chart history ---------- #}
 <div class="card shadow-sm mb-4" id="chart">
   <div class="card-body">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+    <div class="chart-header">
       <div>
         <h2 class="h5 mb-1">{{ variable.display_name }}{% if variable.unit %} ({{ variable.unit }}){% endif %}</h2>
-        <p class="small text-muted mb-2">
+        <p class="small text-muted mb-0">
           {% if chart.period == custom_period %}
           {{ chart.start|date:"d M Y H:i" }} – {% if custom_end %}{{ chart.end|date:"d M Y H:i" }}{% else %}now{% endif %}
           {% else %}
@@ -93,25 +93,45 @@
           {% if chart.bucket %}· {% if variable.is_boolean %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
         </p>
       </div>
-      {% if chart_points %}
-      {# Tombol zoom. Dihubungkan ke chart oleh JavaScript di bawah (lewat id). #}
-      <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
-        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-in" title="Zoom in">+</button>
-        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-out" title="Zoom out">−</button>
-        <button type="button" class="btn btn-outline-secondary" id="chart-zoom-reset" disabled>Reset</button>
-      </div>
-      {% endif %}
-    </div>
 
-    {# Pilihan periode. Setiap tombol hanyalah tautan ?period=...; #}
-    {# {% querystring %} (Django 5.1+) menyalin parameter URL lain dan #}
-    {# membuang yang bernilai None (start, end, page). #}
-    <div class="d-flex flex-wrap gap-1 mb-3" role="group" aria-label="Chart period">
-      {% for key, label in periods %}
-      <a class="btn btn-sm {% if key == chart.period %}btn-primary{% else %}btn-outline-secondary{% endif %}"
-         href="{% querystring period=key start=None end=None page=None %}#chart"
-         {% if key == chart.period %}aria-current="true"{% endif %}>{{ label }}</a>
-      {% endfor %}
+      <div class="chart-tools">
+        {# Pilihan periode: dropdown di dalam form GET. Saat pilihan berubah, #}
+        {# JavaScript langsung mengirim form, sehingga alamat menjadi ?period=... #}
+        {# (parameter page, start, dan end ikut hilang karena tidak ada di form). #}
+        <form method="get" action="#chart" id="period-form" class="m-0">
+          <div class="input-group input-group-sm">
+            <label class="input-group-text" for="period-select" title="Time range">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+              </svg>
+              <span class="visually-hidden">Time range</span>
+            </label>
+            <select class="form-select form-select-sm" id="period-select" name="period">
+              {% for key, label in periods %}
+              <option value="{{ key }}"{% if key == chart.period %} selected{% endif %}>{% if key == custom_period %}Custom range…{% else %}Last {{ label }}{% endif %}</option>
+              {% endfor %}
+            </select>
+            {# Tanpa JavaScript, tombol ini yang mengirim pilihan. #}
+            <noscript><button type="submit" class="btn btn-outline-secondary">Show</button></noscript>
+          </div>
+        </form>
+
+        {% if chart_points %}
+        {# Tombol zoom. Dihubungkan ke chart oleh JavaScript di bawah (lewat id). #}
+        <div class="btn-group btn-group-sm" role="group" aria-label="Chart zoom">
+          <button type="button" class="btn btn-outline-secondary" id="chart-zoom-in" title="Zoom in" aria-label="Zoom in">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v6M8 11h6"/></svg>
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="chart-zoom-out" title="Zoom out" aria-label="Zoom out">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M8 11h6"/></svg>
+          </button>
+          <button type="button" class="btn btn-outline-secondary" id="chart-zoom-reset" title="Reset zoom" disabled>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            Reset
+          </button>
+        </div>
+        {% endif %}
+      </div>
     </div>
 
     {% if custom_open %}
@@ -271,19 +291,32 @@
       const d = new Date(ms);
       if (span <= HOUR) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       if (span <= 26 * HOUR) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      if (span <= 8 * 24 * HOUR) {
-        return d.toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+      if (span <= 3 * 24 * HOUR) {
+        return d.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
       }
-      return d.toLocaleDateString([], { day: "2-digit", month: "short", year: "2-digit" });
+      if (span <= 90 * 24 * HOUR) return d.toLocaleDateString([], { day: "numeric", month: "short" });
+      return d.toLocaleDateString([], { month: "short", year: "numeric" });
     };
     const fmtDateTime = (ms) =>
       new Date(ms).toLocaleString([], {
         day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", second: "2-digit",
       });
 
-    const ink = "#52514e";        // teks sekunder (sumbu)
-    const grid = "#ebebe8";       // garis bantu tipis
-    const series = "#2a78d6";     // warna satu-satunya seri
+    // Warna diambil dari variabel CSS (static/css/app.css), sehingga ikut
+    // berganti ketika pengguna memilih mode light/dark.
+    const cssVar = (name) =>
+      getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const readColors = () => ({
+      series: cssVar("--chart-series"),     // warna satu-satunya seri
+      fill: cssVar("--chart-fill"),         // area tipis di bawah garis
+      ink: cssVar("--chart-ink"),           // teks sumbu
+      grid: cssVar("--chart-grid"),         // garis bantu tipis
+      surface: cssVar("--app-surface"),     // cincin titik saat disorot
+      tipBg: cssVar("--chart-tooltip-bg"),
+      tipText: cssVar("--chart-tooltip-text"),
+      tipBorder: cssVar("--chart-tooltip-border"),
+    });
+    const c = readColors();
 
     // Daftarkan plugin zoom (aman bila sudah terdaftar otomatis).
     if (window.ChartZoom) Chart.register(window.ChartZoom);
@@ -298,13 +331,16 @@
         datasets: [{
           label: label,
           data: points,           // [{x: milidetik, y: nilai}, ...]
-          borderColor: series,
-          backgroundColor: series,
+          borderColor: c.series,
+          backgroundColor: c.fill,
+          // Area tipis di bawah garis, sampai ke dasar chart.
+          fill: "start",
           borderWidth: 2,
           pointRadius: 0,         // titik disembunyikan, muncul saat disorot
           pointHoverRadius: 5,
           pointHoverBorderWidth: 2,
-          pointHoverBorderColor: "#ffffff",
+          pointHoverBackgroundColor: c.series,
+          pointHoverBorderColor: c.surface,
           // Nilai ON/OFF digambar sebagai tangga, bukan garis miring.
           tension: isBoolean ? 0 : 0.25,
           stepped: isBoolean ? "before" : false,
@@ -315,6 +351,7 @@
         maintainAspectRatio: false,
         animation: false,
         parsing: false,           // data sudah berbentuk {x, y}
+        layout: { padding: { right: 16 } },  // label waktu paling kanan tidak terpotong
         // Tooltip mengikuti posisi mouse di sumbu x (tanpa harus tepat di garis).
         interaction: { mode: "nearest", axis: "x", intersect: false },
         plugins: {
@@ -325,7 +362,7 @@
             zoom: {
               mode: "x",
               // Tarik (drag) untuk memilih rentang waktu yang ingin diperbesar.
-              drag: { enabled: true, backgroundColor: "rgba(42, 120, 214, 0.15)" },
+              drag: { enabled: true, backgroundColor: c.fill },
               // Scroll hanya men-zoom bila Ctrl ditekan, supaya scroll halaman
               // biasa tidak ikut men-zoom chart.
               wheel: { enabled: true, modifierKey: "ctrl" },
@@ -343,6 +380,13 @@
           },
           tooltip: {
             displayColors: false,
+            backgroundColor: c.tipBg,
+            titleColor: c.tipText,
+            bodyColor: c.tipText,
+            borderColor: c.tipBorder,
+            borderWidth: 1,
+            padding: 10,
+            cornerRadius: 8,
             callbacks: {
               title: (items) => fmtDateTime(items[0].parsed.x),
               label: (item) => fmtValue(item.parsed.y),
@@ -355,21 +399,23 @@
             min: range.min,
             max: range.max,
             ticks: {
-              color: ink,
-              maxTicksLimit: 8,
+              color: c.ink,
+              maxTicksLimit: 7,
+              maxRotation: 0,       // label datar, tidak miring
+              autoSkipPadding: 16,
               // function biasa (bukan =>) agar `this` = sumbu x yang sedang tampil.
               callback: function (v) { return fmtTick(v, this.max - this.min); },
             },
             grid: { display: false },
-            border: { color: grid },
+            border: { color: c.grid },
           },
           y: {
             ticks: isBoolean
-              ? { color: ink, stepSize: 1, callback: (v) => (v === 1 ? "ON" : v === 0 ? "OFF" : "") }
-              : { color: ink, callback: (v) => v + (unit ? " " + unit : "") },
+              ? { color: c.ink, stepSize: 1, callback: (v) => (v === 1 ? "ON" : v === 0 ? "OFF" : "") }
+              : { color: c.ink, callback: (v) => v + (unit ? " " + unit : "") },
             min: isBoolean ? 0 : undefined,
             max: isBoolean ? 1 : undefined,
-            grid: { color: grid },
+            grid: { color: c.grid },
             border: { display: false },
           },
         },
@@ -385,6 +431,27 @@
       chart.zoom(1 / 1.5);
       updateResetButton({ chart });
     });
+    // Mode light/dark berganti (static/js/theme.js): warnai ulang tanpa
+    // membuat chart baru, sehingga posisi zoom tetap.
+    document.addEventListener("themechange", () => {
+      const k = readColors();
+      const dataset = chart.data.datasets[0];
+      dataset.borderColor = k.series;
+      dataset.backgroundColor = k.fill;
+      dataset.pointHoverBackgroundColor = k.series;
+      dataset.pointHoverBorderColor = k.surface;
+      const { x, y } = chart.options.scales;
+      x.ticks.color = k.ink;
+      x.border.color = k.grid;
+      y.ticks.color = k.ink;
+      y.grid.color = k.grid;
+      Object.assign(chart.options.plugins.tooltip, {
+        backgroundColor: k.tipBg, titleColor: k.tipText, bodyColor: k.tipText, borderColor: k.tipBorder,
+      });
+      chart.options.plugins.zoom.zoom.drag.backgroundColor = k.fill;
+      chart.update("none");
+    });
+
     resetButton.addEventListener("click", () => {
       chart.resetZoom();
       resetButton.disabled = true;
@@ -401,6 +468,11 @@
 
 {{ live_config|json_script:"live-config" }}
 <script>
+  // Dropdown periode: kirim form begitu pilihan berubah.
+  document.getElementById("period-select").addEventListener("change", (event) => {
+    event.target.form.submit();
+  });
+
   // Pembaruan langsung untuk halaman variabel (lihat static/js/auto_refresh.js).
   (function () {
     const config = JSON.parse(document.getElementById("live-config").textContent);

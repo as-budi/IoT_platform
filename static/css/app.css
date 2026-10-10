@@ -1,40 +1,291 @@
-/* Gaya tambahan di atas Bootstrap. */
+/*
+ * Gaya tambahan di atas Bootstrap 5.3.
+ *
+ * Warna ditulis sebagai VARIABEL CSS (--app-..., --chart-...) dengan dua set
+ * nilai: satu untuk mode terang, satu untuk mode gelap. Atribut
+ * <html data-bs-theme="..."> (dipasang static/js/theme.js) menentukan set
+ * mana yang berlaku. Elemen cukup memakai var(--nama), tanpa peduli modenya.
+ */
+
+/* ---------- Token warna ---------- */
+:root,
+[data-bs-theme="light"] {
+  --app-bg: #f4f6f9;              /* latar halaman */
+  --app-surface: #ffffff;         /* card */
+  --app-surface-2: #f8f9fb;       /* bagian dalam card, kepala tabel */
+  --app-border: #e4e7ec;
+  --app-muted: #667085;
+  --app-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+  --app-shadow-hover: 0 6px 16px rgba(16, 24, 40, 0.08);
+  --app-accent: #2a78d6;
+  --app-accent-soft: rgba(42, 120, 214, 0.1);
+  --app-nav-bg: rgba(255, 255, 255, 0.85);
+
+  /* Chart: biru seri-1 dan tinta sumbu dari palet yang sudah divalidasi. */
+  --chart-series: #2a78d6;
+  --chart-fill: rgba(42, 120, 214, 0.1);
+  --chart-ink: #52514e;
+  --chart-grid: #ebebe8;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-text: #0b0b0b;
+  --chart-tooltip-border: #e4e7ec;
+}
+
+[data-bs-theme="dark"] {
+  --app-bg: #0f1115;
+  --app-surface: #171a20;
+  --app-surface-2: #1d2128;
+  --app-border: #2a2f38;
+  --app-muted: #9aa3b2;
+  --app-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --app-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --app-accent: #3987e5;
+  --app-accent-soft: rgba(57, 135, 229, 0.16);
+  --app-nav-bg: rgba(23, 26, 32, 0.85);
+
+  /* Mode gelap memakai langkah warna tersendiri, bukan sekadar dibalik. */
+  --chart-series: #3987e5;
+  --chart-fill: rgba(57, 135, 229, 0.18);
+  --chart-ink: #c3c2b7;
+  --chart-grid: #2c2f35;
+  --chart-tooltip-bg: #22262e;
+  --chart-tooltip-text: #ffffff;
+  --chart-tooltip-border: #343a45;
+
+  /* Sesuaikan beberapa warna dasar Bootstrap agar serasi dengan latar di atas. */
+  --bs-body-bg: #171a20;
+  --bs-secondary-bg: #1d2128;
+  --bs-tertiary-bg: #1a1e24;
+  --bs-border-color: #2a2f38;
+}
+
+/* ---------- Dasar ---------- */
 body {
-  background-color: #f5f7fa;
+  background-color: var(--app-bg);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, .h1, h2, .h2, h3, .h3 {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.text-muted {
+  color: var(--app-muted) !important;
+}
+
+/* ---------- Navbar ---------- */
+.app-navbar {
+  background: var(--app-nav-bg);
+  backdrop-filter: saturate(180%) blur(10px);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.app-navbar .navbar-brand {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #2a78d6, #1baf7a);
+}
+
+.app-navbar .nav-link {
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.75rem !important;
+  color: var(--app-muted);
+  font-weight: 500;
+}
+
+.app-navbar .nav-link:hover {
+  color: var(--bs-body-color);
+}
+
+.app-navbar .nav-link.active {
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.user-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.user-chip .avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+/* Saklar tema: tiga tombol ikon yang menyatu. */
+.theme-switch {
+  padding: 2px;
+  border: 1px solid var(--app-border);
+  border-radius: 0.6rem;
+  background: var(--app-surface-2);
+}
+
+.theme-switch .btn {
+  border: 0;
+  border-radius: 0.45rem !important;
+  color: var(--app-muted);
+  padding: 0.2rem 0.45rem;
+  line-height: 1;
+}
+
+.theme-switch .btn:hover {
+  color: var(--bs-body-color);
+}
+
+.theme-switch .btn.active {
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+/* ---------- Card ---------- */
+.card {
+  --bs-card-bg: var(--app-surface);
+  --bs-card-border-color: var(--app-border);
+  --bs-card-border-radius: 0.85rem;
+  --bs-card-inner-border-radius: calc(0.85rem - 1px);
+}
+
+.card.shadow-sm {
+  box-shadow: var(--app-shadow) !important;
+}
+
+/* Card nilai terkini */
+.value-card {
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.value-card:has(.stretched-link):hover {
+  box-shadow: var(--app-shadow-hover) !important;
+  transform: translateY(-2px);
 }
 
 .value-card .value {
-  font-size: 2rem;
-  font-weight: 600;
+  font-size: 2.1rem;
+  font-weight: 650;
   line-height: 1.1;
+  margin: 0.35rem 0 0.25rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .value-card .key {
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  font-weight: 600;
 }
 
 .value-card .unit {
-  font-size: 1.1rem;
-  font-weight: 400;
-  color: #6c757d;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--app-muted);
+}
+
+/* Sorotan singkat pada card yang baru diperbarui lewat WebSocket. */
+.live-flash {
+  box-shadow: 0 0 0 3px var(--app-accent-soft), var(--app-shadow-hover) !important;
+  transition: box-shadow 0.3s;
+}
+
+/* ---------- Tabel ---------- */
+.table {
+  --bs-table-bg: transparent;
+}
+
+.table > thead th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--app-muted);
+  white-space: nowrap;
+}
+
+.table > :not(caption) > * > * {
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+}
+
+.table td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Kelas "light" Bootstrap tetap terang di mode gelap; samakan dengan permukaan gelap. */
+.table-light {
+  --bs-table-color: var(--bs-body-color);
+  --bs-table-bg: var(--app-surface-2);
+  --bs-table-border-color: var(--app-border);
+}
+
+[data-bs-theme="dark"] .text-bg-light {
+  color: var(--bs-body-color) !important;
+  background-color: var(--app-surface-2) !important;
+}
+
+[data-bs-theme="dark"] .alert-light {
+  --bs-alert-color: var(--bs-body-color);
+  --bs-alert-bg: var(--app-surface-2);
+  --bs-alert-border-color: var(--app-border);
+}
+
+/* ---------- Chart ---------- */
+.chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.chart-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-tools .form-select {
+  min-width: 9.5rem;
+}
+
+.chart-tools .btn svg {
+  vertical-align: -2px;
 }
 
 /* Tinggi area chart; Chart.js mengisi kotak ini (maintainAspectRatio: false). */
 .chart-box {
   position: relative;
-  height: 280px;
+  height: 300px;
 }
 
+/* ---------- Peta ---------- */
 /* Kotak peta Leaflet; tingginya harus ditentukan, kalau tidak peta tidak tampil. */
 .map-box {
   height: 360px;
-  border-radius: 0.375rem;
+  border-radius: 0.6rem;
 }
 
-/* Sorotan singkat pada card yang baru diperbarui lewat WebSocket. */
-.live-flash {
-  box-shadow: 0 0 0 3px rgba(42, 120, 214, 0.35) !important;
-  transition: box-shadow 0.3s;
+/* Peta OpenStreetMap hanya punya versi terang; di mode gelap ubinnya digelapkan. */
+[data-bs-theme="dark"] .leaflet-tile {
+  filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
 }
