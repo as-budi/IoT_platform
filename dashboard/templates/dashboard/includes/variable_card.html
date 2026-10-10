@@ -1,0 +1,36 @@
+{% load device_tags %}
+{% comment %}
+  Satu card variabel di dashboard. Atribut data-* dibaca JavaScript halaman
+  dashboard untuk memperbarui card tanpa memuat ulang:
+    data-live-variable  id variabel (dicocokkan dengan pesan WebSocket)
+    data-desired        desired state (aktuator) untuk menghitung status sync
+{% endcomment %}
+<div class="dash-var value-card"
+     data-live-variable="{{ variable.pk }}"
+     data-boolean="{% if variable.is_boolean %}1{% endif %}"
+     data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}"
+     data-actuator="{% if variable.is_actuator %}1{% endif %}"
+     data-desired="{{ variable.desired_value|plain_number }}"
+     data-desired-at="{% if variable.desired_at %}{{ variable.desired_at|date:'U' }}000{% endif %}">
+  <div class="d-flex justify-content-between align-items-start gap-2">
+    <div class="key text-muted">{{ variable.display_name }}</div>
+    {% if variable.is_actuator %}
+    <a class="small" href="{% url 'devices:variable_detail' variable.device_id variable.pk %}">Details</a>
+    {% endif %}
+  </div>
+  <div class="value{% if variable.last_value is None %} text-muted{% endif %}" data-live="value">
+    {{ variable.last_value|show_value:variable }}
+    {% if variable.unit and not variable.is_boolean and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+  </div>
+  <div class="small text-muted" data-live="meta"{% if variable.last_seen %} title="{{ variable.last_seen|date:'d M Y H:i:s' }}"{% endif %}>
+    {% if variable.last_seen %}{{ variable.last_seen|timesince }} ago{% else %}No data yet{% endif %}
+  </div>
+  {% if variable.is_actuator %}
+  <div data-live="sync">{% include "devices/includes/sync_badge.html" with variable=variable %}</div>
+  {% include "devices/includes/control_form.html" with variable=variable %}
+  {% else %}
+  {# stretched-link: seluruh card sensor menjadi tautan ke halaman variabel. #}
+  <a class="stretched-link" href="{% url 'devices:variable_detail' variable.device_id variable.pk %}"
+     aria-label="Open {{ variable.display_name }}"></a>
+  {% endif %}
+</div>

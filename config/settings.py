@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "api",       # API untuk device (HTTP), tanpa login/CSRF, pakai access token
     "mqtt_bridge",  # komunikasi device lewat MQTT (perintah: manage.py mqtt_bridge)
     "realtime",     # dashboard real-time lewat WebSocket (Django Channels)
+    "dashboard",    # halaman Dashboard: semua variabel per lokasi & device
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -133,7 +134,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Nilai di bawah adalah NAMA url (lihat accounts/urls.py dan devices/urls.py).
 LOGIN_URL = "accounts:login"             # tujuan bila belum login
-LOGIN_REDIRECT_URL = "devices:list"      # tujuan setelah berhasil login
+LOGIN_REDIRECT_URL = "dashboard:index"   # tujuan setelah berhasil login
 LOGOUT_REDIRECT_URL = "accounts:login"   # tujuan setelah logout
 
 

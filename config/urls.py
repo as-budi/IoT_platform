@@ -16,10 +16,12 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     # /accounts/...  -> login, logout, manajemen pengguna
     path("accounts/", include("accounts.urls")),
+    # /dashboard/... -> ringkasan semua variabel, dikelompokkan per lokasi & device
+    path("dashboard/", include("dashboard.urls")),
     # /devices/...   -> daftar & detail device
     path("devices/", include("devices.urls")),
     # /api/...       -> API untuk device sungguhan (mis. ESP32), lihat api/urls.py
     path("api/", include("api.urls")),
-    # Halaman depan langsung diarahkan ke daftar device.
-    path("", RedirectView.as_view(pattern_name="devices:list"), name="home"),
+    # Halaman depan langsung diarahkan ke dashboard.
+    path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]

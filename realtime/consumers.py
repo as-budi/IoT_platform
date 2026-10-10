@@ -68,3 +68,44 @@ class DeviceConsumer(AsyncJsonWebsocketConsumer):
     async def device_event(self, message):
         """Dipanggil untuk setiap pesan {"type": "device.event"} di group device ini."""
         await self.send_json(message["event"])
+
+
+class DashboardConsumer(AsyncJsonWebsocketConsumer):
+    """Satu koneksi untuk halaman dashboard: bergabung ke group SEMUA device
+    yang boleh dilihat pengguna, sehingga kabar dari device mana pun sampai.
+
+    Bentuk pesannya sama dengan DeviceConsumer; JavaScript dashboard memakai
+    id variabel di dalam pesan untuk menemukan card yang harus diperbarui.
+    Device yang baru ditambahkan setelah halaman dibuka belum ikut; muat
+    ulang halaman untuk memasukkannya.
+    """
+
+    groups_joined = ()
+
+    async def connect(self):
+        user = self.scope["user"]
+        if not user.is_authenticated:
+            await self.accept()
+            await self.close(code=CLOSE_NOT_LOGGED_IN)
+            return
+        # Bergabung ke semua group dulu, baru accept() (sama seperti DeviceConsumer).
+        self.groups_joined = [group_name(pk) for pk in await self.device_ids(user)]
+        for group in self.groups_joined:
+            await self.channel_layer.group_add(group, self.channel_name)
+        await self.accept()
+
+    @database_sync_to_async
+    def device_ids(self, user):
+        from devices.views import visible_devices
+
+        return list(visible_devices(user).values_list("pk", flat=True))
+
+    async def disconnect(self, code):
+        for group in self.groups_joined:
+            await self.channel_layer.group_discard(group, self.channel_name)
+
+    async def receive_json(self, content, **kwargs):
+        """Pesan dari browser diabaikan."""
+
+    async def device_event(self, message):
+        await self.send_json(message["event"])

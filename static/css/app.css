@@ -75,16 +75,54 @@ h1, .h1, h2, .h2, h3, .h3 {
   color: var(--app-muted) !important;
 }
 
-/* ---------- Navbar ---------- */
-.app-navbar {
-  background: var(--app-nav-bg);
-  backdrop-filter: saturate(180%) blur(10px);
-  border-bottom: 1px solid var(--app-border);
+/* ---------- Kerangka: side menu + isi ---------- */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
 }
 
-.app-navbar .navbar-brand {
+.app-sidebar {
+  --bs-offcanvas-width: 270px;
+  --bs-offcanvas-bg: var(--app-surface);
+  background: var(--app-surface);
+  border-right: 1px solid var(--app-border);
+}
+
+/* Layar lebar: side menu tetap di kiri setinggi layar. */
+@media (min-width: 992px) {
+  .app-sidebar {
+    position: sticky;
+    top: 0;
+    width: 248px;
+    height: 100vh;
+    flex-shrink: 0;
+  }
+  .app-sidebar .offcanvas-body {
+    flex-direction: column;
+    height: 100%;
+    padding: 1.1rem 0.9rem !important;
+    overflow-y: auto;
+  }
+}
+
+.sidebar-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
   font-weight: 700;
+  font-size: 1.05rem;
   letter-spacing: -0.01em;
+  color: var(--bs-body-color);
+  text-decoration: none;
+}
+
+.app-sidebar .sidebar-brand.d-lg-flex {
+  padding: 0 0.5rem 0.75rem;
 }
 
 .brand-mark {
@@ -97,20 +135,82 @@ h1, .h1, h2, .h2, h3, .h3 {
   background: linear-gradient(135deg, #2a78d6, #1baf7a);
 }
 
-.app-navbar .nav-link {
-  border-radius: 0.5rem;
-  padding: 0.4rem 0.75rem !important;
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-section {
+  margin: 1rem 0.75rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.55rem;
   color: var(--app-muted);
   font-weight: 500;
+  text-decoration: none;
 }
 
-.app-navbar .nav-link:hover {
+.sidebar-link:hover {
   color: var(--bs-body-color);
+  background: var(--app-surface-2);
 }
 
-.app-navbar .nav-link.active {
+.sidebar-link.active {
   color: var(--app-accent);
   background: var(--app-accent-soft);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: 1rem 0.5rem 0;
+  border-top: 1px solid var(--app-border);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;   /* tabel lebar tidak mendorong halaman melebihi layar */
+}
+
+.app-content {
+  max-width: 1440px;
+  padding: 1.5rem 1rem 3rem;
+}
+
+@media (min-width: 992px) {
+  .app-content {
+    padding: 2rem 2.25rem 3rem;
+  }
+}
+
+/* Bilah atas di layar kecil, dan bilah atas halaman publik. */
+.app-topbar,
+.public-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+  padding: 0.6rem 1rem;
+  background: var(--app-nav-bg);
+  backdrop-filter: saturate(180%) blur(10px);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.public-topbar {
+  margin-bottom: 2rem;
+  padding: 0.75rem 0;
 }
 
 .user-chip {
@@ -289,3 +389,111 @@ h1, .h1, h2, .h2, h3, .h3 {
 [data-bs-theme="dark"] .leaflet-tile {
   filter: invert(1) hue-rotate(180deg) brightness(0.85) contrast(0.9);
 }
+
+/* ---------- Dashboard ---------- */
+.stat-tile .stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.stat-tile .stat-value {
+  font-size: 1.9rem;
+  font-weight: 650;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-tile .stat-note {
+  font-size: 0.8rem;
+  color: var(--app-muted);
+}
+
+.dash-location-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.dash-location-header .pin {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.dash-device > .card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: transparent;
+  border-bottom-color: var(--app-border);
+}
+
+/* Card variabel di dalam card device: permukaan sedikit berbeda. */
+.dash-var {
+  position: relative;
+  height: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.7rem;
+  background: var(--app-surface-2);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.dash-var:has(.stretched-link):hover {
+  box-shadow: var(--app-shadow-hover);
+  transform: translateY(-2px);
+}
+
+.dash-var .value {
+  font-size: 1.7rem;
+}
+
+/* Penanda status device: titik warna SELALU disertai teks. */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-muted);
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+}
+
+.status-pill .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-pill.online {
+  color: #0ca30c;
+  border-color: rgba(12, 163, 12, 0.35);
+  background: rgba(12, 163, 12, 0.08);
+}
+
+/* Halaman Customize: anak dari lokasi/device yang disembunyikan tampak redup. */
+.settings-children.is-muted {
+  opacity: 0.45;
+}
+
+.settings-device + .settings-device {
+  border-top: 1px dashed var(--app-border);
+  padding-top: 0.75rem;
+  margin-top: 0.75rem;
+}
+

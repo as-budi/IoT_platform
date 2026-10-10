@@ -84,7 +84,7 @@ class RegisterTests(TestCase):
 
     def test_register_creates_user_and_logs_in(self):
         response = self.client.post(reverse("accounts:register"), self.form_data)
-        self.assertRedirects(response, reverse("devices:list"))
+        self.assertRedirects(response, reverse("dashboard:index"))
         user = User.objects.get(username="dewi")
         self.assertEqual(user.role, User.Role.USER)
         self.assertFalse(user.is_staff)
@@ -107,4 +107,4 @@ class RegisterTests(TestCase):
     def test_logged_in_user_is_redirected_away(self):
         self.client.force_login(User.objects.create_user("budi", password="x"))
         response = self.client.get(reverse("accounts:register"))
-        self.assertRedirects(response, reverse("devices:list"))
+        self.assertRedirects(response, reverse("dashboard:index"))

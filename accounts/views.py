@@ -22,14 +22,14 @@ class RegisterView(SuccessMessageMixin, CreateView):
 
     form_class = RegisterForm
     template_name = "accounts/register.html"
-    success_url = reverse_lazy("devices:list")
+    success_url = reverse_lazy("dashboard:index")
     success_message = "Welcome, %(username)s! Your account is ready."
 
     def dispatch(self, request, *args, **kwargs):
         # dispatch() adalah method pertama yang dijalankan sebuah view.
         # Pengguna yang sudah login tidak perlu mendaftar lagi.
         if request.user.is_authenticated:
-            return redirect("devices:list")
+            return redirect("dashboard:index")
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):

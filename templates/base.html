@@ -19,93 +19,116 @@
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
 <body>
-  <nav class="navbar navbar-expand-md app-navbar sticky-top mb-4">
-    <div class="container">
-      <a class="navbar-brand d-flex align-items-center gap-2" href="{% url 'home' %}">
-        {# Logo sederhana: titik pemancar dengan dua gelombang sinyal. #}
-        <span class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <circle cx="12" cy="16" r="2" fill="currentColor" stroke="none"/>
-            <path d="M8.5 12.5a5 5 0 0 1 7 0"/><path d="M5.5 9.5a9.2 9.2 0 0 1 13 0"/>
-          </svg>
-        </span>
-        <span>IoT Platform</span>
-      </a>
+{% if user.is_authenticated %}
+<div class="app-shell">
+  {% comment %}
+    ---------- Side menu ----------
+    offcanvas-lg: di layar lebar (>= 992px) tampil tetap di kiri; di layar
+    kecil tersembunyi dan muncul dari kiri lewat tombol menu di bagian atas.
+    Catatan: komentar {# ... #} hanya boleh satu baris. Komentar beberapa
+    baris harus memakai {% templatetag openblock %} comment {% templatetag closeblock %}.
+  {% endcomment %}
+  <aside class="app-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="sidebar" aria-label="Main menu">
+    <div class="offcanvas-header">
+      <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close menu"></button>
+    </div>
+    <div class="offcanvas-body sidebar-body">
+      <a class="sidebar-brand d-none d-lg-flex" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
 
-      {# Saklar tema. Selalu tampil, termasuk di halaman login. #}
-      <div class="theme-switch btn-group btn-group-sm order-md-last ms-auto ms-md-3" role="group" aria-label="Color mode">
-        <button type="button" class="btn" data-theme-choice="light" title="Light mode" aria-label="Light mode">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-            <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
-          </svg>
-        </button>
-        <button type="button" class="btn" data-theme-choice="dark" title="Dark mode" aria-label="Dark mode">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
-          </svg>
-        </button>
-        <button type="button" class="btn" data-theme-choice="auto" title="Follow system setting" aria-label="Follow system setting">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>
-          </svg>
-        </button>
-      </div>
+      {% with path=request.path %}
+      <nav class="sidebar-nav" aria-label="Sections">
+        <div class="sidebar-section">Monitor</div>
+        <a class="sidebar-link{% if path|slice:':11' == '/dashboard/' %} active{% endif %}" href="{% url 'dashboard:index' %}"
+           {% if path|slice:':11' == '/dashboard/' %}aria-current="page"{% endif %}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          Dashboard
+        </a>
+        <a class="sidebar-link{% if path|slice:':9' == '/devices/' and '/locations/' not in path %} active{% endif %}" href="{% url 'devices:list' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>
+          Devices
+        </a>
+        <a class="sidebar-link{% if '/locations/' in path %} active{% endif %}" href="{% url 'devices:location_list' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+          Locations
+        </a>
 
-      {% if user.is_authenticated %}
-      <button class="navbar-toggler ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
-              aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="mainNav">
-        {# Menu yang sedang dibuka diberi tanda "active" berdasarkan alamat halaman. #}
-        <ul class="navbar-nav me-auto">
-          <li class="nav-item">
-            <a class="nav-link{% if request.path|slice:':9' == '/devices/' and '/locations/' not in request.path %} active{% endif %}" href="{% url 'devices:list' %}">Devices</a>
-          </li>
-          <li class="nav-item">
-            <a class="nav-link{% if '/locations/' in request.path %} active{% endif %}" href="{% url 'devices:location_list' %}">Locations</a>
-          </li>
-          {# Menu ini hanya muncul untuk Admin. Pengamanan sebenarnya tetap ada di view. #}
-          {% if user.is_admin %}
-          <li class="nav-item">
-            <a class="nav-link{% if request.path|slice:':10' == '/accounts/' %} active{% endif %}" href="{% url 'accounts:user_list' %}">Users</a>
-          </li>
-          {% endif %}
-          {% if user.is_staff %}
-          <li class="nav-item"><a class="nav-link" href="{% url 'admin:index' %}">Admin site</a></li>
-          {% endif %}
-        </ul>
-        <div class="d-flex align-items-center gap-2">
+        {# Menu ini hanya muncul untuk Admin/staff. Pengamanan sebenarnya tetap ada di view. #}
+        {% if user.is_admin or user.is_staff %}
+        <div class="sidebar-section">Administration</div>
+        {% if user.is_admin %}
+        <a class="sidebar-link{% if path|slice:':10' == '/accounts/' %} active{% endif %}" href="{% url 'accounts:user_list' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
+          Users
+        </a>
+        {% endif %}
+        {% if user.is_staff %}
+        <a class="sidebar-link" href="{% url 'admin:index' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/></svg>
+          Admin site
+        </a>
+        {% endif %}
+        {% endif %}
+      </nav>
+      {% endwith %}
+
+      <div class="sidebar-footer">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <span class="small text-muted">Theme</span>
+          {% include "includes/theme_switch.html" %}
+        </div>
+        <div class="d-flex align-items-center justify-content-between gap-2">
           <span class="user-chip">
             <span class="avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
-            {{ user.username }}
+            <span class="text-truncate">{{ user.username }}</span>
             <span class="badge rounded-pill {% if user.is_admin %}text-bg-primary{% else %}text-bg-secondary{% endif %}">{% if user.is_admin %}Admin{% else %}User{% endif %}</span>
           </span>
           {# Logout harus lewat POST (aturan keamanan Django), jadi berbentuk form. #}
           <form method="post" action="{% url 'accounts:logout' %}">
             {% csrf_token %}
-            <button type="submit" class="btn btn-outline-secondary btn-sm">Log out</button>
+            <button type="submit" class="btn btn-sm btn-outline-secondary" title="Log out" aria-label="Log out">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            </button>
           </form>
         </div>
       </div>
-      {% endif %}
     </div>
-  </nav>
+  </aside>
 
-  <main class="container pb-5">
-    {# Notifikasi sekali tampil, mis. "Device berhasil ditambahkan." #}
-    {% for message in messages %}
-    <div class="alert alert-{% if message.tags == 'error' %}danger{% else %}{{ message.tags }}{% endif %} alert-dismissible fade show" role="alert">
-      {{ message }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-    {% endfor %}
+  <div class="app-main">
+    {# Bilah atas hanya di layar kecil: tombol untuk membuka side menu. #}
+    <header class="app-topbar d-lg-none">
+      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar"
+              aria-controls="sidebar" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
+    </header>
 
-    {% block content %}{% endblock %}
-  </main>
+    <main class="app-content">
+{% else %}
+{# Halaman publik (login, daftar): tanpa side menu. #}
+<header class="public-topbar">
+  <div class="container d-flex align-items-center justify-content-between">
+    <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
+    {% include "includes/theme_switch.html" %}
+  </div>
+</header>
+<main class="container pb-5">
+{% endif %}
+  {# Satu block content saja: Django melarang nama block yang sama muncul dua kali. #}
+  {% include "includes/messages.html" %}
+  {% block content %}{% endblock %}
+{% if user.is_authenticated %}
+    </main>
+  </div>
+</div>
+{% else %}
+</main>
+{% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  {# Auto-refresh halaman device/variabel; tidak melakukan apa-apa di halaman lain. #}
+  {# Pembaruan langsung halaman device/variabel/dashboard; tidak melakukan apa-apa di halaman lain. #}
   <script src="{% static 'js/auto_refresh.js' %}"></script>
   {# Halaman yang butuh JavaScript tambahan (mis. chart) mengisi block ini. #}
   {% block extra_js %}{% endblock %}

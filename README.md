@@ -19,6 +19,7 @@ Penjelasan konsep:
 - [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md) — komunikasi dua arah lewat MQTT (broker, topik, mqtt_bridge, ESP32)
 - [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md) — dashboard real-time lewat WebSocket (Django Channels, Daphne, Redis)
 - [docs/tahap-04b-channels-daphne-redis.md](docs/tahap-04b-channels-daphne-redis.md) — peran Daphne, Channels, channels-redis, dan Redis
+- [docs/tahap-05-dashboard.md](docs/tahap-05-dashboard.md) — dashboard per lokasi & device, pengaturan tampil/sembunyi, side menu
 
 ## Prasyarat
 

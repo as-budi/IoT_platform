@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}Customize dashboard · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'dashboard:index' %}">Dashboard</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Customize</li>
+  </ol>
+</nav>
+
+<div class="mb-3">
+  <h1 class="h3 mb-1">Customize dashboard</h1>
+  <div class="text-muted">
+    Choose what appears on your dashboard. Turning off a location or device also hides
+    everything inside it. These settings only affect your own dashboard.
+  </div>
+</div>
+
+<form method="post" id="dashboard-settings">
+  {% csrf_token %}
+  <div class="d-flex flex-wrap gap-2 mb-3">
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-check-all="true">Show everything</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-check-all="false">Hide everything</button>
+  </div>
+
+  {% for group in groups %}
+  <div class="card shadow-sm mb-3" data-settings-group>
+    <div class="card-header bg-transparent">
+      <div class="form-check form-switch mb-0">
+        {% if group.location %}
+        <input class="form-check-input" type="checkbox" role="switch" name="location" value="{{ group.location.pk }}"
+               id="loc-{{ group.location.pk }}" data-parent-switch{% if group.location.pk not in hidden.locations %} checked{% endif %}>
+        <label class="form-check-label fw-semibold" for="loc-{{ group.location.pk }}">{{ group.location.name }}</label>
+        {% else %}
+        <input class="form-check-input" type="checkbox" role="switch" name="unlocated" value="1"
+               id="loc-none" data-parent-switch{% if not hide_unlocated %} checked{% endif %}>
+        <label class="form-check-label fw-semibold" for="loc-none">No location</label>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-body settings-children">
+      {% for device in group.devices %}
+      <div class="settings-device">
+        <div class="form-check form-switch mb-2">
+          <input class="form-check-input" type="checkbox" role="switch" name="device" value="{{ device.pk }}"
+                 id="dev-{{ device.pk }}" data-parent-switch{% if device.pk not in hidden.devices %} checked{% endif %}>
+          <label class="form-check-label fw-medium" for="dev-{{ device.pk }}">
+            {{ device.name }}{% if device.device_type %} <span class="text-muted small">{{ device.device_type }}</span>{% endif %}
+          </label>
+        </div>
+        <div class="settings-children d-flex flex-wrap gap-3 ms-4">
+          {% for variable in device.dash_variables %}
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" name="variable" value="{{ variable.pk }}"
+                   id="var-{{ variable.pk }}"{% if variable.pk not in hidden.variables %} checked{% endif %}>
+            <label class="form-check-label" for="var-{{ variable.pk }}">
+              {{ variable.display_name }}{% if variable.label %} <code class="small">{{ variable.key }}</code>{% endif %}
+            </label>
+          </div>
+          {% empty %}
+          <span class="text-muted small">No variables</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% empty %}
+  <div class="alert alert-light border">You have no devices yet.</div>
+  {% endfor %}
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <a class="btn btn-outline-secondary" href="{% url 'dashboard:index' %}">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Isi dari lokasi/device yang dimatikan dibuat redup, sebagai tanda bahwa
+  // semuanya ikut tersembunyi. Centangnya tetap disimpan apa adanya, sehingga
+  // ketika lokasi/device dinyalakan lagi, pilihan di dalamnya kembali seperti semula.
+  (function () {
+    const form = document.getElementById("dashboard-settings");
+
+    function refresh() {
+      form.querySelectorAll("[data-parent-switch]").forEach((input) => {
+        const holder = input.closest(".card-header") ? input.closest("[data-settings-group]") : input.closest(".settings-device");
+        const children = holder.querySelector(".settings-children");
+        if (children) children.classList.toggle("is-muted", !input.checked);
+      });
+    }
+
+    form.addEventListener("change", refresh);
+    form.querySelectorAll("[data-check-all]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const value = button.dataset.checkAll === "true";
+        form.querySelectorAll('input[type="checkbox"]').forEach((input) => { input.checked = value; });
+        refresh();
+      });
+    });
+    refresh();
+  })();
+</script>
+{% endblock %}

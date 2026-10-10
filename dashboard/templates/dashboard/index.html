@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h1 class="h3 mb-1">Dashboard</h1>
+    <div class="text-muted">Every variable, grouped by location and device.</div>
+  </div>
+  <a class="btn btn-outline-secondary btn-sm" href="{% url 'dashboard:settings' %}">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-2px"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+    Customize
+  </a>
+</div>
+
+{% include "devices/includes/auto_refresh.html" %}
+
+{# ---------- Ringkasan ---------- #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3">
+    <div class="card shadow-sm stat-tile h-100"><div class="card-body">
+      <div class="stat-label">Locations</div>
+      <div class="stat-value">{{ stats.locations }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="card shadow-sm stat-tile h-100"><div class="card-body">
+      <div class="stat-label">Devices</div>
+      <div class="stat-value">{{ stats.devices }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="card shadow-sm stat-tile h-100"><div class="card-body">
+      <div class="stat-label">Online now</div>
+      <div class="stat-value">{{ stats.online }}<span class="fs-6 text-muted fw-normal"> / {{ stats.devices }}</span></div>
+      <div class="stat-note">sent data in the last 5 minutes</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-xl-3">
+    <div class="card shadow-sm stat-tile h-100"><div class="card-body">
+      <div class="stat-label">Variables shown</div>
+      <div class="stat-value">{{ stats.variables }}</div>
+      {% if hidden_count %}<div class="stat-note">{{ hidden_count }} hidden · <a href="{% url 'dashboard:settings' %}">change</a></div>{% endif %}
+    </div></div>
+  </div>
+</div>
+
+{# ---------- Lokasi -> device -> variabel ---------- #}
+{% for group in groups %}
+<section class="mb-4" aria-labelledby="loc-{{ forloop.counter }}">
+  <div class="dash-location-header">
+    <span class="pin" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+    </span>
+    <h2 class="h5 mb-0" id="loc-{{ forloop.counter }}">
+      {% if group.location %}
+      <a class="text-reset text-decoration-none" href="{% url 'devices:location_detail' group.location.pk %}">{{ group.location.name }}</a>
+      {% else %}No location{% endif %}
+    </h2>
+    <span class="text-muted small">{{ group.devices|length }} device{{ group.devices|length|pluralize }}</span>
+  </div>
+
+  {% for device in group.devices %}
+  <div class="card shadow-sm dash-device mb-3" data-live-device="{{ device.pk }}">
+    <div class="card-header">
+      <div>
+        <a class="fw-semibold text-reset" href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
+        {% if device.device_type %}<span class="text-muted small ms-1">{{ device.device_type }}</span>{% endif %}
+        {% if not device.is_active %}<span class="badge text-bg-secondary ms-1">Inactive</span>{% endif %}
+      </div>
+      <span data-live="status">
+        {% if device.online %}
+        <span class="status-pill online"><span class="dot"></span>Online</span>
+        {% else %}
+        <span class="status-pill"><span class="dot"></span>Offline{% if device.last_seen %} · {{ device.last_seen|timesince }} ago{% endif %}</span>
+        {% endif %}
+      </span>
+    </div>
+    <div class="card-body">
+      {% if device.shown_variables %}
+      <div class="row g-3">
+        {% for variable in device.shown_variables %}
+        <div class="col-12 col-sm-6 col-xl-4 col-xxl-3">
+          {% include "dashboard/includes/variable_card.html" %}
+        </div>
+        {% endfor %}
+      </div>
+      {% elif device.dash_variables %}
+      <div class="text-muted small">All variables of this device are hidden.</div>
+      {% else %}
+      <div class="text-muted small">No variables yet. <a href="{% url 'devices:variable_add' device.pk %}">Add one</a>.</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% empty %}
+<div class="card shadow-sm">
+  <div class="card-body text-center py-5">
+    {% if has_any_device %}
+    <h2 class="h5">Everything is hidden</h2>
+    <p class="text-muted mb-3">All locations, devices, or variables are switched off.</p>
+    <a class="btn btn-primary" href="{% url 'dashboard:settings' %}">Customize dashboard</a>
+    {% else %}
+    <h2 class="h5">No devices yet</h2>
+    <p class="text-muted mb-3">Add a device and its variables to see them here.</p>
+    <a class="btn btn-primary" href="{% url 'devices:add' %}">Add device</a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endblock %}
+
+{% block extra_js %}
+{{ live_config|json_script:"live-config" }}
+<script>
+  // Pembaruan langsung dashboard (lihat static/js/auto_refresh.js).
+  // Satu WebSocket menerima kabar dari SEMUA device; card dicari lewat id variabel.
+  (function () {
+    const config = JSON.parse(document.getElementById("live-config").textContent);
+    const hidden = new Set(config.hiddenVariables);
+
+    function setValue(card, value) {
+      const valueEl = card.querySelector('[data-live="value"]');
+      valueEl.classList.remove("text-muted");
+      valueEl.textContent = LiveFormat.value(value, card.dataset.boolean === "1") + " ";
+      if (card.dataset.unit) {
+        const unit = document.createElement("span");
+        unit.className = "unit";
+        unit.textContent = card.dataset.unit;
+        valueEl.appendChild(unit);
+      }
+    }
+
+    // Status sync aktuator dihitung ulang di browser, dengan aturan yang sama
+    // seperti Variable.sync_status (devices/models.py).
+    function setSync(card, point) {
+      const badge = card.querySelector('[data-live="sync"] .badge');
+      if (!badge || card.dataset.desired === "") return;
+      let text = "Mismatch", tone = "danger";
+      if (point.ts < Number(card.dataset.desiredAt)) {
+        text = "Waiting for device"; tone = "warning";
+      } else if (Math.abs(point.value - Number(card.dataset.desired)) < 1e-9) {
+        text = "In sync"; tone = "success";
+      }
+      badge.className = "badge text-bg-" + tone;
+      badge.textContent = text;
+    }
+
+    function markOnline(card) {
+      const status = card.closest("[data-live-device]")?.querySelector('[data-live="status"]');
+      if (status) status.innerHTML = '<span class="status-pill online"><span class="dot"></span>Online</span>';
+    }
+
+    AutoRefresh.on("telemetry", (event) => {
+      // Ambil bacaan terbaru per variabel.
+      const latest = new Map();
+      for (const point of event.points) {
+        const current = latest.get(point.variable);
+        if (!current || point.ts >= current.ts) latest.set(point.variable, point);
+      }
+      for (const [variableId, point] of latest) {
+        const card = document.querySelector(`[data-live-variable="${variableId}"]`);
+        if (!card) {
+          if (hidden.has(variableId)) continue;  // sengaja disembunyikan
+          return false;                           // variabel baru: muat ulang
+        }
+        setValue(card, point.value);
+        const metaEl = card.querySelector('[data-live="meta"]');
+        metaEl.title = LiveFormat.dateTime(point.ts);
+        metaEl.dataset.liveTs = point.ts;
+        metaEl.textContent = LiveFormat.ago(point.ts);
+        if (card.dataset.actuator === "1") setSync(card, point);
+        markOnline(card);
+        card.classList.add("live-flash");
+        setTimeout(() => card.classList.remove("live-flash"), 1200);
+      }
+      return true;
+    });
+
+    // Desired state berubah (oleh pengguna lain): muat ulang, kecuali variabelnya disembunyikan.
+    AutoRefresh.on("desired", (event) => hidden.has(event.variable));
+    // Command tidak ditampilkan di dashboard.
+    AutoRefresh.on("command", () => true);
+  })();
+</script>
+{% endblock %}
