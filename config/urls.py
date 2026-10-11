@@ -20,6 +20,8 @@ urlpatterns = [
     path("dashboard/", include("dashboard.urls")),
     # /devices/...   -> daftar & detail device
     path("devices/", include("devices.urls")),
+    # /rules/...    -> rule engine (aturan otomatis) dan alarm
+    path("rules/", include("rules.urls")),
     # /api/...       -> API untuk device sungguhan (mis. ESP32), lihat api/urls.py
     path("api/", include("api.urls")),
     # Halaman depan langsung diarahkan ke dashboard.

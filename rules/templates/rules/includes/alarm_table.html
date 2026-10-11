@@ -1,0 +1,52 @@
+{% comment %}
+  Tabel alarm. Butuh `alarms`. Opsional: hide_device=True, empty_message.
+{% endcomment %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Severity</th>
+          <th>Alarm</th>
+          {% if not hide_device %}<th>Device</th>{% endif %}
+          <th>Raised</th>
+          <th>Status</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for alarm in alarms %}
+        <tr class="{% if not alarm.is_active %}text-muted{% endif %}">
+          <td>{% include "rules/includes/severity_badge.html" with severity=alarm.severity label=alarm.get_severity_display %}</td>
+          <td>
+            {{ alarm.message }}
+            {% if alarm.rule %}<div class="small text-muted">Rule: <a href="{% url 'rules:detail' alarm.rule.pk %}">{{ alarm.rule.name }}</a></div>{% endif %}
+          </td>
+          {% if not hide_device %}<td><a href="{% url 'devices:detail' alarm.device.pk %}">{{ alarm.device.name }}</a></td>{% endif %}
+          <td class="text-nowrap" title="{{ alarm.created_at|date:'d M Y H:i:s' }}">{{ alarm.created_at|timesince }} ago</td>
+          <td class="small">
+            {% if alarm.is_active %}<span class="fw-semibold">Active</span>{% else %}Cleared {{ alarm.cleared_at|timesince }} ago{% if not alarm.cleared_by %} (by rule){% endif %}{% endif %}
+            <div class="text-muted">{% if alarm.is_acknowledged %}Acknowledged{% if alarm.acknowledged_by %} by {{ alarm.acknowledged_by.username }}{% endif %}{% else %}Unacknowledged{% endif %}</div>
+          </td>
+          <td class="text-end text-nowrap">
+            {% if not alarm.is_acknowledged %}
+            <form method="post" action="{% url 'rules:alarm_ack' alarm.pk %}" class="d-inline">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button class="btn btn-sm btn-outline-primary">Acknowledge</button>
+            </form>
+            {% endif %}
+            {% if alarm.is_active %}
+            <form method="post" action="{% url 'rules:alarm_clear' alarm.pk %}" class="d-inline">
+              {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button class="btn btn-sm btn-outline-secondary">Clear</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6" class="text-center text-muted py-4">{{ empty_message|default:"No alarms." }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

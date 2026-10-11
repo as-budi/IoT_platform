@@ -1,3 +1,5 @@
+import ipaddress
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -209,6 +211,9 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
             "errors": mqtt_topics.errors(prefix, token),
             "all": mqtt_topics.device_base(prefix, token) + "/#",
         }
+        context["coap"] = coap_info(self.request, device)
+        # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
+        context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
 
         # Pembaruan langsung: WebSocket, dengan polling versi data sebagai cadangan.
         context["data_version"] = data_version(device)
@@ -234,6 +239,40 @@ def device_updates(request, pk):
             return JsonResponse({"error": "Invalid variable."}, status=400)
         variable = get_object_or_404(device.variables, pk=int(variable_id))
     return JsonResponse({"version": data_version(device, variable)})
+
+
+def coap_info(request, device):
+    """Alamat CoAP device ini, untuk tab CoAP di halaman device.
+
+    Host diambil dari COAP_PUBLIC_HOST (.env); bila kosong, dari address bar
+    browser. "reach" menjelaskan siapa yang bisa menjangkau alamat itu:
+      loopback -> hanya komputer ini sendiri (127.0.0.1 tidak berguna bagi ESP32)
+      private  -> hanya device di jaringan yang sama (192.168.x.x, 10.x.x.x, ...)
+      public   -> dari mana saja, selama port UDP-nya terbuka
+    """
+    host = settings.COAP_PUBLIC_HOST or request.get_host()
+    if not settings.COAP_PUBLIC_HOST:
+        # Buang nomor port HTTP; perhatikan alamat IPv6 seperti [::1]:8000.
+        host = host.rsplit(":", 1)[0] if host.count(":") == 1 or "]:" in host else host
+    bare = host.strip("[]")
+    try:
+        address = ipaddress.ip_address(bare)
+        reach = "loopback" if address.is_loopback else "private" if address.is_private else "public"
+    except ValueError:
+        reach = "loopback" if bare == "localhost" else "unknown"
+    if ":" in bare and not host.startswith("["):
+        host = f"[{bare}]"  # alamat IPv6 di dalam URI harus diberi kurung siku
+    base = f"coap://{host}:{settings.COAP_PORT}/api/v1/{device.access_token}"
+    return {
+        "host": host,
+        "port": settings.COAP_PORT,
+        "reach": reach,
+        "configured": bool(settings.COAP_PUBLIC_HOST),
+        "telemetry": f"{base}/telemetry",
+        "desired": f"{base}/desired",
+        "commands": f"{base}/commands",
+        "response": f"{base}/commands/<id>/response",
+    }
 
 
 class DeviceFormMixin(OwnedDeviceMixin, SuccessMessageMixin):

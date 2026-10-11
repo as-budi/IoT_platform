@@ -17,6 +17,14 @@
 
 {% include "devices/includes/auto_refresh.html" %}
 
+{# Jumlah alarm aktif yang belum di-acknowledge (rules/context_processors.py). #}
+{% if active_alarm_count %}
+<div class="alert alert-danger d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+  <span><strong>{{ active_alarm_count }}</strong> active alarm{{ active_alarm_count|pluralize }} waiting for acknowledgement.</span>
+  <a class="btn btn-sm btn-outline-danger" href="{% url 'rules:alarms' %}">View alarms</a>
+</div>
+{% endif %}
+
 {# ---------- Ringkasan ---------- #}
 <div class="row g-3 mb-4">
   <div class="col-6 col-xl-3">
@@ -72,7 +80,7 @@
       </div>
       <span data-live="status">
         {% if device.online %}
-        <span class="status-pill online"><span class="dot"></span>Online</span>
+        <span class="status-pill online"><span class="dot"></span>Online{% if device.last_protocol %} · via {{ device.get_last_protocol_display }}{% endif %}</span>
         {% else %}
         <span class="status-pill"><span class="dot"></span>Offline{% if device.last_seen %} · {{ device.last_seen|timesince }} ago{% endif %}</span>
         {% endif %}
@@ -149,9 +157,13 @@
       badge.textContent = text;
     }
 
-    function markOnline(card) {
+    const PROTOCOL_LABELS = { HTTP: "HTTP", MQTT: "MQTT", COAP: "CoAP" };
+
+    function markOnline(card, protocol) {
       const status = card.closest("[data-live-device]")?.querySelector('[data-live="status"]');
-      if (status) status.innerHTML = '<span class="status-pill online"><span class="dot"></span>Online</span>';
+      if (!status) return;
+      const via = protocol ? " · via " + (PROTOCOL_LABELS[protocol] || protocol) : "";
+      status.innerHTML = '<span class="status-pill online"><span class="dot"></span>Online' + via + "</span>";
     }
 
     AutoRefresh.on("telemetry", (event) => {
@@ -173,7 +185,7 @@
         metaEl.dataset.liveTs = point.ts;
         metaEl.textContent = LiveFormat.ago(point.ts);
         if (card.dataset.actuator === "1") setSync(card, point);
-        markOnline(card);
+        markOnline(card, event.protocol);
         card.classList.add("live-flash");
         setTimeout(() => card.classList.remove("live-flash"), 1200);
       }

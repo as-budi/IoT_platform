@@ -65,8 +65,12 @@ def to_ms(dt):
     return int(dt.timestamp() * 1000)
 
 
-def telemetry_saved(device, rows):
-    """`rows` = list (variable, value, ts) yang baru disimpan."""
+def telemetry_saved(device, rows, protocol=""):
+    """`rows` = list (variable, value, ts) yang baru disimpan.
+
+    `protocol` ("HTTP", "MQTT", "COAP", atau kosong) ikut dikirim supaya
+    halaman bisa menampilkan "via CoAP" tanpa memuat ulang.
+    """
     points = [
         {
             "variable": variable.pk,
@@ -79,7 +83,7 @@ def telemetry_saved(device, rows):
         for variable, value, ts in rows
     ]
     if points:
-        emit(device.pk, {"type": "telemetry", "points": points})
+        emit(device.pk, {"type": "telemetry", "protocol": protocol, "points": points})
 
 
 def desired_changed(variable):

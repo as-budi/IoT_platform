@@ -1,0 +1,12 @@
+{% comment %}
+  Lencana keadaan aturan. Butuh: status ("IDLE" / "PENDING" / "ACTIVE") dan enabled.
+{% endcomment %}
+{% if not enabled %}
+<span class="badge text-bg-secondary">Disabled</span>
+{% elif status == "ACTIVE" %}
+<span class="badge rule-state rule-state-active">Active</span>
+{% elif status == "PENDING" %}
+<span class="badge rule-state rule-state-pending" title="Condition holds; waiting for the duration or cooldown">Pending</span>
+{% else %}
+<span class="badge rule-state">Idle</span>
+{% endif %}

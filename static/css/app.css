@@ -497,3 +497,88 @@ h1, .h1, h2, .h2, h3, .h3 {
   margin-top: 0.75rem;
 }
 
+/* Lencana protokol terakhir (HTTP / MQTT / CoAP). */
+.protocol-badge {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+/* ---------- Rule engine (tahap 7) ---------- */
+.model-badge {
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.rule-state {
+  color: var(--app-muted);
+  background: var(--app-surface-2);
+  border: 1px solid var(--app-border);
+}
+
+.rule-state-pending {
+  color: #a15c00;
+  background: rgba(240, 160, 0, 0.14);
+  border-color: rgba(240, 160, 0, 0.4);
+}
+
+.rule-state-active {
+  color: #0b8a0b;
+  background: rgba(12, 163, 12, 0.1);
+  border-color: rgba(12, 163, 12, 0.35);
+}
+
+[data-bs-theme="dark"] .rule-state-pending { color: #f2b544; }
+[data-bs-theme="dark"] .rule-state-active { color: #4cc94c; }
+
+/* Keparahan alarm: warna SELALU disertai teks. */
+.severity { color: #fff; }
+.severity-critical { background: #c62828; }
+.severity-major { background: #e4572e; }
+.severity-minor { background: #d19a00; }
+.severity-warning { background: #6b7280; }
+
+.model-card.is-planned { opacity: 0.7; }
+.model-card.is-planned .card-body { background: var(--app-surface-2); border-radius: inherit; }
+
+.model-example {
+  white-space: normal;
+  color: inherit;
+  font-size: 0.78rem;
+}
+
+.eca-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.eca-step {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.action-row {
+  background: var(--app-surface-2);
+}
+
+.eca-steps li + li { margin-top: 0.6rem; }
+
+.eca-key {
+  display: inline-block;
+  min-width: 3.5rem;
+  font-weight: 650;
+  color: var(--app-accent);
+}
+
+.sidebar-link .badge { font-size: 0.7rem; }

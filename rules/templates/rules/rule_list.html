@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Rules · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">{% if user.is_admin %}All rules{% else %}My rules{% endif %}</h1>
+  <a class="btn btn-primary" href="{% url 'rules:new' %}">New rule</a>
+</div>
+
+{% if rules %}
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Name</th>
+          <th>Model</th>
+          <th>When · If</th>
+          {% if user.is_admin %}<th>Owner</th>{% endif %}
+          <th>State</th>
+          <th>Last activated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in rules %}
+        <tr>
+          <td><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></td>
+          <td><span class="badge model-badge">{{ rule.model }}</span></td>
+          <td class="small">
+            {% if rule.summary %}
+            <span class="text-muted">When</span> {{ rule.summary.when }}<br>
+            <span class="text-muted">If</span> {{ rule.summary.if }}
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          {% if user.is_admin %}<td>{{ rule.owner.username }}</td>{% endif %}
+          <td>{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled %}</td>
+          <td class="small text-nowrap">{% if rule.state.last_activated_at %}{{ rule.state.last_activated_at|timesince }} ago{% else %}<span class="text-muted">never</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card shadow-sm"><div class="card-body text-center py-5">
+  <h2 class="h5">No rules yet</h2>
+  <p class="text-muted mb-3">Rules react to device data automatically, for example: when soil moisture drops below 20 %, switch the pump on.</p>
+  <a class="btn btn-primary" href="{% url 'rules:new' %}">Create the first rule</a>
+</div></div>
+{% endif %}
+{% endblock %}

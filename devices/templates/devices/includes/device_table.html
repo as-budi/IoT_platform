@@ -54,6 +54,7 @@
           <td>
             {% if device.last_seen %}
             {{ device.last_seen|timesince }} ago
+            {% if device.last_protocol %}<span class="badge protocol-badge ms-1">{{ device.get_last_protocol_display }}</span>{% endif %}
             {% else %}
             <span class="text-muted">No data yet</span>
             {% endif %}

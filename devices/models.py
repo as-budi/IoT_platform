@@ -79,6 +79,13 @@ class Location(models.Model):
 
 
 class Device(models.Model):
+    class Protocol(models.TextChoices):
+        """Jalur yang dipakai device saat terakhir mengirim telemetri."""
+
+        HTTP = "HTTP", "HTTP"
+        MQTT = "MQTT", "MQTT"
+        COAP = "COAP", "CoAP"
+
     # ForeignKey = relasi banyak-ke-satu: satu pengguna punya banyak device.
     # settings.AUTH_USER_MODEL dipakai (bukan import User langsung) karena
     # itulah cara baku merujuk model user kustom.
@@ -120,6 +127,13 @@ class Device(models.Model):
         unique=True,
         default=generate_access_token,
         editable=False,
+    )
+    # Diisi otomatis oleh api.services.save_telemetry() setiap kali telemetri
+    # masuk, sehingga halaman bisa menampilkan "via CoAP · 3 s ago" tanpa
+    # menghitung ulang dari tabel telemetri.
+    last_seen_at = models.DateTimeField("last data", null=True, blank=True, editable=False)
+    last_protocol = models.CharField(
+        "last protocol", max_length=4, choices=Protocol.choices, blank=True, editable=False
     )
 
     class Meta:

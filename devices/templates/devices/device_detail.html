@@ -24,6 +24,12 @@
     <div class="text-muted">
       {{ device.device_type|default:"No type" }}{% if device.location %} · <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% endif %} · owner: {{ device.owner.username }}
     </div>
+    {# Jalur & waktu data terakhir (Device.last_protocol / last_seen_at). #}
+    <div class="small text-muted mt-1">
+      Last data:
+      <span data-live="last-data">{% if device.last_seen_at %}{{ device.last_seen_at|timesince }} ago{% else %}never{% endif %}</span>
+      <span class="badge protocol-badge{% if not device.last_protocol %} d-none{% endif %}" data-live="protocol">{% if device.last_protocol %}via {{ device.get_last_protocol_display }}{% endif %}</span>
+    </div>
     {% if device.description %}<p class="mt-2 mb-0">{{ device.description }}</p>{% endif %}
   </div>
   <div class="text-nowrap">
@@ -33,6 +39,12 @@
 </div>
 
 {% include "devices/includes/auto_refresh.html" %}
+
+{# Alarm aktif dari rule engine. Kabar alarm lewat WebSocket memuat ulang halaman. #}
+{% if active_alarms %}
+<h2 class="h5 mb-3">Active alarms</h2>
+<div class="mb-4">{% include "rules/includes/alarm_table.html" with alarms=active_alarms hide_device=True %}</div>
+{% endif %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="h5 mb-0">Variables</h2>
@@ -125,41 +137,101 @@
       <input type="text" class="form-control font-monospace" id="access-token" value="{{ device.access_token }}" readonly>
       <button type="button" class="btn btn-outline-secondary" data-copy-target="access-token">Copy</button>
     </div>
-    <h3 class="h6 mt-2">HTTP</h3>
-    <label class="form-label small mb-1" for="curl-example">Send telemetry from a terminal</label>
-    <div class="input-group mb-3">
-      <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
-      <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-example">Copy</button>
+    {# Tiga protokol dalam tab (komponen nav-tabs Bootstrap). #}
+    <ul class="nav nav-tabs mb-3" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-http" data-bs-toggle="tab" data-bs-target="#pane-http" type="button" role="tab" aria-controls="pane-http" aria-selected="true">HTTP</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-mqtt" data-bs-toggle="tab" data-bs-target="#pane-mqtt" type="button" role="tab" aria-controls="pane-mqtt" aria-selected="false">MQTT</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-coap" data-bs-toggle="tab" data-bs-target="#pane-coap" type="button" role="tab" aria-controls="pane-coap" aria-selected="false">CoAP</button>
+      </li>
+    </ul>
+
+    <div class="tab-content">
+      {# ---------- HTTP ---------- #}
+      <div class="tab-pane fade show active" id="pane-http" role="tabpanel" aria-labelledby="tab-http" tabindex="0">
+        <p class="small text-muted mb-2">Served by <code>runserver</code>. The device sends a POST request for every reading.</p>
+        <label class="form-label small mb-1" for="curl-example">Send telemetry from a terminal</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-example">Copy</button>
+        </div>
+      </div>
+
+      {# ---------- MQTT: alamat broker dan topik device ini (.env) ---------- #}
+      <div class="tab-pane fade" id="pane-mqtt" role="tabpanel" aria-labelledby="tab-mqtt" tabindex="0">
+        <p class="small text-muted mb-2">
+          Broker <code>{{ mqtt.host }}:{{ mqtt.port }}</code>{% if mqtt.tls %} (TLS){% endif %}.
+          Data is exchanged only while <code>python manage.py mqtt_bridge</code> is running.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-sm small align-middle">
+            <thead class="table-light"><tr><th>Direction</th><th>Topic</th><th>Payload</th></tr></thead>
+            <tbody>
+              <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.telemetry }}</code></td><td>telemetry, same JSON as HTTP</td></tr>
+              <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested actuator states (retained)</td></tr>
+              <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id", "method", "params"}</code></td></tr>
+              <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
+              <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message was rejected</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <label class="form-label small mb-1" for="mqtt-pub-example">Send telemetry with mosquitto</label>
+        <div class="input-group mb-2">
+          <textarea class="form-control font-monospace small" id="mqtt-pub-example" rows="2" readonly>mosquitto_pub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-pub-example">Copy</button>
+        </div>
+        <label class="form-label small mb-1" for="mqtt-sub-example">Watch everything sent to and from this device</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="mqtt-sub-example" rows="2" readonly>mosquitto_sub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.all }}" -v</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-sub-example">Copy</button>
+        </div>
+      </div>
+
+      {# ---------- CoAP: server UDP milik platform sendiri (coap_server) ---------- #}
+      <div class="tab-pane fade" id="pane-coap" role="tabpanel" aria-labelledby="tab-coap" tabindex="0">
+        <p class="small text-muted mb-2">
+          Server <code>coap://{{ coap.host }}:{{ coap.port }}</code> (UDP).
+          Data is exchanged only while <code>python manage.py coap_server</code> is running.
+          There is no broker: the device must be able to reach this computer directly.
+        </p>
+        {% if coap.reach == "loopback" %}
+        <div class="alert alert-warning small py-2">
+          <strong>{{ coap.host }}</strong> only works for programs on this computer. For an ESP32,
+          set <code>COAP_PUBLIC_HOST</code> in <code>.env</code> to this computer's Wi-Fi address (e.g. 192.168.1.10).
+        </div>
+        {% elif coap.reach == "private" %}
+        <div class="alert alert-light border small py-2">
+          <strong>{{ coap.host }}</strong> is a private address: reachable only from devices on the same network.
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table table-sm small align-middle">
+            <thead class="table-light"><tr><th>Method</th><th>URI</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td>POST</td><td><code>{{ coap.telemetry }}</code></td><td>telemetry, same JSON as HTTP</td></tr>
+              <tr><td class="text-nowrap">GET + Observe</td><td><code>{{ coap.desired }}</code></td><td>requested actuator states; pushed when they change</td></tr>
+              <tr><td class="text-nowrap">GET + Observe</td><td><code>{{ coap.commands }}</code></td><td><code>{"commands": [{"id", "method", "params"}]}</code></td></tr>
+              <tr><td>POST</td><td><code>{{ coap.response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <label class="form-label small mb-1" for="coap-post-example">Send telemetry (libcoap: <code>brew install libcoap</code>)</label>
+        <div class="input-group mb-2">
+          <textarea class="form-control font-monospace small" id="coap-post-example" rows="2" readonly>coap-client -m post -t json -e '{"temperature": 25.1}' {{ coap.telemetry }}</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="coap-post-example">Copy</button>
+        </div>
+        <label class="form-label small mb-1" for="coap-observe-example">Observe the requested states for 60 seconds</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="coap-observe-example" rows="2" readonly>coap-client -m get -s 60 {{ coap.desired }}</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="coap-observe-example">Copy</button>
+        </div>
+      </div>
     </div>
 
-    {# MQTT: alamat broker dan topik device ini. Pengaturannya ada di .env. #}
-    <h3 class="h6 mt-4">MQTT</h3>
-    <p class="small text-muted mb-2">
-      Broker <code>{{ mqtt.host }}:{{ mqtt.port }}</code>{% if mqtt.tls %} (TLS){% endif %}.
-      Data is exchanged only while <code>python manage.py mqtt_bridge</code> is running.
-    </p>
-    <div class="table-responsive">
-      <table class="table table-sm small align-middle">
-        <thead class="table-light"><tr><th>Direction</th><th>Topic</th><th>Payload</th></tr></thead>
-        <tbody>
-          <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.telemetry }}</code></td><td>telemetry, same JSON as HTTP</td></tr>
-          <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested actuator states (retained)</td></tr>
-          <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id", "method", "params"}</code></td></tr>
-          <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
-          <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message was rejected</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <label class="form-label small mb-1" for="mqtt-pub-example">Send telemetry with mosquitto</label>
-    <div class="input-group mb-2">
-      <textarea class="form-control font-monospace small" id="mqtt-pub-example" rows="2" readonly>mosquitto_pub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</textarea>
-      <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-pub-example">Copy</button>
-    </div>
-    <label class="form-label small mb-1" for="mqtt-sub-example">Watch everything sent to and from this device</label>
-    <div class="input-group mb-3">
-      <textarea class="form-control font-monospace small" id="mqtt-sub-example" rows="2" readonly>mosquitto_sub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.all }}" -v</textarea>
-      <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-sub-example">Copy</button>
-    </div>
     {% if not device.is_active %}
     <div class="alert alert-warning small">This device is inactive, so the API will reject its data.</div>
     {% endif %}
@@ -239,6 +311,23 @@
   // Telemetri SENSOR diterapkan langsung ke card-nya. Telemetri aktuator,
   // desired state, dan command mengubah banyak bagian halaman (status sync,
   // tabel command), jadi untuk itu halaman dimuat ulang saja.
+  // Nama tampilan protokol (sama dengan Device.Protocol di models.py).
+  const PROTOCOL_LABELS = { HTTP: "HTTP", MQTT: "MQTT", COAP: "CoAP" };
+
+  // Baris "Last data: ... via CoAP" di bawah judul device.
+  AutoRefresh.on("telemetry", (event) => {
+    const lastData = document.querySelector('[data-live="last-data"]');
+    const newest = Math.max(...event.points.map((p) => p.ts));
+    lastData.dataset.liveTs = newest;
+    lastData.textContent = LiveFormat.ago(newest);
+    if (event.protocol) {
+      const badge = document.querySelector('[data-live="protocol"]');
+      badge.textContent = "via " + (PROTOCOL_LABELS[event.protocol] || event.protocol);
+      badge.classList.remove("d-none");
+    }
+    return true;
+  });
+
   AutoRefresh.on("telemetry", (event) => {
     // Kelompokkan per variabel: ambil bacaan terbaru dan jumlah baris barunya.
     const byVariable = new Map();

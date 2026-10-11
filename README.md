@@ -20,6 +20,9 @@ Penjelasan konsep:
 - [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md) — dashboard real-time lewat WebSocket (Django Channels, Daphne, Redis)
 - [docs/tahap-04b-channels-daphne-redis.md](docs/tahap-04b-channels-daphne-redis.md) — peran Daphne, Channels, channels-redis, dan Redis
 - [docs/tahap-05-dashboard.md](docs/tahap-05-dashboard.md) — dashboard per lokasi & device, pengaturan tampil/sembunyi, side menu
+- [docs/tahap-06-coap.md](docs/tahap-06-coap.md) — komunikasi dua arah lewat CoAP (UDP, Observe, coap_server, ESP32)
+- [docs/rule-engine-iot.md](docs/rule-engine-iot.md) — rule engine pada platform IoT: mekanisme dan enam model
+- [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md) — rule engine ECA: aturan otomatis, alarm, worker rule_engine
 
 ## Prasyarat
 
@@ -186,6 +189,39 @@ Agar data dari `mqtt_bridge` juga tampil seketika, pasang Redis
 `REDIS_URL=redis://127.0.0.1:6379/0` di `.env`.
 Penjelasan lengkap: [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md).
 
+## Komunikasi CoAP (tahap 6)
+
+CoAP berjalan di atas UDP (port 5683) tanpa broker: device harus bisa menjangkau
+komputer ini secara langsung (satu jaringan, atau server dengan IP publik).
+
+```bash
+pip install aiocoap                           # sekali saja
+python manage.py migrate                      # kolom last_protocol & last_seen_at
+python manage.py coap_server                  # terminal terpisah dari runserver
+python scripts/fake_coap_device.py TOKEN      # device tiruan dua arah (Observe)
+```
+
+Isi `COAP_PUBLIC_HOST` di `.env` dengan IP komputer ini di Wi-Fi agar alamat di tab
+*CoAP* halaman device bisa dipakai ESP32. Contoh firmware: `firmware/esp32_coap/esp32_coap.ino`.
+Penjelasan lengkap: [docs/tahap-06-coap.md](docs/tahap-06-coap.md).
+
+## Rule engine (tahap 7)
+
+Aturan otomatis model Event–Condition–Action, mis. "bila soil_moisture < 20 selama
+60 detik, nyalakan pompa; pulih bila > 30". Dibuat di menu **Rules**; alarm tampil di
+menu **Alarms**. Lima model rule engine lain sudah tersedia sebagai pilihan, belum
+diimplementasikan.
+
+```bash
+python manage.py migrate                      # tabel rules_*
+python manage.py rule_engine                  # worker, terminal terpisah dari runserver
+```
+
+Dengan `REDIS_URL` terisi, data diteruskan ke worker lewat antrean Redis. Tanpa Redis
+aturan dinilai langsung saat data disimpan, tetapi worker tetap diperlukan untuk aturan
+berdurasi dan "device diam". Email aksi aturan dicetak di terminal bila `EMAIL_HOST`
+kosong. Penjelasan lengkap: [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md).
+
 ## Struktur project
 
 ```
@@ -194,6 +230,12 @@ config/              pengaturan project (settings, URL utama, WSGI/ASGI)
 accounts/            app: model User + role, login, manajemen pengguna
 devices/             app: model Device & Telemetry, halaman device
   management/commands/seed_demo.py   perintah pengisi data contoh
+api/                 app: API HTTP untuk device (access token)
+mqtt_bridge/         app: komunikasi device lewat MQTT (manage.py mqtt_bridge)
+coap_gateway/        app: komunikasi device lewat CoAP (manage.py coap_server)
+realtime/            app: WebSocket (Django Channels)
+dashboard/           app: dashboard per lokasi & device
+rules/               app: rule engine & alarm (manage.py rule_engine)
 templates/           template lintas-app (base.html, login, 403)
 static/              CSS
 docs/                catatan belajar per tahap

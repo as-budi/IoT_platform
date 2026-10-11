@@ -53,6 +53,18 @@
           Locations
         </a>
 
+        <div class="sidebar-section">Automation</div>
+        <a class="sidebar-link{% if path|slice:':7' == '/rules/' and '/alarms/' not in path %} active{% endif %}" href="{% url 'rules:list' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.5 6H14a3 3 0 0 1 3 3v6.5M15.5 18H10a3 3 0 0 1-3-3V8.5"/></svg>
+          Rules
+        </a>
+        <a class="sidebar-link{% if '/rules/alarms/' in path %} active{% endif %}" href="{% url 'rules:alarms' %}">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></svg>
+          Alarms
+          {# active_alarm_count dari rules/context_processors.py: alarm aktif yang belum di-acknowledge. #}
+          {% if active_alarm_count %}<span class="badge rounded-pill text-bg-danger ms-auto" title="Active, unacknowledged alarms">{{ active_alarm_count }}</span>{% endif %}
+        </a>
+
         {# Menu ini hanya muncul untuk Admin/staff. Pengamanan sebenarnya tetap ada di view. #}
         {% if user.is_admin or user.is_staff %}
         <div class="sidebar-section">Administration</div>

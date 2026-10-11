@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+
+{% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New ECA rule{% endif %} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    {% if rule %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    {% else %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:new' %}">New rule</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ engine.label }}</li>
+    {% endif %}
+  </ol>
+</nav>
+
+<div class="row justify-content-center">
+  <div class="col-xl-9">
+    <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">ECA</span></h1>
+    <p class="text-muted mb-4"><strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run the actions. When the condition recovers, the rule <strong>clears</strong> and can run other actions.</p>
+
+    {% if rule_form.errors or spec_form.errors or action_formset.total_error_count %}
+    <div class="alert alert-danger">Please correct the errors below.</div>
+    {% endif %}
+
+    <form method="post" novalidate id="rule-form">
+      {% csrf_token %}
+
+      {# ---------- Aturan ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">{% include "rules/includes/field.html" with field=rule_form.name %}</div>
+          <div class="col-md-6 d-flex align-items-center">
+            <div class="form-check form-switch mt-md-3">
+              {{ rule_form.is_enabled }}
+              <label class="form-check-label" for="{{ rule_form.is_enabled.id_for_label }}">{{ rule_form.is_enabled.label }}</label>
+            </div>
+          </div>
+          <div class="col-12">{% include "rules/includes/field.html" with field=rule_form.description %}</div>
+        </div>
+      </div></div>
+
+      {# ---------- 1. Event ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">1</span> When — event</h2>
+        <div class="d-flex flex-wrap gap-4 mb-3">
+          {% for radio in spec_form.event %}
+          <div class="form-check">
+            {{ radio.tag }}
+            <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        {% for error in spec_form.event.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        {% for error in spec_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div data-event="TELEMETRY">
+          {% include "rules/includes/field.html" with field=spec_form.variable %}
+        </div>
+        <div class="row g-3" data-event="INACTIVITY">
+          <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
+          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.silence_seconds %}</div>
+        </div>
+      </div></div>
+
+      {# ---------- 2. Condition ---------- #}
+      <div class="card shadow-sm mb-3" data-event="TELEMETRY"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">2</span> If — condition</h2>
+        <div class="row g-3">
+          <div class="col-4 col-md-3">{% include "rules/includes/field.html" with field=spec_form.operator %}</div>
+          <div class="col-8 col-md-4">{% include "rules/includes/field.html" with field=spec_form.threshold %}</div>
+          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.duration_seconds %}</div>
+        </div>
+        <h3 class="h6 mt-2">Clear when <span class="text-muted fw-normal small">(optional hysteresis)</span></h3>
+        <div class="row g-3">
+          <div class="col-4 col-md-3">{% include "rules/includes/field.html" with field=spec_form.clear_operator hide_help=True %}</div>
+          <div class="col-8 col-md-4">{% include "rules/includes/field.html" with field=spec_form.clear_threshold hide_help=True %}</div>
+          <div class="col-md-5 small text-muted pt-md-4">Example: activate when &lt; 20, clear when &gt; 30. Values between 20 and 30 change nothing, so the pump does not flick on and off.</div>
+        </div>
+      </div></div>
+
+      {# ---------- 3. Actions ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step" data-step-actions>3</span> Then — actions</h2>
+        {{ action_formset.management_form }}
+        {% for error in action_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div id="action-list">
+          {% for form in action_formset %}
+          {% include "rules/includes/action_form.html" %}
+          {% endfor %}
+        </div>
+        {# Cetakan aksi baru; __prefix__ diganti nomor urut oleh JavaScript. #}
+        <template id="action-template">
+          {% include "rules/includes/action_form.html" with form=action_formset.empty_form %}
+        </template>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-action">Add action</button>
+        <div class="row g-3 mt-2">
+          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.cooldown_seconds %}</div>
+        </div>
+      </div></div>
+
+      <button type="submit" class="btn btn-primary">Save rule</button>
+      <a class="btn btn-link" href="{% if rule %}{% url 'rules:detail' rule.pk %}{% else %}{% url 'rules:list' %}{% endif %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/*
+ * Form ECA:
+ * - menampilkan field sesuai event (telemetri / device diam),
+ * - menampilkan field sesuai jenis aksi,
+ * - menambah dan menghapus aksi (Django formset).
+ * Field yang disembunyikan tetap terkirim; server mengabaikan field yang
+ * tidak dipakai (lihat rules/forms.py).
+ */
+(function () {
+  "use strict";
+  const form = document.getElementById("rule-form");
+
+  function showEventFields() {
+    const checked = form.querySelector("input[name='eca-event']:checked");
+    const event = checked ? checked.value : "TELEMETRY";
+    form.querySelectorAll("[data-event]").forEach((el) => {
+      el.hidden = el.dataset.event !== event;
+    });
+    // Tanpa langkah "If" (event device diam), aksi menjadi langkah ke-2.
+    form.querySelector("[data-step-actions]").textContent = event === "INACTIVITY" ? "2" : "3";
+  }
+  form.querySelectorAll("input[name='eca-event']").forEach((radio) => radio.addEventListener("change", showEventFields));
+  showEventFields();
+
+  function showActionFields(row) {
+    const kind = row.querySelector("[data-action-kind]").value;
+    row.querySelectorAll("[data-for]").forEach((el) => {
+      el.hidden = !el.dataset.for.split(" ").includes(kind);
+    });
+  }
+
+  function wire(row) {
+    row.querySelector("[data-action-kind]").addEventListener("change", () => showActionFields(row));
+    row.querySelector("[data-remove-action]").addEventListener("click", () => {
+      // Formset Django: aksi dihapus dengan mencentang DELETE, bukan membuang elemennya.
+      row.querySelector("input[name$='-DELETE']").checked = true;
+      row.classList.add("d-none");
+    });
+    showActionFields(row);
+  }
+  form.querySelectorAll("#action-list [data-action-row]").forEach(wire);
+
+  const total = form.querySelector("input[name='actions-TOTAL_FORMS']");
+  document.getElementById("add-action").addEventListener("click", () => {
+    const index = parseInt(total.value, 10);
+    const html = document.getElementById("action-template").innerHTML.replace(/__prefix__/g, index);
+    const holder = document.createElement("div");
+    holder.innerHTML = html.trim();
+    const row = holder.firstElementChild;
+    document.getElementById("action-list").appendChild(row);
+    total.value = index + 1;
+    wire(row);
+  });
+
+  // Aturan baru tanpa aksi: langsung sediakan satu baris kosong.
+  if (!form.querySelector("#action-list [data-action-row]")) {
+    document.getElementById("add-action").click();
+  }
+})();
+</script>
+{% endblock %}

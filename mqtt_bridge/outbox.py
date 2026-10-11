@@ -15,14 +15,12 @@ Harganya: jeda paling lama satu putaran pemeriksaan (~1 detik).
 import json
 from collections import defaultdict
 
+from devices.control import command_payload, plain
 from devices.models import Command, CommandStatus, Variable
 
 from . import topics
 
 
-def plain(value):
-    """1.0 -> 1 supaya JSON-nya rapi bagi firmware; 22.5 tetap 22.5."""
-    return int(value) if float(value).is_integer() else value
 
 
 class Outbox:
@@ -101,7 +99,7 @@ class Outbox:
         )
         sent = 0
         for command in queued:
-            payload = {"id": command.pk, "method": command.method, "params": command.params}
+            payload = command_payload(command)
             topic = topics.command(self.prefix, command.device.access_token, command.pk)
             if not publish(topic, payload, retain=False):
                 break

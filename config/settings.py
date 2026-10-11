@@ -7,6 +7,7 @@ dipakai, lokasi template, zona waktu, dan seterusnya.
 Referensi: https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -56,6 +57,8 @@ INSTALLED_APPS = [
     "mqtt_bridge",  # komunikasi device lewat MQTT (perintah: manage.py mqtt_bridge)
     "realtime",     # dashboard real-time lewat WebSocket (Django Channels)
     "dashboard",    # halaman Dashboard: semua variabel per lokasi & device
+    "coap_gateway", # komunikasi device lewat CoAP (perintah: manage.py coap_server)
+    "rules",        # rule engine & alarm (perintah: manage.py rule_engine)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -87,6 +90,8 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 # Menyediakan variabel `messages` (notifikasi sekali tampil).
                 "django.contrib.messages.context_processors.messages",
+                # Menyediakan `active_alarm_count` untuk lencana di side menu.
+                "rules.context_processors.alarms",
             ],
         },
     },
@@ -173,6 +178,23 @@ MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "")
 MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
 
 
+# --- CoAP ---------------------------------------------------------------------
+# Server CoAP (UDP) untuk device; dijalankan dengan `python manage.py coap_server`.
+# Berbeda dengan MQTT, tidak ada broker: device harus bisa menjangkau komputer
+# ini secara langsung (satu jaringan, atau server dengan IP publik).
+
+# Alamat IP yang didengarkan, boleh lebih dari satu dipisah koma.
+# Kosong = otomatis: Linux mendengarkan semua alamat; macOS/Windows mendengarkan
+# 127.0.0.1 ditambah IP komputer ini di jaringan (lihat coap_gateway/resources.py).
+COAP_BIND = os.getenv("COAP_BIND", "")
+COAP_PORT = int(os.getenv("COAP_PORT", "5683"))
+# Alamat yang ditulis di halaman device untuk dipakai device, mis. IP komputer
+# ini di jaringan Wi-Fi (192.168.1.10). Kosong = nama host di address bar browser.
+COAP_PUBLIC_HOST = os.getenv("COAP_PUBLIC_HOST", "")
+# Seberapa sering (detik) server memeriksa perubahan untuk device yang memakai Observe.
+COAP_OBSERVE_INTERVAL = float(os.getenv("COAP_OBSERVE_INTERVAL", "1"))
+
+
 # --- WebSocket (Django Channels) ---------------------------------------------
 # Channel layer = "papan pengumuman" tempat kabar data baru dikirim ke browser.
 # - REDIS_URL kosong: InMemoryChannelLayer. Hanya bekerja di dalam proses
@@ -207,3 +229,33 @@ if REDIS_URL:
 else:
     CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
+
+# --- Rule engine --------------------------------------------------------------
+# Lihat rules/queue.py dan docs/tahap-07-rule-engine-eca.md.
+#   worker : pesan lewat antrean Redis, dinilai oleh `manage.py rule_engine`
+#   inline : dinilai langsung setelah data disimpan (tanpa Redis)
+#   off    : rule engine dimatikan
+# Kosong = otomatis: worker bila REDIS_URL diisi, inline bila tidak.
+RULE_ENGINE_MODE = os.getenv("RULE_ENGINE_MODE", "") or ("worker" if REDIS_URL else "inline")
+# Saat `manage.py test`, pesan TIDAK boleh masuk antrean Redis sungguhan: id
+# device/variabel di database tes bisa sama dengan id di database asli.
+if sys.argv[1:2] == ["test"]:
+    RULE_ENGINE_MODE = "inline"
+# Seberapa sering (detik) worker memeriksa aturan berbasis waktu.
+RULE_ENGINE_TICK = float(os.getenv("RULE_ENGINE_TICK", "1"))
+
+
+# --- Email (aksi "Send email" pada aturan) ---------------------------------------
+# EMAIL_HOST kosong: email TIDAK dikirim, melainkan dicetak di terminal proses
+# yang menjalankan aksi (console backend) — cukup untuk belajar dan menguji.
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+    EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True") == "True"
+    EMAIL_TIMEOUT = 10
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IoT Platform <iot@localhost>")

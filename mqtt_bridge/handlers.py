@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from api.payload import PayloadError, parse_telemetry
 from api.services import save_telemetry
+from devices.control import record_command_result
 from devices.models import Device
 
 from . import topics
@@ -73,7 +74,7 @@ def handle_message(topic, payload, prefix):
 def handle_telemetry(device, data):
     """Payload sama persis dengan HTTP API (lihat api/payload.py)."""
     rows = parse_telemetry(data, now=timezone.now())
-    created = save_telemetry(device, rows)
+    created = save_telemetry(device, rows, protocol=Device.Protocol.MQTT)
     message = f"saved {len(rows)} value(s)"
     if created:
         message += f", new variable(s): {', '.join(created)}"
@@ -81,31 +82,6 @@ def handle_telemetry(device, data):
 
 
 def handle_command_response(device, command_id, data):
-    """Device melaporkan hasil command.
-
-    Payload berupa objek JSON. Kunci "success" (true/false) menentukan status;
-    bila tidak ada, dianggap berhasil. Seluruh payload disimpan sebagai
-    Command.response, sehingga device bebas menambahkan informasi lain:
-        {"success": true, "uptime_ms": 123456}
-        {"success": false, "error": "Valve is jammed"}
-    """
-    if not isinstance(data, dict):
-        raise PayloadError('Response must be a JSON object, e.g. {"success": true}.')
-    success = data.get("success", True)
-    if not isinstance(success, bool):
-        raise PayloadError('"success" must be true or false.')
-
-    # Dicari di command milik device INI saja: device tidak bisa menjawab
-    # command device lain walaupun menebak nomornya.
-    command = device.commands.filter(pk=command_id).first()
-    if command is None:
-        raise PayloadError(f"Command {command_id} does not exist for this device.")
-
-    # Bereskan yang kedaluwarsa dulu: jawaban yang terlambat tidak dihitung.
-    device.commands.expire_due()
-    command.refresh_from_db()
-    if not command.complete(success, data):
-        raise PayloadError(
-            f"Command {command_id} is already {command.get_status_display().lower()}; response ignored."
-        )
+    """Device melaporkan hasil command (aturannya di devices/control.py)."""
+    command = record_command_result(device, command_id, data)
     return Result(True, f"command {command_id} ({command.method}): {command.status}", device)

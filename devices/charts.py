@@ -59,6 +59,18 @@ class BucketIndex(Func):
         # aman ditulis langsung ke SQL.
         super().__init__(Value(start, output_field=DateTimeField()), F("ts"), width=int(width))
 
+    def as_sqlite(self, compiler, connection, **extra_context):
+        # SQLite (dipakai bila tes dijalankan tanpa MySQL) tidak punya
+        # TIMESTAMPDIFF; selisih detik dihitung lewat julianday().
+        # Hasilnya: julianday(start) - julianday(ts), lalu dibalik tandanya.
+        return self.as_sql(
+            compiler,
+            connection,
+            template="(CAST(ROUND((julianday(%(expressions)s)) * -86400) AS INTEGER) / %(width)s)",
+            arg_joiner=") - julianday(",
+            **extra_context,
+        )
+
 
 def to_ms(dt):
     """datetime -> milidetik sejak 1970 (format waktu yang dipakai Chart.js)."""

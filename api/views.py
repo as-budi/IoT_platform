@@ -65,5 +65,5 @@ def telemetry(request, token):
         return error(400, message[:1].upper() + message[1:])
 
     # 4) Simpan.
-    created_keys = save_telemetry(device, rows)
+    created_keys = save_telemetry(device, rows, protocol=Device.Protocol.HTTP)
     return JsonResponse({"saved": len(rows), "new_variables": created_keys})

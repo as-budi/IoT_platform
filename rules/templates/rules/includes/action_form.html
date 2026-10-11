@@ -1,0 +1,35 @@
+{% comment %}
+  Satu aksi di dalam formset. Field ditampilkan sesuai jenis aksi lewat
+  atribut data-for (lihat skrip di rule_form_eca.html).
+{% endcomment %}
+<div class="card action-row mb-3{% if form.DELETE.value %} d-none{% endif %}" data-action-row>
+  <div class="card-body">
+    {{ form.id }}
+    <div class="d-none">{{ form.DELETE }}</div>
+    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-5">{% include "rules/includes/field.html" with field=form.kind %}</div>
+      <div class="col-sm-5" data-for="SET_ACTUATOR SEND_COMMAND EMAIL">{% include "rules/includes/field.html" with field=form.run_on %}</div>
+      <div class="col-sm-2 text-sm-end mb-3">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-action>Remove</button>
+      </div>
+    </div>
+    <div class="row g-3" data-for="SET_ACTUATOR">
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.target_variable %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">1 = ON, 0 = OFF for on/off actuators.</div></div>
+    </div>
+    <div class="row g-3" data-for="SEND_COMMAND">
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.target_device %}</div>
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.method %}</div>
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.params %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.ttl_seconds %}</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-sm-4" data-for="ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
+      <div class="col-sm-4" data-for="EMAIL">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      {# Satu field `message` untuk alarm dan email (nama input tidak boleh kembar). #}
+      <div class="col-sm-8" data-for="ALARM EMAIL">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="ALARM">The alarm is raised when the rule activates and cleared automatically when it clears.</div>
+    </div>
+  </div>
+</div>

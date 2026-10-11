@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Alarms · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h1 class="h3 mb-0">Alarms</h1>
+  <div class="btn-group btn-group-sm" role="group" aria-label="Filter">
+    <a class="btn btn-outline-secondary{% if not show_all %} active{% endif %}" href="{% url 'rules:alarms' %}">Active</a>
+    <a class="btn btn-outline-secondary{% if show_all %} active{% endif %}" href="{% url 'rules:alarms' %}?show=all">All</a>
+  </div>
+</div>
+<p class="text-muted small">
+  Alarms are raised by rules. <strong>Acknowledge</strong> = someone is handling it.
+  <strong>Clear</strong> = the cause is gone; rules clear their own alarms automatically when they recover.
+</p>
+
+{% if show_all %}
+{% include "rules/includes/alarm_table.html" with empty_message="No alarms yet." %}
+{% else %}
+{% include "rules/includes/alarm_table.html" with empty_message="No active alarms." %}
+{% endif %}
+
+{% if is_paginated %}
+<nav class="mt-3" aria-label="Pages">
+  <ul class="pagination pagination-sm">
+    {% if page_obj.has_previous %}<li class="page-item"><a class="page-link" href="?{% if show_all %}show=all&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a></li>{% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+    {% if page_obj.has_next %}<li class="page-item"><a class="page-link" href="?{% if show_all %}show=all&{% endif %}page={{ page_obj.next_page_number }}">Next</a></li>{% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
