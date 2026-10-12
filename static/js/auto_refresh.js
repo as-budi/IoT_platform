@@ -171,8 +171,9 @@
   let pollTimer = null;
 
   // Kabar yang diabaikan oleh halaman yang tidak mendaftarkan penanganannya:
-  // "rule" (status aturan berubah) hanya penting bagi halaman aturan.
-  const IGNORED_BY_DEFAULT = ["rule"];
+  // "rule" (status aturan berubah) dan "rule_eval" (aturan dinilai ulang)
+  // hanya penting bagi halaman aturan.
+  const IGNORED_BY_DEFAULT = ["rule", "rule_eval"];
 
   function handleEvent(event) {
     const list = handlers[event.type] || [];

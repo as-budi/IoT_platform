@@ -1,0 +1,50 @@
+{% comment %}
+  Kotak "Last evaluation": apa yang dilihat rule engine saat terakhir menilai
+  aturan ini (RuleState.snapshot, dibuat oleh rules/engines/eca.py).
+  Dipakai di halaman detail dan oleh /rules/<pk>/evaluation/ (diperbarui langsung).
+{% endcomment %}
+{% with snap=state.snapshot %}
+{% if snap.when %}
+<div class="d-flex justify-content-between align-items-baseline mb-2">
+  <h2 class="h6 text-muted text-uppercase mb-0">Last evaluation</h2>
+  <span class="small text-muted">{% if state.last_evaluated_at %}{{ state.last_evaluated_at|date:"H:i:s" }} · {{ state.last_evaluated_at|timesince }} ago{% endif %}</span>
+</div>
+{% for part in evaluation_parts %}
+{% if part.data.groups %}
+<div class="small fw-semibold mt-2 mb-1">{{ part.title }} → {% include "rules/includes/truth.html" with result=part.data.result %}</div>
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-2 small">
+    <thead class="table-light">
+      <tr><th>Group</th><th>Condition</th><th class="text-end">Value</th><th>Age</th><th>Result</th></tr>
+    </thead>
+    <tbody>
+      {% for group in part.data.groups %}
+      {% for row in group.conditions %}
+      <tr>
+        {% if forloop.first %}<td rowspan="{{ group.conditions|length }}" class="text-nowrap">{% if not forloop.parentloop.first %}<span class="text-muted">OR </span>{% endif %}#{{ group.group }} {% include "rules/includes/truth.html" with result=group.result %}</td>{% endif %}
+        <td>{% if not forloop.first %}<span class="text-muted">AND </span>{% endif %}{{ row.device }} · {{ row.label }} {{ row.operator_label }} {{ row.threshold|floatformat:"-2" }}</td>
+        <td class="text-end text-nowrap">
+          {% if row.value is None %}—{% elif row.boolean %}{% if row.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ row.value|floatformat:"-2" }} {{ row.unit }}{% endif %}
+        </td>
+        <td class="text-nowrap text-muted">{% if row.age is not None %}{{ row.age }} s{% if row.source == "message" %} · new{% endif %}{% endif %}</td>
+        <td class="text-nowrap">{% include "rules/includes/truth.html" with result=row.result %}{% if row.reason %} <span class="text-muted">({{ row.reason }})</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endfor %}
+{% if not has_clear_groups %}
+<div class="small text-muted">Clear: when the condition is false → {% include "rules/includes/truth.html" with result=snap.clear.result %}</div>
+{% endif %}
+<p class="small text-muted mt-2 mb-0">
+  <strong>new</strong> = value from the message that triggered the evaluation; others are the latest stored readings.
+  Values older than {{ max_age|default:"—" }} s count as <em>unknown</em>{% if not max_age %} (no limit set){% endif %}.
+</p>
+{% else %}
+<h2 class="h6 text-muted text-uppercase">Last evaluation</h2>
+<p class="small text-muted mb-0">{% if rule.eca.event == "INACTIVITY" %}This rule checks every second whether the device has sent data.{% else %}Not evaluated yet. It is evaluated when a variable in its conditions sends data.{% endif %}</p>
+{% endif %}
+{% endwith %}

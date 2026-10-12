@@ -582,3 +582,74 @@ h1, .h1, h2, .h2, h3, .h3 {
 }
 
 .sidebar-link .badge { font-size: 0.7rem; }
+
+/* ---------- Editor kondisi "OR berisi AND" ---------- */
+.cond-group {
+  position: relative;
+  padding: 0.75rem 0.9rem 0.4rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.7rem;
+  background: var(--app-surface-2);
+}
+
+/* Tulisan OR di antara kotak grup. */
+.cond-group + .cond-group {
+  margin-top: 2.2rem;
+}
+
+.cond-group + .cond-group::before {
+  content: "OR";
+  position: absolute;
+  top: -1.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.1rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+}
+
+.cond-group:last-child { margin-bottom: 0.75rem; }
+
+.cond-group-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--app-muted);
+}
+
+/* Tulisan AND di antara baris dalam satu grup. */
+.cond-row + .cond-row::before {
+  content: "AND";
+  display: block;
+  margin: 0.15rem 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--app-muted);
+}
+
+.cond-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem 7rem auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+@media (max-width: 575.98px) {
+  .cond-fields { grid-template-columns: minmax(0, 1fr) 4.5rem 5.5rem auto; }
+}
+
+/* Tabel "apa yang dilihat mesin" di halaman detail aturan. */
+.truth { font-weight: 600; }
+.truth-true { color: #0b8a0b; }
+.truth-false { color: var(--app-muted); }
+.truth-unknown { color: #a15c00; }
+[data-bs-theme="dark"] .truth-true { color: #4cc94c; }
+[data-bs-theme="dark"] .truth-unknown { color: #f2b544; }

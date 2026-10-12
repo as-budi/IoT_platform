@@ -21,7 +21,7 @@
     <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">ECA</span></h1>
     <p class="text-muted mb-4"><strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run the actions. When the condition recovers, the rule <strong>clears</strong> and can run other actions.</p>
 
-    {% if rule_form.errors or spec_form.errors or action_formset.total_error_count %}
+    {% if rule_form.errors or spec_form.errors or action_formset.total_error_count or when_formset.total_error_count or clear_formset.total_error_count or cross_errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>
     {% endif %}
 
@@ -55,9 +55,10 @@
         </div>
         {% for error in spec_form.event.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
         {% for error in spec_form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
-        <div data-event="TELEMETRY">
-          {% include "rules/includes/field.html" with field=spec_form.variable %}
-        </div>
+        <p class="small text-muted mb-0" data-event="TELEMETRY">
+          The rule is checked every time <strong>any variable used in the conditions below</strong> sends new data.
+          Values of the other variables are taken from their latest stored reading.
+        </p>
         <div class="row g-3" data-event="INACTIVITY">
           <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
           <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.silence_seconds %}</div>
@@ -67,16 +68,24 @@
       {# ---------- 2. Condition ---------- #}
       <div class="card shadow-sm mb-3" data-event="TELEMETRY"><div class="card-body">
         <h2 class="h6 eca-heading"><span class="eca-step">2</span> If — condition</h2>
+        {% for error in cross_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <p class="small text-muted">
+          Every condition inside a box must be true (<strong>AND</strong>). The rule activates when
+          <strong>any</strong> box is true (<strong>OR</strong>).
+        </p>
+        {% include "rules/includes/condition_editor.html" with formset=when_formset empty_text="" add_label="Add OR group" %}
+
+        <h3 class="h6 mt-4">Clear when <span class="text-muted fw-normal small">(optional, for hysteresis)</span></h3>
+        {% include "rules/includes/condition_editor.html" with formset=clear_formset empty_text="No clear conditions: the rule clears as soon as the condition above is false." add_label="Add clear group" %}
+      </div></div>
+
+      {# ---------- Waktu & pengaman ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 mb-3">Timing &amp; safeguards</h2>
         <div class="row g-3">
-          <div class="col-4 col-md-3">{% include "rules/includes/field.html" with field=spec_form.operator %}</div>
-          <div class="col-8 col-md-4">{% include "rules/includes/field.html" with field=spec_form.threshold %}</div>
-          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.duration_seconds %}</div>
-        </div>
-        <h3 class="h6 mt-2">Clear when <span class="text-muted fw-normal small">(optional hysteresis)</span></h3>
-        <div class="row g-3">
-          <div class="col-4 col-md-3">{% include "rules/includes/field.html" with field=spec_form.clear_operator hide_help=True %}</div>
-          <div class="col-8 col-md-4">{% include "rules/includes/field.html" with field=spec_form.clear_threshold hide_help=True %}</div>
-          <div class="col-md-5 small text-muted pt-md-4">Example: activate when &lt; 20, clear when &gt; 30. Values between 20 and 30 change nothing, so the pump does not flick on and off.</div>
+          <div class="col-md-4" data-event="TELEMETRY">{% include "rules/includes/field.html" with field=spec_form.duration_seconds %}</div>
+          <div class="col-md-4">{% include "rules/includes/field.html" with field=spec_form.cooldown_seconds %}</div>
+          <div class="col-md-4" data-event="TELEMETRY">{% include "rules/includes/field.html" with field=spec_form.max_age_seconds %}</div>
         </div>
       </div></div>
 
@@ -95,9 +104,6 @@
           {% include "rules/includes/action_form.html" with form=action_formset.empty_form %}
         </template>
         <button type="button" class="btn btn-sm btn-outline-primary" id="add-action">Add action</button>
-        <div class="row g-3 mt-2">
-          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.cooldown_seconds %}</div>
-        </div>
       </div></div>
 
       <button type="submit" class="btn btn-primary">Save rule</button>
@@ -162,6 +168,94 @@
     total.value = index + 1;
     wire(row);
   });
+
+  // --- Editor kondisi "OR berisi AND" -------------------------------------------
+  // Setiap baris punya input tersembunyi berisi nomor grup. Baris dengan nomor
+  // yang sama ditampilkan dalam satu kotak (AND); antar-kotak bertuliskan OR.
+  // Server merapikan nomor grup saat menyimpan (lihat save_conditions di views.py).
+  function setupConditionEditor(editor, startWithGroup) {
+    const prefix = editor.dataset.prefix;
+    const total = editor.querySelector(`input[name='${prefix}-TOTAL_FORMS']`);
+    const groupsBox = editor.querySelector("[data-groups]");
+    const pool = editor.querySelector("[data-pool]");
+    const emptyText = editor.querySelector("[data-empty-text]");
+
+    function groupBox(number) {
+      let box = groupsBox.querySelector(`[data-group='${number}']`);
+      if (box) return box;
+      box = document.createElement("div");
+      box.className = "cond-group";
+      box.dataset.group = number;
+      box.innerHTML =
+        '<div class="cond-group-head"><span>All of these are true</span>' +
+        '<button type="button" class="btn btn-sm btn-link text-danger p-0" data-remove-group>Remove group</button></div>' +
+        '<div data-rows></div>' +
+        '<button type="button" class="btn btn-sm btn-link px-0" data-add-row>+ AND condition</button>';
+      box.querySelector("[data-add-row]").addEventListener("click", () => addRow(number));
+      box.querySelector("[data-remove-group]").addEventListener("click", () => {
+        box.querySelectorAll("[data-cond-row]").forEach(removeRow);
+      });
+      // Kotak diurutkan menurut nomor grupnya.
+      const after = [...groupsBox.children].find((el) => Number(el.dataset.group) > number);
+      groupsBox.insertBefore(box, after || null);
+      return box;
+    }
+
+    function refresh() {
+      groupsBox.querySelectorAll(".cond-group").forEach((box) => {
+        if (!box.querySelector("[data-cond-row]")) box.remove();
+      });
+      emptyText.hidden = !!groupsBox.querySelector(".cond-group") || !emptyText.textContent.trim();
+    }
+
+    function place(row) {
+      const input = row.querySelector("[data-group-input]");
+      const number = parseInt(input.value, 10) || 1;
+      input.value = number;
+      groupBox(number).querySelector("[data-rows]").appendChild(row);
+    }
+
+    function removeRow(row) {
+      // Baris tidak dibuang dari halaman: DELETE dicentang lalu baris disimpan
+      // di tempat tersembunyi, supaya formset Django tetap menerima semua barisnya.
+      row.querySelector("input[name$='-DELETE']").checked = true;
+      pool.appendChild(row);
+      refresh();
+    }
+
+    function wireRow(row) {
+      row.querySelector("[data-remove-condition]").addEventListener("click", () => removeRow(row));
+    }
+
+    function addRow(number) {
+      const index = parseInt(total.value, 10);
+      const html = editor.querySelector("[data-row-template]").innerHTML.replace(/__prefix__/g, index);
+      const holder = document.createElement("div");
+      holder.innerHTML = html.trim();
+      const row = holder.firstElementChild;
+      row.querySelector("[data-group-input]").value = number;
+      total.value = index + 1;
+      wireRow(row);
+      place(row);
+      refresh();
+      return row;
+    }
+
+    function nextGroupNumber() {
+      const numbers = [...groupsBox.querySelectorAll(".cond-group")].map((b) => Number(b.dataset.group));
+      return numbers.length ? Math.max(...numbers) + 1 : 1;
+    }
+
+    [...pool.querySelectorAll("[data-cond-row]")].forEach((row) => {
+      wireRow(row);
+      if (!row.querySelector("input[name$='-DELETE']").checked) place(row);
+    });
+    editor.querySelector("[data-add-group]").addEventListener("click", () => addRow(nextGroupNumber()));
+    if (startWithGroup && !groupsBox.querySelector(".cond-group")) addRow(1);
+    refresh();
+  }
+  const editors = form.querySelectorAll("[data-cond-editor]");
+  editors.forEach((editor, index) => setupConditionEditor(editor, index === 0));
 
   // Aturan baru tanpa aksi: langsung sediakan satu baris kosong.
   if (!form.querySelector("#action-list [data-action-row]")) {

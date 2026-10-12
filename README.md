@@ -23,6 +23,9 @@ Penjelasan konsep:
 - [docs/tahap-06-coap.md](docs/tahap-06-coap.md) — komunikasi dua arah lewat CoAP (UDP, Observe, coap_server, ESP32)
 - [docs/rule-engine-iot.md](docs/rule-engine-iot.md) — rule engine pada platform IoT: mekanisme dan enam model
 - [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md) — rule engine ECA: aturan otomatis, alarm, worker rule_engine
+- [docs/contoh-data-dan-aturan.md](docs/contoh-data-dan-aturan.md) — pengguna, device, dan aturan ECA multi-variabel contoh, beserta skenario mencobanya
+- [docs/eca-mekanisme.md](docs/eca-mekanisme.md) — ECA lebih dalam: kondisi AND/OR, logika tiga nilai, alur eksekusi, query database, contoh linimasa
+- [docs/rencana-ota.md](docs/rencana-ota.md) — rencana pembaruan firmware over-the-air (OTA): komponen, risiko, tahapan
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 
 ## Prasyarat
@@ -229,7 +232,9 @@ diimplementasikan.
 
 ```bash
 python manage.py migrate                      # tabel rules_*
+python manage.py seed_rules                   # 6 aturan contoh (setelah seed_demo)
 python manage.py rule_engine                  # worker, terminal terpisah dari runserver
+python manage.py send_telemetry "Fish Pond Node" dissolved_oxygen=3.5   # kirim data tiruan
 ```
 
 Dengan `REDIS_URL` terisi, data diteruskan ke worker lewat antrean Redis. Tanpa Redis

@@ -22,16 +22,16 @@ from realtime.routing import DASHBOARD_WS_PATH, device_ws_path
 
 from .engines import ENGINES
 from .events import originator_device_id
-from .forms import ActionFormSet, EcaSpecForm, RuleForm
-from .models import Alarm, Rule, RuleExecution, RuleModel, RuleState
+from .forms import ActionFormSet, ClearFormSet, EcaSpecForm, RuleForm, WhenFormSet, cross_check
+from .models import Alarm, EcaSpec, Rule, RuleExecution, RuleModel, RuleState
 
 EXECUTIONS_PAGE_SIZE = 25
 
 
 def visible_rules(user):
     queryset = Rule.objects.select_related(
-        "owner", "state", "eca", "eca__variable__device", "eca__device"
-    )
+        "owner", "state", "eca", "eca__device"
+    ).prefetch_related("eca__conditions__variable__device")
     if user.is_admin:
         return queryset
     return queryset.filter(owner=user)
@@ -157,19 +157,21 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         owner = rule.owner if rule else self.request.user
         devices = visible_devices(owner).order_by("name")
         spec = getattr(rule, "eca", None) if rule else None
-        return (
-            RuleForm(data, instance=rule, prefix="rule"),
-            EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
-            ActionFormSet(data, instance=rule or Rule(), prefix="actions", form_kwargs={"devices": devices}),
-        )
+        spec_instance = spec or EcaSpec()
+        kwargs = {"form_kwargs": {"devices": devices}}
+        return {
+            "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+            "spec_form": EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
+            "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
+            "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
+            "action_formset": ActionFormSet(data, instance=rule or Rule(), prefix="actions", **kwargs),
+        }
 
-    def render_forms(self, rule, forms):
-        rule_form, spec_form, action_formset = forms
+    def render_forms(self, rule, forms, cross_errors=()):
         return render(self.request, self.template_name, {
             "rule": rule,
-            "rule_form": rule_form,
-            "spec_form": spec_form,
-            "action_formset": action_formset,
+            **forms,
+            "cross_errors": cross_errors,
             "engine": ENGINES[RuleModel.ECA],
         })
 
@@ -180,20 +182,32 @@ class EcaRuleFormView(LoginRequiredMixin, View):
     def post(self, request, pk=None):
         rule = self.get_rule()
         forms = self.build_forms(rule, request.POST)
-        rule_form, spec_form, action_formset = forms
-        if not (rule_form.is_valid() and spec_form.is_valid() and action_formset.is_valid()):
+        # all() akan berhenti di form pertama yang gagal; daftar ini memastikan
+        # SEMUA form divalidasi supaya semua pesan error tampil sekaligus.
+        valid = [form.is_valid() for form in forms.values()]
+        if not all(valid):
             return self.render_forms(rule, forms)
+        event = forms["spec_form"].cleaned_data["event"]
+        cross_errors = cross_check(event, forms["when_formset"], forms["clear_formset"])
+        if cross_errors:
+            return self.render_forms(rule, forms, cross_errors)
 
-        # Ketiga bagian disimpan dalam satu transaksi: semuanya atau tidak sama sekali.
+        # Semua bagian disimpan dalam satu transaksi: semuanya atau tidak sama sekali.
         with transaction.atomic():
-            saved = rule_form.save(commit=False)
+            saved = forms["rule_form"].save(commit=False)
             if rule is None:
                 saved.owner = request.user
                 saved.model = RuleModel.ECA
             saved.save()
-            spec = spec_form.save(commit=False)
+            spec = forms["spec_form"].save(commit=False)
             spec.rule = saved
             spec.save()
+            if event == EcaSpec.Event.TELEMETRY:
+                save_conditions(forms["when_formset"], spec)
+                save_conditions(forms["clear_formset"], spec)
+            else:
+                spec.conditions.all().delete()  # event "device diam" tidak memakai kondisi
+            action_formset = forms["action_formset"]
             action_formset.instance = saved
             actions = action_formset.save(commit=False)
             for removed in action_formset.deleted_objects:
@@ -208,6 +222,30 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         return redirect("rules:detail", pk=saved.pk)
 
 
+def save_conditions(formset, spec):
+    """Simpan kondisi satu peran, lalu rapikan nomor grup menjadi 1, 2, 3, ...
+
+    Nomor grup dari halaman bisa "berlubang" (mis. 1, 4) setelah sebuah grup
+    dihapus; yang penting hanya kondisi mana yang segrup.
+    """
+    formset.instance = spec
+    formset.save(commit=False)
+    for removed in formset.deleted_objects:
+        removed.delete()
+    live = [f for f in formset.live_forms() if f.cleaned_data.get("variable")]
+    numbers = sorted({f.cleaned_data.get("group") or 1 for f in live})
+    renumber = {number: index for index, number in enumerate(numbers, start=1)}
+    position = {}
+    for form in live:
+        condition = form.instance
+        condition.spec = spec
+        condition.role = formset.role
+        condition.group = renumber[form.cleaned_data.get("group") or 1]
+        condition.order = position.setdefault(condition.group, 0)
+        position[condition.group] += 1
+        condition.save()
+
+
 def eca_create_or_planned(request, model):
     """/rules/new/<model>/: ECA ke form; model lain belum tersedia."""
     if model == RuleModel.ECA.lower():
@@ -218,6 +256,35 @@ def eca_create_or_planned(request, model):
         raise Http404("Unknown rule model.")
     messages.info(request, f"The {engine.label} model is planned for a later stage and cannot be used yet.")
     return redirect("rules:new")
+
+
+def evaluation_context(rule):
+    """Data untuk kotak "Last evaluation" (rules/includes/evaluation.html)."""
+    state = RuleState.objects.filter(rule=rule).first()
+    snapshot = state.snapshot if state else {}
+    spec = getattr(rule, "eca", None)
+    return {
+        "rule": rule,
+        "state": state,
+        "evaluation_parts": [
+            {"title": "Activate when", "data": snapshot.get("when", {})},
+            {"title": "Clear when", "data": snapshot.get("clear", {})},
+        ],
+        "has_clear_groups": bool(spec and spec.has_hysteresis),
+        "max_age": spec.max_age_seconds if spec else None,
+    }
+
+
+def rule_evaluation(request, pk):
+    """GET /rules/<pk>/evaluation/ -> potongan HTML kotak "Last evaluation".
+
+    Dipanggil JavaScript halaman detail setiap ada kabar "rule_eval", sehingga
+    tabel nilai dan hasil kondisi ikut berubah tanpa memuat ulang halaman.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not logged in."}, status=401)
+    rule = get_object_or_404(visible_rules(request.user), pk=pk)
+    return render(request, "rules/includes/evaluation.html", evaluation_context(rule))
 
 
 class RuleDetailView(LoginRequiredMixin, TemplateView):
@@ -234,6 +301,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             actions=rule.actions.select_related("target_variable__device", "target_device"),
             executions=executions,
             alarms=rule.alarms.select_related("device")[:10],
+            **{k: v for k, v in evaluation_context(rule).items() if k not in ("rule", "state")},
         )
         # Halaman berlangganan kabar dari device asal aturan (lihat rules/events.py).
         device_id = originator_device_id(rule)

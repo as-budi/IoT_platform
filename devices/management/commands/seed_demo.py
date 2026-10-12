@@ -21,11 +21,13 @@ User = get_user_model()
 
 DEMO_PASSWORD = "demo12345"
 
-# username -> (role, nama depan)
+# username -> (role, nama depan). Email contoh: <username>@example.com.
 DEMO_USERS = {
     "admin": (User.Role.ADMIN, "Admin"),
     "budi": (User.Role.USER, "Budi"),
     "siti": (User.Role.USER, "Siti"),
+    "andi": (User.Role.USER, "Andi"),   # peternakan ayam & kolam ikan
+    "rina": (User.Role.USER, "Rina"),   # gudang pendingin
 }
 
 # Lokasi contoh: nama -> (latitude, longitude, deskripsi).
@@ -34,6 +36,9 @@ DEMO_LOCATIONS = {
     "Server room": (-7.952900, 112.614500, "Main server room, ground floor."),
     "Electronics lab": (-7.953300, 112.614100, "Teaching laboratory."),
     "Greenhouse A": (-7.946500, 112.609800, "Research greenhouse."),
+    "Poultry house": (-7.938200, 112.602400, "Broiler house, 2,000 birds."),
+    "Fish pond": (-7.938900, 112.603100, "Tilapia pond, 200 m²."),
+    "Cold storage": (-7.955100, 112.616900, "Vaccine and food cold room, 2–8 °C."),
 }
 
 # Satu device = satu alat fisik, dengan beberapa variabel.
@@ -53,6 +58,25 @@ DEMO_DEVICES = [
         ("humidity", "Air humidity", "%", 75, 12),
         ("soil_moisture", "Soil moisture", "%", 40, 15),
     ]),
+    # Device kedua di greenhouse yang sama: dipakai aturan lintas device.
+    ("siti", "Greenhouse Weather Station", "rain gauge + lux sensor", "Greenhouse A", [
+        ("rain", "Rainfall", "mm/h", 0.3, 0.3),
+        ("light", "Light", "lux", 20000, 15000),
+    ]),
+    ("andi", "Poultry House Node", "ESP32 + SHT31 + MQ-137", "Poultry house", [
+        ("temperature", "Temperature", "°C", 28, 3),
+        ("humidity", "Humidity", "%", 65, 8),
+        ("ammonia", "Ammonia", "ppm", 10, 5),
+    ]),
+    ("andi", "Fish Pond Node", "ESP32 + DO + pH probe", "Fish pond", [
+        ("water_temp", "Water temperature", "°C", 28, 2),
+        ("dissolved_oxygen", "Dissolved oxygen", "mg/L", 6, 1.5),
+        ("ph", "pH", "", 7.2, 0.4),
+    ]),
+    ("rina", "Cold Storage Unit", "ESP32 + DS18B20 + DHT22", "Cold storage", [
+        ("temperature", "Temperature", "°C", 5, 1.5),
+        ("humidity", "Humidity", "%", 70, 8),
+    ]),
 ]
 
 # Aktuator: (pemilik, nama device, tipe, lokasi,
@@ -67,6 +91,15 @@ DEMO_ACTUATORS = [
     ]),
     ("siti", "Greenhouse Node", "ESP32 + soil sensor", "Greenhouse A", [
         ("pump", "Water pump", "", BOOLEAN, None, None, [0, 1]),
+    ]),
+    ("andi", "Poultry House Node", "ESP32 + SHT31 + MQ-137", "Poultry house", [
+        ("exhaust_fan", "Exhaust fan", "", BOOLEAN, None, None, [0, 1]),
+    ]),
+    ("andi", "Fish Pond Node", "ESP32 + DO + pH probe", "Fish pond", [
+        ("aerator", "Aerator", "", BOOLEAN, None, None, [0, 1]),
+    ]),
+    ("rina", "Cold Storage Unit", "ESP32 + DS18B20 + DHT22", "Cold storage", [
+        ("compressor_boost", "Compressor boost", "", BOOLEAN, None, None, [0, 1]),
     ]),
 ]
 
@@ -84,7 +117,7 @@ class Command(BaseCommand):
         for username, (role, first_name) in DEMO_USERS.items():
             user, created = User.objects.get_or_create(
                 username=username,
-                defaults={"role": role, "first_name": first_name},
+                defaults={"role": role, "first_name": first_name, "email": f"{username}@example.com"},
             )
             if created:
                 # set_password menyimpan password sebagai hash, bukan teks asli.
@@ -132,6 +165,7 @@ class Command(BaseCommand):
                     # datanya tampak seperti bacaan sensor.
                     wave = math.sin(2 * math.pi * step / steps)
                     value = center + spread * 0.6 * wave + random.uniform(-0.2, 0.2) * spread
+                    value = max(value, 0)  # curah hujan, cahaya, dll. tidak pernah negatif
                     rows.append(Telemetry(variable=variable, value=round(value, 2), ts=ts))
                 # bulk_create menyimpan ratusan baris dalam sedikit query.
                 Telemetry.objects.bulk_create(rows, batch_size=500)
@@ -163,6 +197,7 @@ class Command(BaseCommand):
                 self.seed_actuator(variable, owner, states, now, steps)
 
         self.stdout.write(self.style.SUCCESS("Done."))
+        self.stdout.write("Sample rules: python manage.py seed_rules")
 
     def seed_actuator(self, variable, owner, states, now, steps):
         """Riwayat 24 jam: device melapor keadaannya tiap 10 menit, keadaan

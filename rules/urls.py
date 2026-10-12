@@ -14,6 +14,7 @@ urlpatterns = [
     path("new/", views.RuleModelPickerView.as_view(), name="new"),
     path("new/<slug:model>/", views.eca_create_or_planned, name="new_model"),
     path("<int:pk>/", views.RuleDetailView.as_view(), name="detail"),
+    path("<int:pk>/evaluation/", views.rule_evaluation, name="evaluation"),
     path("<int:pk>/edit/", views.EcaRuleFormView.as_view(), name="edit"),
     path("<int:pk>/toggle/", views.RuleToggleView.as_view(), name="toggle"),
     path("<int:pk>/delete/", views.RuleDeleteView.as_view(), name="delete"),

@@ -70,7 +70,7 @@
         <dl class="row small mb-0">
           <dt class="col-6 fw-normal text-muted">Status</dt>
           <dd class="col-6">{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled %}</dd>
-          <dt class="col-6 fw-normal text-muted">Last value</dt>
+          <dt class="col-6 fw-normal text-muted" title="Value of the variable whose data triggered the last evaluation">Trigger value</dt>
           <dd class="col-6" data-live="rule-last-value">{% if state.last_value is not None %}{{ state.last_value|floatformat:"-2" }}{% else %}—{% endif %}</dd>
           <dt class="col-6 fw-normal text-muted">Pending since</dt>
           <dd class="col-6">{% if state.pending_since %}{{ state.pending_since|time:"H:i:s" }}{% else %}—{% endif %}</dd>
@@ -86,6 +86,11 @@
     </div>
   </div>
 </div>
+
+{# Apa yang dilihat rule engine saat terakhir menilai aturan ini. #}
+<div class="card shadow-sm mb-4"><div class="card-body" data-evaluation data-url="{% url 'rules:evaluation' rule.pk %}">
+  {% include "rules/includes/evaluation.html" %}
+</div></div>
 
 {% if alarms %}
 <h2 class="h5 mb-3">Alarms from this rule</h2>
@@ -106,6 +111,7 @@
           <td><span class="badge rule-state{% if execution.transition == "ACTIVATE" %} rule-state-active{% endif %}">{{ execution.get_transition_display }}</span></td>
           <td class="text-end">{% if execution.value is not None %}{{ execution.value|floatformat:"-2" }}{% else %}—{% endif %}</td>
           <td class="small">
+            {% if execution.snapshot %}<div class="text-muted mb-1">Values: {% for label, value in execution.snapshot.items %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
             {% for result in execution.results %}
             <div class="{% if not result.ok %}text-danger{% endif %}">{% if result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
             {% empty %}<span class="text-muted">no actions</span>{% endfor %}
@@ -133,33 +139,36 @@
 <script>
 /*
  * Halaman aturan berlangganan kabar dari device asal aturan (rules/events.py).
- *   telemetry  -> nilai variabel pemicu diperbarui di tempat (tanpa muat ulang)
+ *   rule_eval  -> aturan ini dinilai ulang -> kotak "Last evaluation" diambil ulang
  *   rule       -> aturan ini berganti status / punya log baru  -> muat ulang
  *   alarm      -> alarm dari aturan ini berubah                 -> muat ulang
- * Kabar lain (aturan lain, desired, command) diabaikan.
+ * Kabar lain (data sensor, aturan lain, desired, command) diabaikan.
  * return true = sudah ditangani; false = halaman perlu dimuat ulang.
  */
 (function () {
   "use strict";
   if (!window.AutoRefresh) return;
   const RULE_ID = {{ rule.pk }};
-  const TRIGGER_VARIABLE = {{ rule.eca.variable_id|default:"null" }};
-  const lastValue = document.querySelector("[data-live='rule-last-value']");
-  const lastEvaluated = document.querySelector("[data-live='rule-last-evaluated']");
+  const box = document.querySelector("[data-evaluation]");
+  let loading = false;
 
-  AutoRefresh.on("telemetry", (event) => {
-    const points = event.points.filter((p) => p.variable === TRIGGER_VARIABLE);
-    if (points.length) {
-      const latest = points[points.length - 1];
-      lastValue.textContent = String(Number(latest.value.toFixed(2)));
-      lastEvaluated.textContent = "just now";
-    }
+  async function reloadEvaluation() {
+    if (loading) return;
+    loading = true;
+    try {
+      const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
+      if (response.ok) box.innerHTML = await response.text();
+    } catch (err) { /* dicoba lagi pada kabar berikutnya */ }
+    loading = false;
+  }
+
+  AutoRefresh.on("rule_eval", (event) => {
+    if (event.rule === RULE_ID) reloadEvaluation();
     return true;
   });
   AutoRefresh.on("rule", (event) => event.rule !== RULE_ID);
   AutoRefresh.on("alarm", (event) => event.rule !== RULE_ID);
-  AutoRefresh.on("desired", () => true);
-  AutoRefresh.on("command", () => true);
+  ["telemetry", "desired", "command"].forEach((type) => AutoRefresh.on(type, () => true));
 })();
 </script>
 {% endblock %}

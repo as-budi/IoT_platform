@@ -48,21 +48,26 @@ Tabel aksi, keadaan, log, dan alarm dipakai bersama.
 ## 2. Bentuk aturan ECA
 
 ```
-WHEN  new value of Greenhouse Node · Soil moisture       (event)
-IF    value < 20 for 60 s                                 (condition + durasi)
-THEN  set Water pump to ON; raise a major alarm           (aksi "when the rule activates")
-CLEAR when value > 30                                     (histeresis)
-THEN  set Water pump to OFF; clear the alarm              (aksi "when the rule clears")
+WHEN  new data for Soil moisture, Temperature                        (event)
+IF    (Soil moisture < 20 AND Temperature > 30) OR Soil moisture < 10
+      for 60 s                                                        (condition + durasi)
+THEN  set Water pump to ON; raise a major alarm                       (aksi "when the rule activates")
+CLEAR when Soil moisture > 30                                         (histeresis)
+THEN  set Water pump to OFF; clear the alarm                          (aksi "when the rule clears")
 ```
 
-| Bagian | Field (`EcaSpec`) | Keterangan |
+> Mekanisme lengkap, termasuk logika tiga nilai, query database, dan contoh linimasa, ada di
+> **[eca-mekanisme.md](eca-mekanisme.md)**.
+
+| Bagian | Tempat | Keterangan |
 |---|---|---|
-| Event | `event` | `TELEMETRY` (nilai baru sebuah variabel) atau `INACTIVITY` (device tidak mengirim data) |
-| Condition | `variable`, `operator`, `threshold` | `>`, `≥`, `<`, `≤`, `=`, `≠`; nilai on/off memakai 1/0 |
-| Durasi | `duration_seconds` | kondisi harus bertahan sekian detik |
-| Clear | `clear_operator`, `clear_threshold` | opsional; kosong = pulih begitu kondisi tidak terpenuhi |
-| Cooldown | `cooldown_seconds` | jeda minimum antara dua aktivasi |
-| Device diam | `device`, `silence_seconds` | untuk event `INACTIVITY` |
+| Event | `EcaSpec.event` | `TELEMETRY` (data baru untuk salah satu variabel di kondisi) atau `INACTIVITY` (device tidak mengirim data) |
+| Condition | tabel `EcaCondition`, role `WHEN` | grup-grup kondisi `variabel op ambang`: AND di dalam grup, OR antar-grup. Operator `>`, `≥`, `<`, `≤`, `=`, `≠`; nilai on/off memakai 1/0 |
+| Clear | `EcaCondition`, role `CLEAR` | opsional, bentuk sama; kosong = pulih begitu kondisi bernilai salah |
+| Durasi | `EcaSpec.duration_seconds` | kondisi harus bertahan sekian detik |
+| Cooldown | `EcaSpec.cooldown_seconds` | jeda minimum antara dua aktivasi |
+| Batas umur data | `EcaSpec.max_age_seconds` | nilai variabel yang lebih tua dari ini dianggap *tidak diketahui* |
+| Device diam | `EcaSpec.device`, `silence_seconds` | untuk event `INACTIVITY` |
 
 Aksi (`RuleAction`, boleh lebih dari satu, masing-masing dijalankan saat *activate* atau
 *clear*):
@@ -75,7 +80,9 @@ Aksi (`RuleAction`, boleh lebih dari satu, masing-masing dijalankan saat *activa
 | Send email | penerima + pesan | penerima kosong = email pemilik aturan |
 
 Pesan alarm/email boleh memakai placeholder: `{rule}`, `{device}`, `{variable}`, `{value}`,
-dan `{threshold}`.
+`{threshold}`, dan `{values}`. `{variable}` dan `{value}` merujuk ke variabel yang datanya
+memicu penilaian. Untuk aturan dengan beberapa variabel, `{values}` lebih jelas karena
+menuliskan semuanya, misalnya `Soil moisture = 15, Temperature = 32`.
 
 ## 3. Mekanisme: aturan sebagai mesin keadaan kecil
 
@@ -95,8 +102,9 @@ IDLE, tidak pada setiap pesan. Sifat ini menyelesaikan beberapa masalah dari
 rule-engine-iot.md bagian 4:
 
 - **Flapping.** Durasi, histeresis, dan cooldown menahan aturan agar tidak menyala-padam
-  terus. Form menolak histeresis yang tumpang tindih, misalnya aktif < 20 dan clear > 15:
-  nilai 17 memenuhi keduanya.
+  terus. Untuk aturan satu variabel, form menolak histeresis yang tumpang tindih, misalnya
+  aktif < 20 dan clear > 15 (nilai 17 memenuhi keduanya). Untuk ekspresi gabungan, mesin
+  tidak mengaktifkan aturan selama ekspresi clear juga benar.
 - **Loop.** Aksi *set pump = ON* membuat device melapor `pump = 1`. Laporan itu bisa memicu
   penilaian lagi, tetapi aturan sudah ACTIVE, jadi tidak ada aksi baru.
 - **Idempotensi.** *Set actuator* dilewati bila desired sudah bernilai sama. *Raise alarm*
@@ -196,6 +204,7 @@ Kabar dari proses worker hanya sampai ke browser bila channel layer-nya Redis
 |---|---|
 | `rules/models.py` | `RuleModel`, `Rule`, `EcaSpec`, `RuleAction`, `RuleState`, `RuleExecution`, `Alarm` |
 | `rules/engines/` | `base.py`, `eca.py` (implementasi), lima file model yang direncanakan, `ENGINES` |
+| `rules/conditions.py` | penilaian ekspresi OR-berisi-AND dengan logika tiga nilai (tanpa database) |
 | `rules/actions.py` | empat jenis aksi, `run_actions()`, placeholder pesan |
 | `rules/queue.py` | bentuk pesan, `publish()`, Redis `push`/`pop`, `process()` |
 | `rules/management/commands/rule_engine.py` | worker `python manage.py rule_engine` |

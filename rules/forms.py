@@ -1,9 +1,11 @@
 """
 Form untuk membuat aturan ECA.
 
-Satu halaman berisi tiga bagian yang disimpan bersamaan:
+Satu halaman berisi beberapa bagian yang disimpan bersamaan:
     RuleForm           nama, deskripsi, aktif
-    EcaSpecForm        event, condition, clear (histeresis), durasi, cooldown
+    EcaSpecForm        event, durasi, cooldown, batas umur data
+    WhenFormSet        kondisi aktif, dikelompokkan: OR antar-grup, AND di dalam grup
+    ClearFormSet       kondisi clear (opsional, untuk histeresis), bentuk yang sama
     ActionFormSet      satu atau lebih aksi (formset = kumpulan form sejenis)
 
 Semua pilihan device/variabel dibatasi ke device yang boleh dilihat pemilik
@@ -18,7 +20,7 @@ from django.forms import inlineformset_factory
 from accounts.forms import BootstrapFormMixin
 from devices.models import Variable
 
-from .models import Alarm, EcaSpec, Operator, Rule, RuleAction
+from .models import Alarm, EcaCondition, EcaSpec, Operator, Rule, RuleAction
 
 LOW = {Operator.LT, Operator.LTE}
 HIGH = {Operator.GT, Operator.GTE}
@@ -38,82 +40,133 @@ class RuleForm(BootstrapFormMixin, forms.ModelForm):
 
 
 class EcaSpecForm(BootstrapFormMixin, forms.ModelForm):
+    """Bagian ECA selain kondisi: event, durasi, cooldown, batas umur data."""
+
     class Meta:
         model = EcaSpec
         fields = (
             "event",
-            "variable",
-            "operator",
-            "threshold",
-            "duration_seconds",
             "device",
             "silence_seconds",
-            "clear_operator",
-            "clear_threshold",
+            "duration_seconds",
             "cooldown_seconds",
+            "max_age_seconds",
         )
-        field_classes = {"variable": VariableChoiceField}
         widgets = {"event": forms.RadioSelect}
-        help_texts = {
-            "threshold": "On/off variables use 1 for ON and 0 for OFF.",
-            "clear_threshold": "Leave both clear fields blank to clear as soon as the condition stops holding.",
-        }
+
+    def __init__(self, *args, devices, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["device"].queryset = devices
+        self.fields["device"].empty_label = "— Choose a device —"
+        # RadioSelect tidak cocok dengan class "form-select" dari BootstrapFormMixin.
+        self.fields["event"].widget.attrs["class"] = "form-check-input"
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("event") == EcaSpec.Event.INACTIVITY:
+            if not cleaned.get("device"):
+                self.add_error("device", "Required for this event.")
+            if not cleaned.get("silence_seconds"):
+                self.add_error("silence_seconds", "Enter how many seconds without data count as silent.")
+            cleaned["duration_seconds"] = 0
+        else:
+            cleaned["device"] = None
+            cleaned["silence_seconds"] = None
+        return cleaned
+
+
+class ConditionForm(BootstrapFormMixin, forms.ModelForm):
+    """Satu baris kondisi: <variabel> <operator> <ambang>, dengan nomor grupnya.
+
+    Nomor grup (field tersembunyi) diisi JavaScript halaman: baris dengan nomor
+    yang sama digabung AND, grup yang berbeda digabung OR.
+    """
+
+    class Meta:
+        model = EcaCondition
+        fields = ("group", "variable", "operator", "threshold")
+        field_classes = {"variable": VariableChoiceField}
+        widgets = {"group": forms.HiddenInput(attrs={"data-group-input": ""})}
 
     def __init__(self, *args, devices, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["variable"].queryset = (
             Variable.objects.filter(device__in=devices).select_related("device").order_by("device__name", "key")
         )
-        self.fields["device"].queryset = devices
-        self.fields["variable"].empty_label = "— Choose a variable —"
-        self.fields["device"].empty_label = "— Choose a device —"
-        self.fields["operator"].choices = [("", "—")] + Operator.choices
-        self.fields["clear_operator"].choices = [("", "—")] + Operator.choices
-        # RadioSelect tidak cocok dengan class "form-select" dari BootstrapFormMixin.
-        self.fields["event"].widget.attrs["class"] = "form-check-input"
+        self.fields["variable"].empty_label = "— Variable —"
+        self.fields["operator"].choices = Operator.choices
+        self.fields["threshold"].widget.attrs["placeholder"] = "value"
 
-    def clean(self):
-        cleaned = super().clean()
-        event = cleaned.get("event")
-        if event == EcaSpec.Event.TELEMETRY:
-            for field in ("variable", "operator", "threshold"):
-                if cleaned.get(field) in (None, ""):
-                    self.add_error(field, "Required for this event.")
-            cleaned["device"] = None
-            cleaned["silence_seconds"] = None
-            self.check_hysteresis(cleaned)
-        elif event == EcaSpec.Event.INACTIVITY:
-            if not cleaned.get("device"):
-                self.add_error("device", "Required for this event.")
-            if not cleaned.get("silence_seconds"):
-                self.add_error("silence_seconds", "Enter how many seconds without data count as silent.")
-            # Kondisi "diam" dan pulihnya sudah tertentu; field ini tidak dipakai.
-            cleaned.update(
-                variable=None, operator="", threshold=None, clear_operator="",
-                clear_threshold=None, duration_seconds=0,
-            )
-        return cleaned
+    def has_changed(self):
+        # Baris baru yang variabel dan ambangnya belum diisi dianggap kosong dan
+        # dilewati (operator dan nomor grup selalu terisi oleh halaman).
+        if self.instance.pk:
+            return super().has_changed()
+        return bool({"variable", "threshold"} & set(self.changed_data))
 
-    def check_hysteresis(self, cleaned):
-        """Kondisi clear tidak boleh tumpang tindih dengan kondisi aktif.
 
-        Contoh benar : aktif bila < 20, clear bila > 30 (jeda 20–30 = histeresis).
-        Contoh salah : aktif bila < 20, clear bila > 15 -> nilai 17 memenuhi
-        keduanya, sehingga aturan bisa aktif dan clear bergantian terus.
-        """
-        op, threshold = cleaned.get("operator"), cleaned.get("threshold")
-        clear_op, clear_threshold = cleaned.get("clear_operator"), cleaned.get("clear_threshold")
-        if bool(clear_op) != (clear_threshold is not None):
-            self.add_error("clear_threshold", "Fill in both the clear operator and the clear threshold, or neither.")
-            return
-        if not clear_op or threshold is None:
-            return
+class BaseConditionFormSet(forms.BaseInlineFormSet):
+    """Kumpulan kondisi untuk satu peran (WHEN atau CLEAR) dari satu aturan."""
+
+    role = None
+
+    def get_queryset(self):
+        return super().get_queryset().filter(role=self.role)
+
+    def live_forms(self):
+        """Form yang berisi kondisi dan tidak dihapus."""
+        return [
+            form for form in self.forms
+            if form.has_changed() or form.instance.pk
+            if not (self.can_delete and self._should_delete_form(form))
+        ]
+
+    def condition_count(self):
+        return len([f for f in self.live_forms() if f.cleaned_data.get("variable")])
+
+
+def condition_formset(role):
+    """Formset kondisi untuk satu peran. Prefix-nya "when" atau "clear"."""
+    formset = inlineformset_factory(
+        EcaSpec,
+        EcaCondition,
+        form=ConditionForm,
+        formset=BaseConditionFormSet,
+        extra=0,
+        can_delete=True,
+        max_num=20,
+        validate_max=True,
+    )
+    return type(f"{role.title()}ConditionFormSet", (formset,), {"role": role})
+
+
+WhenFormSet = condition_formset(EcaCondition.Role.WHEN)
+ClearFormSet = condition_formset(EcaCondition.Role.CLEAR)
+
+
+def cross_check(event, when_formset, clear_formset):
+    """Pemeriksaan yang melibatkan kedua kumpulan kondisi. Mengembalikan daftar pesan error."""
+    if event != EcaSpec.Event.TELEMETRY:
+        return []
+    errors = []
+    when = [f.cleaned_data for f in when_formset.live_forms() if f.cleaned_data.get("variable")]
+    clear = [f.cleaned_data for f in clear_formset.live_forms() if f.cleaned_data.get("variable")]
+    if not when:
+        errors.append("Add at least one condition.")
+    # Histeresis satu variabel: kondisi clear tidak boleh tumpang tindih dengan
+    # kondisi aktif. Contoh salah: aktif bila < 20, clear bila > 15 (nilai 17
+    # memenuhi keduanya). Untuk ekspresi gabungan, mesin aturan sendiri menjaga
+    # agar aturan tidak aktif selama kondisi clear juga benar (lihat engines/eca.py).
+    if len(when) == 1 and len(clear) == 1 and when[0]["variable"] == clear[0]["variable"]:
+        op, threshold = when[0]["operator"], when[0]["threshold"]
+        clear_op, clear_threshold = clear[0]["operator"], clear[0]["threshold"]
         if (op in LOW and clear_op in LOW) or (op in HIGH and clear_op in HIGH):
-            self.add_error("clear_operator", "The clear condition must point the other way (e.g. activate below, clear above).")
+            errors.append("The clear condition must point the other way (e.g. activate below, clear above).")
         elif op in LOW and clear_op in HIGH and clear_threshold < threshold:
-            self.add_error("clear_threshold", f"Must be at least {threshold:g}, otherwise both conditions can hold at once.")
+            errors.append(f"Clear threshold must be at least {threshold:g}, otherwise both conditions can hold at once.")
         elif op in HIGH and clear_op in LOW and clear_threshold > threshold:
-            self.add_error("clear_threshold", f"Must be at most {threshold:g}, otherwise both conditions can hold at once.")
+            errors.append(f"Clear threshold must be at most {threshold:g}, otherwise both conditions can hold at once.")
+    return errors
 
 
 class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
@@ -137,7 +190,7 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
             "method": forms.TextInput(attrs={"placeholder": "e.g. blink"}),
         }
         help_texts = {
-            "message": "Placeholders: {rule} {device} {variable} {value} {threshold}.",
+            "message": "Placeholders: {rule} {device} {variable} {value} {threshold} {values}.",
         }
 
     def __init__(self, *args, devices, **kwargs):

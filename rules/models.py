@@ -12,7 +12,8 @@ rules/engines/, tetapi belum bisa dipakai.
 Struktur tabel:
 
     Rule            aturan milik seorang pengguna: nama, model, aktif/tidak
-      EcaSpec       (1-1) isi aturan ECA: event, condition, clear, durasi, cooldown
+      EcaSpec       (1-1) isi aturan ECA: event, durasi, cooldown, batas umur data
+        EcaCondition (1-banyak) kondisi "variabel op ambang", dikelompokkan OR-berisi-AND
       RuleAction    (1-banyak) aksi: set aktuator, kirim command, alarm, email
       RuleState     (1-1) keadaan aturan saat ini: IDLE / PENDING / ACTIVE
       RuleExecution (1-banyak) log setiap kali aturan aktif atau pulih
@@ -114,32 +115,23 @@ def compare(value, operator, threshold):
 class EcaSpec(models.Model):
     """Isi aturan ECA.
 
-        WHEN  <event>                         telemetri variabel X, atau device diam
-        IF    <variabel> <op> <ambang>         selama <duration> detik
+        WHEN  <event>                      data baru untuk variabel di kondisi, atau device diam
+        IF    <ekspresi kondisi>           kelompok OR yang masing-masing berisi kondisi AND,
+                                           harus bertahan <duration> detik
         THEN  aksi "on activate"
-        CLEAR bila <variabel> <clear op> <clear ambang>  (histeresis)
-              atau, bila kosong, saat kondisi tidak terpenuhi lagi
+        CLEAR bila <ekspresi clear>        (opsional; histeresis)
+              atau, bila kosong, saat ekspresi kondisi bernilai salah
         THEN  aksi "on clear"
+
+    Kondisinya sendiri ada di tabel EcaCondition (lihat di bawah).
     """
 
     class Event(models.TextChoices):
-        TELEMETRY = "TELEMETRY", "New telemetry for a variable"
+        TELEMETRY = "TELEMETRY", "New data for a variable in the conditions"
         INACTIVITY = "INACTIVITY", "Device sends no data"
 
     rule = models.OneToOneField(Rule, on_delete=models.CASCADE, related_name="eca", primary_key=True)
     event = models.CharField("event", max_length=12, choices=Event.choices, default=Event.TELEMETRY)
-
-    # Event TELEMETRY: variabel yang diamati.
-    variable = models.ForeignKey(
-        Variable,
-        verbose_name="variable",
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="eca_triggers",
-    )
-    operator = models.CharField("operator", max_length=2, choices=Operator.choices, blank=True)
-    threshold = models.FloatField("threshold", null=True, blank=True)
 
     # Event INACTIVITY: device yang diamati, dan berapa lama boleh diam.
     device = models.ForeignKey(
@@ -160,12 +152,17 @@ class EcaSpec(models.Model):
         default=0,
         help_text="The condition must hold this long before the rule activates. 0 = immediately.",
     )
-    clear_operator = models.CharField("clear operator", max_length=2, choices=Operator.choices, blank=True)
-    clear_threshold = models.FloatField("clear threshold", null=True, blank=True)
     cooldown_seconds = models.PositiveIntegerField(
         "cooldown (seconds)",
         default=0,
         help_text="Minimum time between two activations. 0 = no cooldown.",
+    )
+    # Nilai variabel lain diambil dari data terakhir di database. Data yang lebih
+    # tua dari batas ini dianggap "tidak diketahui" (lihat rules/conditions.py).
+    max_age_seconds = models.PositiveIntegerField(
+        "ignore values older than (seconds)",
+        default=300,
+        help_text="A variable whose latest value is older than this counts as unknown. 0 = no limit.",
     )
 
     class Meta:
@@ -175,18 +172,80 @@ class EcaSpec(models.Model):
     def __str__(self):
         return f"ECA of {self.rule}"
 
+    # --- kondisi ----------------------------------------------------------------
+
+    def condition_list(self):
+        """Semua kondisi aturan ini, memakai hasil prefetch bila ada."""
+        return list(self.conditions.all())
+
+    def groups(self, role):
+        """[[kondisi, kondisi], [kondisi]] = (A AND B) OR (C), urut nomor grup."""
+        grouped = {}
+        for condition in self.condition_list():
+            if condition.role == role:
+                grouped.setdefault(condition.group, []).append(condition)
+        return [grouped[number] for number in sorted(grouped)]
+
+    @property
+    def when_groups(self):
+        return self.groups(EcaCondition.Role.WHEN)
+
+    @property
+    def clear_groups(self):
+        return self.groups(EcaCondition.Role.CLEAR)
+
     @property
     def has_hysteresis(self):
-        return bool(self.clear_operator) and self.clear_threshold is not None
+        return bool(self.clear_groups)
 
-    def condition_met(self, value):
+    def variable_ids(self):
+        return {c.variable_id for c in self.condition_list()}
+
+    def primary_condition(self):
+        """Kondisi pertama di grup pertama. Device-nya menjadi "device asal" aturan
+        (tempat alarm dibuat dan kabar WebSocket dikirim)."""
+        when = self.when_groups
+        return when[0][0] if when else None
+
+
+class EcaCondition(models.Model):
+    """Satu perbandingan: <variabel> <operator> <ambang>, mis. soil_moisture < 20.
+
+    Kondisi dikelompokkan dengan nomor `group`:
+        - kondisi dengan nomor grup SAMA digabung dengan AND,
+        - grup-grup yang BERBEDA digabung dengan OR.
+    Contoh, role WHEN:
+        group 1: soil_moisture < 20, temperature > 30
+        group 2: soil_moisture < 10
+    berarti  (soil_moisture < 20 AND temperature > 30) OR (soil_moisture < 10).
+    Bentuk "OR dari AND" ini (disjunctive normal form) bisa menyatakan semua
+    kombinasi AND/OR tanpa tanda kurung bersarang.
+    """
+
+    class Role(models.TextChoices):
+        WHEN = "WHEN", "Activate when"
+        CLEAR = "CLEAR", "Clear when"
+
+    spec = models.ForeignKey(EcaSpec, on_delete=models.CASCADE, related_name="conditions")
+    role = models.CharField("role", max_length=5, choices=Role.choices, default=Role.WHEN)
+    group = models.PositiveSmallIntegerField("group", default=1)
+    order = models.PositiveSmallIntegerField("order", default=0)
+    variable = models.ForeignKey(
+        Variable, verbose_name="variable", on_delete=models.CASCADE, related_name="eca_conditions"
+    )
+    operator = models.CharField("operator", max_length=2, choices=Operator.choices)
+    threshold = models.FloatField("threshold")
+
+    class Meta:
+        ordering = ["role", "group", "order", "pk"]
+        verbose_name = "ECA condition"
+        verbose_name_plural = "ECA conditions"
+
+    def __str__(self):
+        return f"{self.variable.key} {self.operator} {self.threshold:g}"
+
+    def test(self, value):
         return compare(value, self.operator, self.threshold)
-
-    def clear_met(self, value):
-        """Kondisi pulih. Tanpa histeresis: kebalikan dari kondisi aktif."""
-        if self.has_hysteresis:
-            return compare(value, self.clear_operator, self.clear_threshold)
-        return not self.condition_met(value)
 
 
 # --- Aksi -----------------------------------------------------------------------
@@ -268,6 +327,9 @@ class RuleState(models.Model):
     last_evaluated_at = models.DateTimeField("last evaluated", null=True, blank=True)
     last_activated_at = models.DateTimeField("last activated", null=True, blank=True)
     last_cleared_at = models.DateTimeField("last cleared", null=True, blank=True)
+    # Apa yang "dilihat" mesin pada penilaian terakhir: nilai tiap variabel,
+    # umurnya, dan hasil tiap kondisi (lihat rules/conditions.py). Untuk halaman detail.
+    snapshot = models.JSONField("last evaluation", default=dict, blank=True)
 
     class Meta:
         verbose_name = "rule state"
@@ -290,6 +352,8 @@ class RuleExecution(models.Model):
     # [{"action": "Set actuator", "ok": true, "detail": "pump = ON"}, ...]
     results = models.JSONField("results", default=list)
     ok = models.BooleanField("all actions succeeded", default=True)
+    # Nilai semua variabel kondisi saat transisi terjadi, mis. {"Soil moisture": 18, ...}.
+    snapshot = models.JSONField("values", default=dict, blank=True)
     created_at = models.DateTimeField("time", default=timezone.now)
 
     class Meta:

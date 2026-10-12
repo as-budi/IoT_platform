@@ -6,18 +6,20 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.core.management.base import CommandError
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from api.services import save_telemetry
-from devices.models import Command, Device, Variable
+from devices.models import Command, Device, Telemetry, Variable
 
 from . import queue
 from .engines import ENGINES, implemented_engines
 from .engines.eca import ACTIVATE, CLEAR, EcaEngine, step
 from .models import (
     Alarm,
+    EcaCondition,
     EcaSpec,
     Rule,
     RuleAction,
@@ -96,13 +98,27 @@ class RuleTestData(TestCase):
         )
         cls.foreign = Device.objects.create(owner=cls.budi, name="Budi's node")
 
-    def make_rule(self, duration=0, clear=(">", 30), cooldown=0, actions=None, owner=None):
+    def make_rule(self, duration=0, clear=(">", 30), cooldown=0, actions=None, owner=None,
+                  when=None, clear_groups=None, max_age=300):
+        """Aturan contoh. Bawaan: soil_moisture < 20, clear bila soil_moisture > 30.
+
+        `when` / `clear_groups`: [[(variabel, op, ambang), ...], ...] = OR dari grup AND.
+        """
         rule = Rule.objects.create(owner=owner or self.siti, name="Irrigation")
-        EcaSpec.objects.create(
-            rule=rule, variable=self.soil, operator="<", threshold=20,
-            duration_seconds=duration, clear_operator=clear[0] if clear else "",
-            clear_threshold=clear[1] if clear else None, cooldown_seconds=cooldown,
+        spec = EcaSpec.objects.create(
+            rule=rule, duration_seconds=duration, cooldown_seconds=cooldown, max_age_seconds=max_age,
         )
+        if when is None:
+            when = [[(self.soil, "<", 20)]]
+        if clear_groups is None:
+            clear_groups = [[(self.soil, clear[0], clear[1])]] if clear else []
+        for role, groups in ((EcaCondition.Role.WHEN, when), (EcaCondition.Role.CLEAR, clear_groups)):
+            for number, group in enumerate(groups, start=1):
+                for order, (variable, op, threshold) in enumerate(group):
+                    EcaCondition.objects.create(
+                        spec=spec, role=role, group=number, order=order,
+                        variable=variable, operator=op, threshold=threshold,
+                    )
         for fields in actions if actions is not None else [
             {"kind": RuleAction.Kind.SET_ACTUATOR, "target_variable": self.pump, "value": 1},
             {"kind": RuleAction.Kind.SET_ACTUATOR, "target_variable": self.pump, "value": 0, "run_on": RuleAction.RunOn.CLEAR},
@@ -111,8 +127,10 @@ class RuleTestData(TestCase):
         return rule
 
     def send(self, value, now, device=None, variable=None):
+        """Seperti save_telemetry(): simpan barisnya dulu, lalu serahkan pesannya ke rule engine."""
         variable = variable or self.soil
-        message = queue.telemetry_message(device or self.node, [(variable, value, now)])
+        Telemetry.objects.create(variable=variable, value=value, ts=now)
+        message = queue.telemetry_message(device or variable.device, [(variable, value, now)])
         return queue.process(message, now=now)
 
 
@@ -249,6 +267,26 @@ class WorkerTests(RuleTestData):
         self.assertIn("planned (not implemented yet)", out.getvalue())
 
 
+def condition_data(prefix, rows, ids=()):
+    """Data POST formset kondisi. rows = [(grup, variabel, op, ambang), ...]."""
+    data = {
+        f"{prefix}-TOTAL_FORMS": str(len(rows)),
+        f"{prefix}-INITIAL_FORMS": str(len(ids)),
+        f"{prefix}-MIN_NUM_FORMS": "0",
+        f"{prefix}-MAX_NUM_FORMS": "20",
+    }
+    for i, (group, variable, op, threshold) in enumerate(rows):
+        data.update({
+            f"{prefix}-{i}-group": str(group),
+            f"{prefix}-{i}-variable": str(variable.pk),
+            f"{prefix}-{i}-operator": op,
+            f"{prefix}-{i}-threshold": str(threshold),
+        })
+        if i < len(ids):
+            data[f"{prefix}-{i}-id"] = str(ids[i])
+    return data
+
+
 def action_data(prefix="actions", forms=()):
     data = {
         f"{prefix}-TOTAL_FORMS": str(len(forms)),
@@ -267,20 +305,18 @@ class RuleViewTests(RuleTestData):
     def setUp(self):
         self.client.force_login(self.siti)
 
-    def form_data(self, **eca):
+    def form_data(self, threshold="20", clear_threshold="30", **eca):
         data = {
             "rule-name": "Irrigation",
             "rule-is_enabled": "on",
             "eca-event": "TELEMETRY",
-            "eca-variable": str(self.soil.pk),
-            "eca-operator": "<",
-            "eca-threshold": "20",
             "eca-duration_seconds": "60",
-            "eca-clear_operator": ">",
-            "eca-clear_threshold": "30",
             "eca-cooldown_seconds": "0",
+            "eca-max_age_seconds": "300",
         }
         data.update({f"eca-{k}": v for k, v in eca.items()})
+        data.update(condition_data("when", [(1, self.soil, "<", threshold)]))
+        data.update(condition_data("clear", [(1, self.soil, ">", clear_threshold)] if clear_threshold else []))
         data.update(action_data(forms=[
             {"kind": "SET_ACTUATOR", "target_variable": str(self.pump.pk), "value": "1"},
             {"kind": "SET_ACTUATOR", "target_variable": str(self.pump.pk), "value": "0", "run_on": "CLEAR"},
@@ -305,11 +341,12 @@ class RuleViewTests(RuleTestData):
         rule = Rule.objects.get()
         self.assertRedirects(response, reverse("rules:detail", args=[rule.pk]))
         self.assertEqual((rule.owner, rule.model), (self.siti, RuleModel.ECA))
-        self.assertEqual((rule.eca.threshold, rule.eca.duration_seconds), (20, 60))
+        [when] = rule.eca.when_groups
+        self.assertEqual([(c.variable, c.operator, c.threshold) for c in when], [(self.soil, "<", 20)])
+        self.assertEqual(rule.eca.duration_seconds, 60)
         self.assertEqual(rule.actions.count(), 2)
         page = self.client.get(reverse("rules:detail", args=[rule.pk]))
-        self.assertContains(page, "Soil moisture")
-        self.assertContains(page, "value &lt; 20 for 60 s")
+        self.assertContains(page, "Soil moisture &lt; 20 for 60 s")
 
     def test_overlapping_hysteresis_is_rejected(self):
         response = self.client.post(
@@ -328,13 +365,15 @@ class RuleViewTests(RuleTestData):
 
     def test_edit_and_other_users_cannot_see(self):
         rule = self.make_rule()
-        response = self.client.post(reverse("rules:edit", args=[rule.pk]), {
-            **self.form_data(threshold="15", clear_threshold="25"),
-            "actions-INITIAL_FORMS": "0",
-        })
+        when_ids = list(rule.eca.conditions.filter(role="WHEN").values_list("pk", flat=True))
+        clear_ids = list(rule.eca.conditions.filter(role="CLEAR").values_list("pk", flat=True))
+        data = self.form_data()
+        data.update(condition_data("when", [(1, self.soil, "<", 15)], ids=when_ids))
+        data.update(condition_data("clear", [(1, self.soil, ">", 25)], ids=clear_ids))
+        response = self.client.post(reverse("rules:edit", args=[rule.pk]), data)
         self.assertEqual(response.status_code, 302)
-        rule.refresh_from_db()
-        self.assertEqual(rule.eca.threshold, 15)
+        rule = Rule.objects.get(pk=rule.pk)
+        self.assertEqual([c.threshold for c in rule.eca.condition_list()], [25, 15])  # CLEAR, WHEN
         self.client.force_login(self.budi)
         self.assertEqual(self.client.get(reverse("rules:detail", args=[rule.pk])).status_code, 404)
 
@@ -418,3 +457,349 @@ class LiveUpdateTests(RuleTestData):
         self.assertEqual(self.client.get(reverse("rules:updates")).status_code, 401)
         self.client.force_login(self.budi)
         self.assertEqual(self.client.get(reverse("rules:detail_updates", args=[rule.pk])).status_code, 404)
+
+
+class KleeneLogicTests(SimpleTestCase):
+    """Tabel kebenaran tiga nilai di rules/conditions.py."""
+
+    def test_and_or(self):
+        from .conditions import all_of, any_of
+
+        T, F, U = True, False, None
+        self.assertIs(all_of([T, T]), T)
+        self.assertIs(all_of([T, U]), U)
+        self.assertIs(all_of([F, U]), F)
+        self.assertIs(any_of([F, F]), F)
+        self.assertIs(any_of([F, U]), U)
+        self.assertIs(any_of([T, U]), T)
+        self.assertIs(any_of([]), F)
+
+
+class MultiVariableData(RuleTestData):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.temp = Variable.objects.create(device=cls.node, key="temperature", label="Temperature", unit="°C")
+        cls.weather = Device.objects.create(owner=cls.siti, name="Weather station")
+        cls.rain = Variable.objects.create(device=cls.weather, key="rain", label="Rain", unit="mm")
+
+
+class MultiConditionTests(MultiVariableData):
+    """(soil < 20 AND temperature > 30) OR soil < 10."""
+
+    def irrigation(self, **kwargs):
+        return self.make_rule(
+            when=[[(self.soil, "<", 20), (self.temp, ">", 30)], [(self.soil, "<", 10)]],
+            clear=None, **kwargs,
+        )
+
+    def test_and_uses_latest_stored_value_of_the_other_variable(self):
+        self.irrigation()
+        self.send(25, at(0), variable=self.temp)           # suhu 25: belum panas
+        self.assertEqual(self.send(15, at(10)), [])         # 15 < 20 tetapi suhu tidak > 30
+        [execution] = self.send(32, at(20), variable=self.temp)  # suhu naik: kini kedua kondisi benar
+        self.assertEqual(execution.transition, RuleExecution.Transition.ACTIVATE)
+        self.assertEqual(execution.snapshot, {
+            "Greenhouse Node · Soil moisture": 15.0, "Greenhouse Node · Temperature": 32.0,
+        })
+        snapshot = execution.rule.state.snapshot
+        self.assertEqual(snapshot["when"]["groups"][0]["conditions"][0]["source"], "database")
+        self.assertEqual(snapshot["when"]["groups"][0]["conditions"][1]["source"], "message")
+        self.assertIs(snapshot["when"]["groups"][1]["result"], False)
+
+    def test_second_group_alone_is_enough(self):
+        self.irrigation()
+        self.send(25, at(0), variable=self.temp)
+        [execution] = self.send(8, at(10))                   # grup 2: soil < 10
+        self.assertEqual(execution.transition, RuleExecution.Transition.ACTIVATE)
+
+    def test_clear_when_expression_becomes_false(self):
+        self.irrigation()
+        self.send(35, at(0), variable=self.temp)
+        self.send(15, at(10))
+        [cleared] = self.send(25, at(20), variable=self.temp)
+        self.assertEqual(cleared.transition, RuleExecution.Transition.CLEAR)
+
+    def test_stale_value_is_unknown_and_changes_nothing(self):
+        self.irrigation(max_age=60)
+        self.send(35, at(0), variable=self.temp)
+        self.assertEqual(self.send(15, at(120)), [])         # suhu sudah 120 s: tidak diketahui
+        state = RuleState.objects.get()
+        self.assertEqual(state.status, RuleState.Status.IDLE)
+        row = state.snapshot["when"]["groups"][0]["conditions"][1]
+        self.assertIsNone(row["result"])
+        self.assertIn("stale", row["reason"])
+
+    def test_unknown_does_not_clear_an_active_rule(self):
+        self.irrigation(max_age=60)
+        self.send(35, at(0), variable=self.temp)
+        self.send(15, at(10))                                # ACTIVE
+        self.assertEqual(self.send(15, at(200)), [])         # suhu basi: tidak diketahui, tetap ACTIVE
+        self.assertEqual(RuleState.objects.get().status, RuleState.Status.ACTIVE)
+
+    def test_no_data_at_all_is_unknown(self):
+        self.irrigation()
+        self.assertEqual(self.send(15, at(0)), [])           # belum pernah ada data suhu
+        self.assertEqual(RuleState.objects.get().snapshot["when"]["groups"][0]["conditions"][1]["reason"], "no data")
+
+    def test_conditions_across_devices(self):
+        self.make_rule(when=[[(self.soil, "<", 20), (self.rain, "<", 1)]], clear=None)
+        self.send(0, at(0), variable=self.rain)              # data dari device lain
+        [execution] = self.send(15, at(10))
+        self.assertEqual(execution.transition, RuleExecution.Transition.ACTIVATE)
+        # Data dari Weather station juga memicu penilaian ulang aturan ini.
+        [cleared] = self.send(5, at(20), variable=self.rain)
+        self.assertEqual(cleared.transition, RuleExecution.Transition.CLEAR)
+
+    def test_activation_blocked_while_clear_expression_is_true(self):
+        # Aktif: soil < 20; clear: temperature < 25. Keduanya benar -> jangan aktif.
+        self.make_rule(clear_groups=[[(self.temp, "<", 25)]])
+        self.send(20, at(0), variable=self.temp)
+        self.assertEqual(self.send(15, at(10)), [])
+        [execution] = self.send(26, at(20), variable=self.temp)
+        self.assertEqual(execution.transition, RuleExecution.Transition.ACTIVATE)
+
+    def test_describe_and_values_placeholder(self):
+        rule = self.irrigation(actions=[{"kind": RuleAction.Kind.ALARM, "severity": "MAJOR", "message": "{values}"}])
+        self.assertEqual(
+            ENGINES[RuleModel.ECA].describe(rule)["if"],
+            "(Soil moisture < 20 AND Temperature > 30) OR Soil moisture < 10",
+        )
+        self.send(31, at(0), variable=self.temp)
+        self.send(12, at(5))
+        self.assertEqual(Alarm.objects.get().message,
+                         "Greenhouse Node · Soil moisture = 12, Greenhouse Node · Temperature = 31")
+
+    def test_rule_eval_event_without_status_change(self):
+        rule = self.irrigation()
+        with mock.patch("realtime.events.emit") as emit:
+            self.send(25, at(0), variable=self.temp)
+        self.assertIn({"type": "rule_eval", "rule": rule.pk}, [c.args[1] for c in emit.call_args_list])
+
+
+class ConditionFormTests(RuleTestData):
+    def setUp(self):
+        self.client.force_login(self.siti)
+        self.temp = Variable.objects.create(device=self.node, key="temperature", label="Temperature")
+
+    def post(self, when, clear=(), extra=None):
+        data = {
+            "rule-name": "Combo", "rule-is_enabled": "on", "eca-event": "TELEMETRY",
+            "eca-duration_seconds": "0", "eca-cooldown_seconds": "0", "eca-max_age_seconds": "300",
+            **condition_data("when", when), **condition_data("clear", list(clear)),
+            **action_data(forms=[{"kind": "SET_ACTUATOR", "target_variable": str(self.pump.pk), "value": "1"}]),
+            **(extra or {}),
+        }
+        return self.client.post(reverse("rules:new_model", args=["eca"]), data)
+
+    def test_groups_are_saved_and_renumbered(self):
+        response = self.post([(3, self.soil, "<", 20), (3, self.temp, ">", 30), (7, self.soil, "<", 10)])
+        rule = Rule.objects.get()
+        self.assertRedirects(response, reverse("rules:detail", args=[rule.pk]))
+        groups = [[(c.variable.key, c.operator, c.threshold) for c in g] for g in rule.eca.when_groups]
+        self.assertEqual(groups, [[("soil_moisture", "<", 20), ("temperature", ">", 30)], [("soil_moisture", "<", 10)]])
+        self.assertEqual([c.group for c in rule.eca.when_groups[1]], [2])
+
+    def test_at_least_one_condition(self):
+        response = self.post([])
+        self.assertContains(response, "Add at least one condition.")
+        self.assertFalse(Rule.objects.exists())
+
+    def test_empty_new_row_is_ignored(self):
+        data = condition_data("when", [(1, self.soil, "<", 20)])
+        data.update({"when-TOTAL_FORMS": "2", "when-1-group": "2", "when-1-operator": ">"})
+        response = self.post([], extra=data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(EcaCondition.objects.count(), 1)
+
+    def test_evaluation_box_endpoint(self):
+        rule = self.make_rule()
+        self.send(18, at(0))
+        response = self.client.get(reverse("rules:evaluation", args=[rule.pk]))
+        self.assertContains(response, "Last evaluation")
+        self.assertContains(response, "✓ true")
+        self.client.force_login(self.budi)
+        self.assertEqual(self.client.get(reverse("rules:evaluation", args=[rule.pk])).status_code, 404)
+
+
+class DocumentedTimelineTests(MultiVariableData):
+    """Linimasa di docs/eca-mekanisme.md bagian 8, dijalankan sungguhan."""
+
+    def test_timeline(self):
+        rule = self.make_rule(
+            when=[[(self.soil, "<", 20), (self.temp, ">", 30)], [(self.soil, "<", 10)]],
+            duration=60,
+            actions=[
+                {"kind": RuleAction.Kind.SET_ACTUATOR, "target_variable": self.pump, "value": 1},
+                {"kind": RuleAction.Kind.ALARM, "severity": "MAJOR", "message": "{device}: {values}"},
+                {"kind": RuleAction.Kind.SET_ACTUATOR, "target_variable": self.pump, "value": 0,
+                 "run_on": RuleAction.RunOn.CLEAR},
+            ],
+        )
+        engine = ENGINES[RuleModel.ECA]
+
+        def status():
+            return RuleState.objects.get(rule=rule).status
+
+        def when_result():
+            return RuleState.objects.get(rule=rule).snapshot["when"]["result"]
+
+        self.send(28, at(0), variable=self.temp)          # 10:00:00
+        self.assertEqual((status(), when_result()), ("IDLE", None))
+        self.send(25, at(5))                               # 10:00:05
+        self.assertEqual((status(), when_result()), ("IDLE", False))
+        self.send(32, at(40), variable=self.temp)         # 10:00:40
+        self.assertEqual(status(), "IDLE")
+        self.send(15, at(60))                              # 10:01:00
+        self.assertEqual((status(), when_result()), ("PENDING", True))
+        self.assertEqual(engine.tick(at(90)), [])          # 10:01:30
+        [activated] = engine.tick(at(120))                 # 10:02:00
+        self.assertEqual(activated.transition, "ACTIVATE")
+        self.assertEqual(Alarm.objects.get().message,
+                         "Greenhouse Node: Greenhouse Node · Soil moisture = 15, Greenhouse Node · Temperature = 32")
+        self.assertEqual(self.send(27, at(300), variable=self.temp), [])   # 10:05:00, tetap ACTIVE
+        self.assertEqual(self.send(22, at(450)), [])                         # 10:07:30, pita histeresis
+        self.assertEqual(status(), "ACTIVE")
+        [cleared] = self.send(31, at(900))                                   # 10:15:00
+        self.assertEqual(cleared.transition, "CLEAR")
+        self.pump.refresh_from_db()
+        self.assertEqual(self.pump.desired_value, 0)
+        self.assertFalse(Alarm.objects.active().exists())
+
+    def test_exercise_2_short_max_age_never_activates(self):
+        self.make_rule(when=[[(self.soil, "<", 20), (self.temp, ">", 30)], [(self.soil, "<", 10)]],
+                       duration=60, max_age=30)
+        self.send(32, at(40), variable=self.temp)
+        self.send(15, at(60))                     # T berumur 20 s: PENDING
+        self.assertEqual(RuleState.objects.get().status, "PENDING")
+        ENGINES[RuleModel.ECA].tick(at(71))       # T berumur 31 s: tidak diketahui -> IDLE
+        self.assertEqual(RuleState.objects.get().status, "IDLE")
+
+
+class SampleRulesTests(TestCase):
+    """Contoh di docs/contoh-data-dan-aturan.md: seed_demo + seed_rules, lalu skenarionya."""
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo", stdout=StringIO())
+        call_command("seed_rules", stdout=StringIO())
+
+    def send(self, device, seconds, **values):
+        """Seperti send_telemetry, tetapi dengan waktu yang ditentukan tes."""
+        device = Device.objects.get(name=device)
+        now = T0 + timedelta(days=1, seconds=seconds)   # sesudah semua data seed_demo
+        rows = []
+        for key, value in values.items():
+            variable = device.variables.get(key=key)
+            Telemetry.objects.create(variable=variable, value=value, ts=now)
+            rows.append((variable, value, now))
+        return queue.process(queue.telemetry_message(device, rows), now=now)
+
+    def tick(self, seconds):
+        return ENGINES[RuleModel.ECA].tick(T0 + timedelta(days=1, seconds=seconds))
+
+    def status(self, name):
+        return Rule.objects.get(name=name).state.status
+
+    def desired(self, device, key):
+        return Variable.objects.get(device__name=device, key=key).desired_value
+
+    def test_seed_is_idempotent_and_complete(self):
+        out = StringIO()
+        call_command("seed_rules", stdout=out)
+        self.assertIn("0 sample rule(s) created", out.getvalue())
+        self.assertEqual(Rule.objects.count(), 6)
+        self.assertFalse(Rule.objects.get(name="Weather station silent").is_enabled)
+        self.assertEqual(len(Rule.objects.get(name="Smart irrigation").eca.when_groups), 2)
+        for username in ("andi", "rina"):
+            self.assertTrue(User.objects.get(username=username).check_password("demo12345"))
+
+    def test_smart_irrigation(self):
+        self.send("Greenhouse Weather Station", 0, rain=0)
+        self.send("Greenhouse Node", 10, soil_moisture=25, temperature=34)
+        self.assertEqual(self.status("Smart irrigation"), "PENDING")
+        [activated] = self.tick(70)
+        self.assertEqual(activated.rule.name, "Smart irrigation")
+        self.assertEqual(self.desired("Greenhouse Node", "pump"), 1)
+        self.send("Greenhouse Node", 100, soil_moisture=28)          # pita histeresis
+        self.assertEqual(self.status("Smart irrigation"), "ACTIVE")
+        [cleared] = self.send("Greenhouse Weather Station", 130, rain=3)   # clear grup 2
+        self.assertEqual(cleared.transition, "CLEAR")
+        self.assertEqual(self.desired("Greenhouse Node", "pump"), 0)
+
+    def test_smart_irrigation_cooldown(self):
+        self.send("Greenhouse Weather Station", 0, rain=0)
+        self.send("Greenhouse Node", 10, soil_moisture=25, temperature=34)
+        self.tick(70)                                                   # aktif pada t=70
+        self.send("Greenhouse Weather Station", 100, rain=3)           # pulih
+        self.send("Greenhouse Weather Station", 130, rain=0)
+        self.send("Greenhouse Node", 140, soil_moisture=25, temperature=34)
+        self.tick(250)
+        self.assertEqual(self.status("Smart irrigation"), "PENDING")   # cooldown s.d. t=370
+        [again] = self.tick(371)
+        self.assertEqual(again.transition, "ACTIVATE")
+
+    def test_weather_station_silent_when_enabled(self):
+        rule = Rule.objects.get(name="Weather station silent")
+        rule.is_enabled = True
+        rule.save()
+        [alarm_raised] = self.tick(0)          # seed_demo tidak mengisi last_seen_at: langsung diam
+        self.assertEqual(alarm_raised.rule, rule)
+        self.assertIn("has sent no data", Alarm.objects.get(rule=rule).message)
+
+    def test_smart_irrigation_stale_rain_is_unknown(self):
+        # Curah hujan dari seed_demo sudah berumur >15 menit: tidak diketahui.
+        self.send("Greenhouse Node", 0, soil_moisture=15, temperature=34)
+        self.assertEqual(self.status("Smart irrigation"), "IDLE")
+        self.assertIsNone(Rule.objects.get(name="Smart irrigation").state.snapshot["when"]["result"])
+
+    def test_poultry_heat_stress(self):
+        self.send("Poultry House Node", 0, temperature=34, humidity=75, ammonia=12)
+        [activated] = self.tick(31)
+        self.assertEqual(self.desired("Poultry House Node", "exhaust_fan"), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["andi@example.com"])
+        [cleared] = self.send("Poultry House Node", 60, temperature=28)  # amonia terakhir 12 < 15
+        self.assertEqual(cleared.transition, "CLEAR")
+
+    def test_poultry_ammonia_alone(self):
+        self.send("Poultry House Node", 0, temperature=27, humidity=60, ammonia=30)
+        self.tick(31)
+        self.assertEqual(self.status("Poultry heat stress"), "ACTIVE")
+
+    def test_pond_low_oxygen(self):
+        [activated] = self.send("Fish Pond Node", 0, dissolved_oxygen=4.6, water_temp=31)
+        self.assertEqual(self.desired("Fish Pond Node", "aerator"), 1)
+        self.assertEqual(Alarm.objects.get().severity, "CRITICAL")
+        [cleared] = self.send("Fish Pond Node", 10, dissolved_oxygen=6.5)
+        self.assertEqual(cleared.transition, "CLEAR")
+        self.assertFalse(Alarm.objects.active().exists())
+
+    def test_cold_chain_breach(self):
+        self.send("Cold Storage Unit", 0, temperature=7, humidity=90)
+        self.assertEqual(self.tick(60), [])
+        [activated] = self.tick(121)
+        self.assertEqual(self.desired("Cold Storage Unit", "compressor_boost"), 1)
+        command = Command.objects.get(device__name="Cold Storage Unit", method="buzzer")
+        self.assertEqual(command.params, {"seconds": 10})
+        [cleared] = self.send("Cold Storage Unit", 200, temperature=4, humidity=75)
+        self.assertEqual(cleared.transition, "CLEAR")
+
+    def test_server_room_cooling_across_devices(self):
+        self.send("Server Room Node", 0, temperature=31, humidity=50)
+        self.tick(61)
+        self.assertEqual(self.desired("Lab Relay Board", "fan_speed"), 100)
+        self.send("Server Room Node", 90, temperature=24)
+        self.assertEqual(self.desired("Lab Relay Board", "fan_speed"), 25)
+
+    def test_send_telemetry_command(self):
+        out = StringIO()
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command("send_telemetry", "Fish Pond Node", "dissolved_oxygen=3.5", stdout=out)
+        self.assertIn("Sent to Fish Pond Node (andi)", out.getvalue())
+        self.assertEqual(self.status("Pond low oxygen"), "ACTIVE")
+        with self.assertRaisesMessage(CommandError, "No device"):
+            call_command("send_telemetry", "Greenhouse Node", "pump=on", "--owner", "nobody", stdout=out)
+        Device.objects.create(owner=User.objects.get(username="budi"), name="Fish Pond Node")
+        with self.assertRaisesMessage(CommandError, "Several devices"):
+            call_command("send_telemetry", "Fish Pond Node", "ph=7", stdout=out)

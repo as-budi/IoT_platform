@@ -130,7 +130,7 @@ def send_email(action, rule, context):
     transition = context.get("transition", "activated")
     subject = f"[IoT] {rule.name} {transition}"
     body = render_message(
-        action.message or "Rule \"{rule}\" {transition}.\n{device} · {variable} = {value} (threshold {threshold}).",
+        action.message or "Rule \"{rule}\" {transition}.\nValues: {values}.",
         context,
     )
     try:

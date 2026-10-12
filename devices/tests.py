@@ -259,8 +259,8 @@ class SeedDemoTests(TestCase):
         self.assertGreater(count, 0)
         call_command("seed_demo", stdout=io.StringIO())
         self.assertEqual(Telemetry.objects.count(), count)
-        self.assertEqual(Device.objects.count(), 4)
-        self.assertEqual(Variable.objects.count(), 11)
+        self.assertEqual(Device.objects.count(), 8)
+        self.assertEqual(Variable.objects.count(), 24)
         # Aktuator contoh dibuat dalam keadaan "In sync".
         for variable in Variable.objects.filter(kind=Variable.Kind.ACTUATOR):
             self.assertEqual(variable.sync_status, Variable.SyncStatus.SYNCED, variable.key)

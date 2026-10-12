@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Alarm, EcaSpec, Rule, RuleAction, RuleExecution, RuleState
+from .models import Alarm, EcaCondition, EcaSpec, Rule, RuleAction, RuleExecution, RuleState
 
 
 class EcaSpecInline(admin.StackedInline):
@@ -36,3 +36,9 @@ class RuleExecutionAdmin(admin.ModelAdmin):
 class AlarmAdmin(admin.ModelAdmin):
     list_display = ("message", "device", "severity", "created_at", "acknowledged_at", "cleared_at")
     list_filter = ("severity",)
+
+
+@admin.register(EcaCondition)
+class EcaConditionAdmin(admin.ModelAdmin):
+    list_display = ("spec", "role", "group", "variable", "operator", "threshold")
+    list_filter = ("role",)
