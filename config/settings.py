@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "dashboard",    # halaman Dashboard: semua variabel per lokasi & device
     "coap_gateway", # komunikasi device lewat CoAP (perintah: manage.py coap_server)
     "rules",        # rule engine & alarm (perintah: manage.py rule_engine)
+    "launcher",     # perintah manage.py runall: menjalankan semua layanan sekaligus
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view

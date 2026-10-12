@@ -23,6 +23,7 @@ Penjelasan konsep:
 - [docs/tahap-06-coap.md](docs/tahap-06-coap.md) — komunikasi dua arah lewat CoAP (UDP, Observe, coap_server, ESP32)
 - [docs/rule-engine-iot.md](docs/rule-engine-iot.md) — rule engine pada platform IoT: mekanisme dan enam model
 - [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md) — rule engine ECA: aturan otomatis, alarm, worker rule_engine
+- [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 
 ## Prasyarat
 
@@ -205,6 +206,20 @@ Isi `COAP_PUBLIC_HOST` di `.env` dengan IP komputer ini di Wi-Fi agar alamat di 
 *CoAP* halaman device bisa dipakai ESP32. Contoh firmware: `firmware/esp32_coap/esp32_coap.ino`.
 Penjelasan lengkap: [docs/tahap-06-coap.md](docs/tahap-06-coap.md).
 
+## Menjalankan semua layanan sekaligus
+
+Web, MQTT, CoAP, dan rule engine bisa dijalankan dari satu terminal:
+
+```bash
+python manage.py runall                  # web di http://127.0.0.1:8000/
+python manage.py runall --skip coap      # tanpa CoAP
+python manage.py runall --only web,rules # hanya sebagian
+```
+
+Setiap layanan tetap berjalan sebagai proses sendiri; `runall` menggabungkan log-nya,
+menyalakan ulang yang crash, dan mematikan semuanya saat Ctrl+C. Hanya untuk
+pengembangan; lihat [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md).
+
 ## Rule engine (tahap 7)
 
 Aturan otomatis model Event–Condition–Action, mis. "bila soil_moisture < 20 selama
@@ -236,6 +251,7 @@ coap_gateway/        app: komunikasi device lewat CoAP (manage.py coap_server)
 realtime/            app: WebSocket (Django Channels)
 dashboard/           app: dashboard per lokasi & device
 rules/               app: rule engine & alarm (manage.py rule_engine)
+launcher/            app: manage.py runall (menjalankan semua layanan)
 templates/           template lintas-app (base.html, login, 403)
 static/              CSS
 docs/                catatan belajar per tahap
