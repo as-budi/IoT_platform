@@ -396,6 +396,7 @@ def alarm_changed(alarm):
         {
             "type": "alarm",
             "id": alarm.pk,
+            "rule": alarm.rule_id,
             "severity": alarm.severity,
             "message": alarm.message,
             "active": alarm.is_active,

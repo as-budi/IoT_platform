@@ -31,6 +31,9 @@
   </div>
 </div>
 
+{# Pembaruan langsung: log, alarm, dan status tampil tanpa menekan refresh. #}
+{% include "devices/includes/auto_refresh.html" %}
+
 <div class="row g-3 mb-4">
   {# ---------- WHEN / IF / THEN ---------- #}
   <div class="col-lg-7">
@@ -68,11 +71,11 @@
           <dt class="col-6 fw-normal text-muted">Status</dt>
           <dd class="col-6">{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled %}</dd>
           <dt class="col-6 fw-normal text-muted">Last value</dt>
-          <dd class="col-6">{% if state.last_value is not None %}{{ state.last_value|floatformat:"-2" }}{% else %}—{% endif %}</dd>
+          <dd class="col-6" data-live="rule-last-value">{% if state.last_value is not None %}{{ state.last_value|floatformat:"-2" }}{% else %}—{% endif %}</dd>
           <dt class="col-6 fw-normal text-muted">Pending since</dt>
           <dd class="col-6">{% if state.pending_since %}{{ state.pending_since|time:"H:i:s" }}{% else %}—{% endif %}</dd>
           <dt class="col-6 fw-normal text-muted">Last evaluated</dt>
-          <dd class="col-6">{% if state.last_evaluated_at %}{{ state.last_evaluated_at|timesince }} ago{% else %}never{% endif %}</dd>
+          <dd class="col-6" data-live="rule-last-evaluated">{% if state.last_evaluated_at %}{{ state.last_evaluated_at|timesince }} ago{% else %}never{% endif %}</dd>
           <dt class="col-6 fw-normal text-muted">Last activated</dt>
           <dd class="col-6">{% if state.last_activated_at %}{{ state.last_activated_at|timesince }} ago{% else %}never{% endif %}</dd>
           <dt class="col-6 fw-normal text-muted">Last cleared</dt>
@@ -124,4 +127,39 @@
   </ul>
 </nav>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/*
+ * Halaman aturan berlangganan kabar dari device asal aturan (rules/events.py).
+ *   telemetry  -> nilai variabel pemicu diperbarui di tempat (tanpa muat ulang)
+ *   rule       -> aturan ini berganti status / punya log baru  -> muat ulang
+ *   alarm      -> alarm dari aturan ini berubah                 -> muat ulang
+ * Kabar lain (aturan lain, desired, command) diabaikan.
+ * return true = sudah ditangani; false = halaman perlu dimuat ulang.
+ */
+(function () {
+  "use strict";
+  if (!window.AutoRefresh) return;
+  const RULE_ID = {{ rule.pk }};
+  const TRIGGER_VARIABLE = {{ rule.eca.variable_id|default:"null" }};
+  const lastValue = document.querySelector("[data-live='rule-last-value']");
+  const lastEvaluated = document.querySelector("[data-live='rule-last-evaluated']");
+
+  AutoRefresh.on("telemetry", (event) => {
+    const points = event.points.filter((p) => p.variable === TRIGGER_VARIABLE);
+    if (points.length) {
+      const latest = points[points.length - 1];
+      lastValue.textContent = String(Number(latest.value.toFixed(2)));
+      lastEvaluated.textContent = "just now";
+    }
+    return true;
+  });
+  AutoRefresh.on("rule", (event) => event.rule !== RULE_ID);
+  AutoRefresh.on("alarm", (event) => event.rule !== RULE_ID);
+  AutoRefresh.on("desired", () => true);
+  AutoRefresh.on("command", () => true);
+})();
+</script>
 {% endblock %}

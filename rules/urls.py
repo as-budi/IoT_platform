@@ -6,6 +6,10 @@ app_name = "rules"
 
 urlpatterns = [
     path("", views.RuleListView.as_view(), name="list"),
+    # "Versi data" untuk pemeriksaan cadangan pembaruan langsung (auto_refresh.js).
+    path("updates/", views.updates, {"kind": "rules"}, name="updates"),
+    path("<int:pk>/updates/", views.updates, {"kind": "rule"}, name="detail_updates"),
+    path("alarms/updates/", views.updates, {"kind": "alarms"}, name="alarms_updates"),
     # Langkah 1: pilih model rule engine. Langkah 2: form model itu.
     path("new/", views.RuleModelPickerView.as_view(), name="new"),
     path("new/<slug:model>/", views.eca_create_or_planned, name="new_model"),

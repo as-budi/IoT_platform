@@ -170,8 +170,13 @@
   let retryTimer = null;
   let pollTimer = null;
 
+  // Kabar yang diabaikan oleh halaman yang tidak mendaftarkan penanganannya:
+  // "rule" (status aturan berubah) hanya penting bagi halaman aturan.
+  const IGNORED_BY_DEFAULT = ["rule"];
+
   function handleEvent(event) {
     const list = handlers[event.type] || [];
+    if (!list.length && IGNORED_BY_DEFAULT.includes(event.type)) return;
     let applied = list.length > 0;
     for (const handler of list) {
       try {

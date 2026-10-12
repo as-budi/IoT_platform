@@ -1,6 +1,7 @@
 """Tes rule engine: mesin keadaan ECA, aksi, worker, dan halaman."""
 from datetime import timedelta
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -363,3 +364,57 @@ class RuleViewTests(RuleTestData):
         # Pengguna lain tidak bisa menyentuh alarm ini.
         self.client.force_login(self.budi)
         self.assertEqual(self.client.post(reverse("rules:alarm_ack", args=[alarm.pk])).status_code, 404)
+
+
+class LiveUpdateTests(RuleTestData):
+    """Halaman aturan/alarm diperbarui tanpa refresh: kabar WebSocket + versi data."""
+
+    def setUp(self):
+        self.client.force_login(self.siti)
+
+    def test_rule_events_are_sent_to_the_originator_device(self):
+        self.make_rule(duration=60)
+        with mock.patch("realtime.events.emit") as emit:
+            self.send(10, at(0))                      # IDLE -> PENDING
+            ENGINES[RuleModel.ECA].tick(at(61))      # PENDING -> ACTIVE (+ log)
+        rule_events = [c.args for c in emit.call_args_list if c.args[1]["type"] == "rule"]
+        self.assertEqual([e[0] for e in rule_events], [self.node.pk, self.node.pk])
+        self.assertEqual([e[1]["status"] for e in rule_events], ["PENDING", "ACTIVE"])
+        self.assertEqual(rule_events[1][1]["transition"], "ACTIVATE")
+
+    def test_no_event_when_nothing_changes(self):
+        self.make_rule()
+        self.send(25, at(0))
+        with mock.patch("realtime.events.emit") as emit:
+            self.send(26, at(1))
+        self.assertFalse([c for c in emit.call_args_list if c.args[1]["type"] == "rule"])
+
+    def test_alarm_event_names_its_rule(self):
+        rule = self.make_rule(actions=[{"kind": RuleAction.Kind.ALARM, "severity": "MAJOR"}])
+        with mock.patch("realtime.events.emit") as emit:
+            self.send(10, at(0))
+        alarm_events = [c.args[1] for c in emit.call_args_list if c.args[1]["type"] == "alarm"]
+        self.assertEqual(alarm_events[0]["rule"], rule.pk)
+
+    def test_pages_subscribe_and_versions_change(self):
+        rule = self.make_rule(actions=[{"kind": RuleAction.Kind.ALARM, "severity": "MAJOR"}])
+        page = self.client.get(reverse("rules:detail", args=[rule.pk]))
+        self.assertContains(page, f'data-ws-path="/ws/devices/{self.node.pk}/"')
+        self.assertContains(page, reverse("rules:detail_updates", args=[rule.pk]))
+        self.assertContains(self.client.get(reverse("rules:list")), 'data-ws-path="/ws/dashboard/"')
+        self.assertContains(self.client.get(reverse("rules:alarms")), reverse("rules:alarms_updates"))
+
+        urls = [reverse("rules:detail_updates", args=[rule.pk]), reverse("rules:updates"),
+                reverse("rules:alarms_updates")]
+        before = [self.client.get(url).json()["version"] for url in urls]
+        self.send(10, at(0))
+        after = [self.client.get(url).json()["version"] for url in urls]
+        for url, old, new in zip(urls, before, after):
+            self.assertNotEqual(old, new, url)
+
+    def test_updates_need_login_and_ownership(self):
+        rule = self.make_rule()
+        self.client.logout()
+        self.assertEqual(self.client.get(reverse("rules:updates")).status_code, 401)
+        self.client.force_login(self.budi)
+        self.assertEqual(self.client.get(reverse("rules:detail_updates", args=[rule.pk])).status_code, 404)

@@ -163,8 +163,32 @@ tempat:
 - spanduk di dashboard,
 - tabel di halaman device.
 
-Setiap perubahan alarm dikirim lewat WebSocket (`{"type": "alarm", ...}`), lalu halaman
+Setiap perubahan alarm dikirim lewat WebSocket (`{"type": "alarm", "rule": 4, ...}`), lalu halaman
 device dan dashboard memuat ulang dirinya.
+
+### Pembaruan langsung di halaman aturan
+
+Halaman detail aturan, daftar aturan, dan daftar alarm memperbarui dirinya tanpa ditekan
+refresh. Caranya sama dengan halaman device: WebSocket sebagai jalur utama, ditambah
+"versi data" yang diperiksa berkala sebagai cadangan (`static/js/auto_refresh.js`).
+
+- Worker mengirim kabar `{"type": "rule", "rule": 4, "status": "ACTIVE", "transition": "ACTIVATE"}`
+  (`rules/events.py`) setiap kali status aturan berubah: IDLE → PENDING, ke ACTIVE, atau
+  kembali ke IDLE. Kabar dikirim **setelah** baris log tersimpan, sehingga halaman yang
+  memuat ulang langsung menampilkannya.
+- Kabar dikirim ke group **device asal** aturan, jadi tidak perlu consumer WebSocket baru.
+  - Halaman detail berlangganan `ws/devices/<id>/` milik device itu. Nilai variabel pemicu
+    diperbarui di tempat; kabar `rule`/`alarm` untuk aturan ini memuat ulang halaman.
+  - Daftar aturan dan daftar alarm berlangganan `ws/dashboard/`.
+- Halaman lain (device, variabel, dashboard) mengabaikan kabar `rule`; lihat
+  `IGNORED_BY_DEFAULT` di `auto_refresh.js`.
+- Cadangan polling: `/rules/updates/`, `/rules/<id>/updates/`, dan
+  `/rules/alarms/updates/` mengembalikan versi data, yang berubah bila status, log, atau
+  alarm berubah.
+
+Kabar dari proses worker hanya sampai ke browser bila channel layer-nya Redis
+(`REDIS_URL` terisi). Tanpa Redis, halaman tetap terbarui lewat pemeriksaan cadangan
+(paling lambat 30 detik).
 
 ## 6. Struktur kode
 

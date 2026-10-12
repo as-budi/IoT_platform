@@ -26,6 +26,7 @@ import logging
 
 from django.db import transaction
 
+from ..events import rule_changed
 from ..models import EcaSpec, Rule, RuleExecution, RuleModel, RuleState
 from .base import RuleEngine
 
@@ -138,6 +139,7 @@ class EcaEngine(RuleEngine):
             # Kunci baris state: dua proses (mis. web dan worker) tidak boleh
             # menilai aturan yang sama bersamaan lalu sama-sama menjalankan aksi.
             state = RuleState.objects.select_for_update().get(rule=rule)
+            previous_status = state.status
             transition = step(state, spec, condition, clear, now)
             if value is not None:
                 state.last_value = value
@@ -146,6 +148,8 @@ class EcaEngine(RuleEngine):
         rule.state = state
 
         if transition is None:
+            if state.status != previous_status:  # mis. IDLE -> PENDING
+                rule_changed(rule, state)
             return []
         # Aksi dijalankan SETELAH keadaan tersimpan: bila sebuah aksi gagal,
         # aturan tetap tercatat ACTIVE dan tidak mengulang aksi yang lain.
@@ -161,6 +165,9 @@ class EcaEngine(RuleEngine):
             created_at=now,
         )
         logger.info("Rule %s %s (value %s)", rule.pk, transition, value)
+        # Kabar dikirim SETELAH log tersimpan, supaya halaman yang memuat ulang
+        # langsung menampilkan baris log dan alarm yang baru.
+        rule_changed(rule, state, transition=transition, value=value)
         return [execution]
 
     def context(self, rule, value):

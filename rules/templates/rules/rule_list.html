@@ -8,6 +8,8 @@
   <a class="btn btn-primary" href="{% url 'rules:new' %}">New rule</a>
 </div>
 
+{% include "devices/includes/auto_refresh.html" %}
+
 {% if rules %}
 <div class="card shadow-sm">
   <div class="table-responsive">
@@ -49,4 +51,16 @@
   <a class="btn btn-primary" href="{% url 'rules:new' %}">Create the first rule</a>
 </div></div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Daftar aturan: muat ulang bila status aturan atau alarm berubah; data sensor diabaikan.
+(function () {
+  if (!window.AutoRefresh) return;
+  ["telemetry", "desired", "command"].forEach((type) => AutoRefresh.on(type, () => true));
+  AutoRefresh.on("rule", () => false);
+  AutoRefresh.on("alarm", () => false);
+})();
+</script>
 {% endblock %}

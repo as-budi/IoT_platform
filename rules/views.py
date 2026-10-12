@@ -5,20 +5,25 @@ Kepemilikan mengikuti device: pengguna biasa melihat aturan miliknya sendiri,
 Admin melihat semua. Pilihan device/variabel di form dibatasi ke
 visible_devices(pemilik aturan).
 """
+import hashlib
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.http import Http404
+from django.db.models import Count, Max, Q
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import DeleteView, ListView, TemplateView, View
 
 from devices.views import redirect_back, visible_devices
+from realtime.routing import DASHBOARD_WS_PATH, device_ws_path
 
 from .engines import ENGINES
+from .events import originator_device_id
 from .forms import ActionFormSet, EcaSpecForm, RuleForm
-from .models import Alarm, Rule, RuleModel, RuleState
+from .models import Alarm, Rule, RuleExecution, RuleModel, RuleState
 
 EXECUTIONS_PAGE_SIZE = 25
 
@@ -45,6 +50,62 @@ def reset_state(rule):
     )
 
 
+# --- Pembaruan langsung ---------------------------------------------------------------
+#
+# Halaman aturan dan alarm memakai mekanisme yang sama dengan halaman device
+# (static/js/auto_refresh.js): kabar WebSocket sebagai jalur utama, dan "versi
+# data" yang diperiksa berkala sebagai cadangan. Versi = teks pendek yang
+# berubah bila ada sesuatu yang perlu ditampilkan ulang.
+
+def stamp(value):
+    return int(value.timestamp()) if value else 0
+
+
+def alarms_version(alarms):
+    agg = alarms.aggregate(
+        last=Max("pk"), active=Count("pk", filter=Q(cleared_at__isnull=True)),
+        acked=Max("acknowledged_at"), cleared=Max("cleared_at"),
+    )
+    return f"{agg['last'] or 0}.{agg['active']}.{stamp(agg['acked'])}.{stamp(agg['cleared'])}"
+
+
+def rule_version(rule):
+    state = RuleState.objects.filter(rule=rule).first()
+    last_execution = rule.executions.aggregate(last=Max("pk"))["last"] or 0
+    return "-".join([
+        state.status if state else "IDLE",
+        str(int(rule.is_enabled)),
+        str(last_execution),
+        alarms_version(rule.alarms.all()),
+    ])
+
+
+def rules_version(user):
+    rows = visible_rules(user).values_list("pk", "is_enabled", "state__status").order_by("pk")
+    last_execution = RuleExecution.objects.filter(rule__in=visible_rules(user)).aggregate(
+        last=Max("pk"))["last"] or 0
+    # hashlib (bukan hash()): hasilnya sama di setiap proses Python.
+    digest = hashlib.md5(repr(list(rows)).encode()).hexdigest()[:10]
+    return f"{digest}-{last_execution}"
+
+
+def updates(request, kind, pk=None):
+    """GET /rules/updates/, /rules/<pk>/updates/, /rules/alarms/updates/ -> {"version": "..."}."""
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not logged in."}, status=401)
+    if kind == "rule":
+        version = rule_version(get_object_or_404(visible_rules(request.user), pk=pk))
+    elif kind == "alarms":
+        version = alarms_version(visible_alarms(request.user))
+    else:
+        version = rules_version(request.user)
+    return JsonResponse({"version": version})
+
+
+def live_context(ws_path, updates_url, version):
+    return {"ws_path": ws_path, "updates_url": updates_url, "data_version": version}
+
+
 # --- Aturan --------------------------------------------------------------------------
 
 class RuleListView(LoginRequiredMixin, ListView):
@@ -59,6 +120,9 @@ class RuleListView(LoginRequiredMixin, ListView):
         for rule in context["rules"]:
             rule.summary = rule.engine.describe(rule) if rule.engine.implemented else None
         context["engines"] = ENGINES
+        context.update(live_context(
+            DASHBOARD_WS_PATH, reverse("rules:updates"), rules_version(self.request.user)
+        ))
         return context
 
 
@@ -171,6 +235,13 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             executions=executions,
             alarms=rule.alarms.select_related("device")[:10],
         )
+        # Halaman berlangganan kabar dari device asal aturan (lihat rules/events.py).
+        device_id = originator_device_id(rule)
+        context.update(live_context(
+            device_ws_path(device_id) if device_id else DASHBOARD_WS_PATH,
+            reverse("rules:detail_updates", args=[rule.pk]),
+            rule_version(rule),
+        ))
         return context
 
 
@@ -215,6 +286,9 @@ class AlarmListView(LoginRequiredMixin, ListView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["show_all"] = self.request.GET.get("show") == "all"
+        context.update(live_context(
+            DASHBOARD_WS_PATH, reverse("rules:alarms_updates"), alarms_version(visible_alarms(self.request.user))
+        ))
         return context
 
 
