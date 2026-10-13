@@ -42,14 +42,20 @@
         <h2 class="h6 text-muted text-uppercase">Rule</h2>
         {% if summary %}
         <ol class="eca-steps list-unstyled mb-0">
-          <li><span class="eca-key">When</span> {{ summary.when }}</li>
+          {# Setiap variabel menjadi tautan ke halaman variabelnya. #}
+          {% if spec.event == "INACTIVITY" %}
+          <li><span class="eca-key">When</span> <a class="var-link" href="{% url 'devices:detail' spec.device_id %}">{{ spec.device.name }}</a> sends no data</li>
           <li><span class="eca-key">If</span> {{ summary.if }}</li>
+          {% else %}
+          <li><span class="eca-key">When</span> new data for {% for variable in condition_variables %}{% include "rules/includes/variable_link.html" %}{% if not forloop.last %}, {% endif %}{% endfor %}</li>
+          <li><span class="eca-key">If</span> {% include "rules/includes/expression.html" with groups=spec.when_groups %}{% if spec.duration_seconds %} for {{ spec.duration_seconds }} s{% endif %}{% if spec.cooldown_seconds %} (cooldown {{ spec.cooldown_seconds }} s){% endif %}</li>
+          {% endif %}
           <li><span class="eca-key">Then</span>
             <ul class="mb-0 ps-3">
               {% for action in actions %}{% if action.run_on == "ACTIVATE" %}<li>{% include "rules/includes/action_text.html" %}</li>{% endif %}{% empty %}<li class="text-muted">no actions</li>{% endfor %}
             </ul>
           </li>
-          <li><span class="eca-key">Clear</span> when {{ summary.clear }}
+          <li><span class="eca-key">Clear</span> when {% if spec.event != "INACTIVITY" and spec.has_hysteresis %}{% include "rules/includes/expression.html" with groups=spec.clear_groups %}{% else %}{{ summary.clear }}{% endif %}
             <ul class="mb-0 ps-3">
               {% for action in actions %}{% if action.run_on == "CLEAR" %}<li>{% include "rules/includes/action_text.html" %}</li>{% endif %}{% endfor %}
               {% for action in actions %}{% if action.kind == "ALARM" %}<li>clear the alarm automatically</li>{% endif %}{% endfor %}
@@ -111,7 +117,7 @@
           <td><span class="badge rule-state{% if execution.transition == "ACTIVATE" %} rule-state-active{% endif %}">{{ execution.get_transition_display }}</span></td>
           <td class="text-end">{% if execution.value is not None %}{{ execution.value|floatformat:"-2" }}{% else %}—{% endif %}</td>
           <td class="small">
-            {% if execution.snapshot %}<div class="text-muted mb-1">Values: {% for label, value in execution.snapshot.items %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+            {% if execution.value_rows %}<div class="text-muted mb-1">Values: {% for label, value, url in execution.value_rows %}{% if url %}<a class="var-link" href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
             {% for result in execution.results %}
             <div class="{% if not result.ok %}text-danger{% endif %}">{% if result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
             {% empty %}<span class="text-muted">no actions</span>{% endfor %}

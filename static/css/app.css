@@ -653,3 +653,18 @@ h1, .h1, h2, .h2, h3, .h3 {
 .truth-unknown { color: #a15c00; }
 [data-bs-theme="dark"] .truth-true { color: #4cc94c; }
 [data-bs-theme="dark"] .truth-unknown { color: #f2b544; }
+
+/* Tautan ke halaman variabel/device di halaman aturan: tidak bergaris, tetap terlihat. */
+.var-link {
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+
+.var-link:hover { border-bottom-style: solid; }
+
+.expr-op {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--app-muted);
+}

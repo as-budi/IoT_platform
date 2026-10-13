@@ -5,6 +5,7 @@ Kepemilikan mengikuti device: pengguna biasa melihat aturan miliknya sendiri,
 Admin melihat semua. Pilihan device/variabel di form dibatasi ke
 visible_devices(pemilik aturan).
 """
+import copy
 import hashlib
 
 from django.contrib import messages
@@ -258,10 +259,33 @@ def eca_create_or_planned(request, model):
     return redirect("rules:new")
 
 
+def variable_urls(rule):
+    """Alamat halaman setiap variabel di kondisi aturan.
+
+    Mengembalikan dua kamus: {variable_id: url} untuk kotak "Last evaluation",
+    dan {"Device · Label": url} untuk baris "Values" di execution log (yang
+    hanya menyimpan nama tampilan).
+    """
+    by_id, by_label = {}, {}
+    spec = getattr(rule, "eca", None)
+    for condition in spec.condition_list() if spec else []:
+        variable = condition.variable
+        url = reverse("devices:variable_detail", args=[variable.device_id, variable.pk])
+        by_id[variable.pk] = url
+        by_label[f"{variable.device.name} · {variable.display_name}"] = url
+    return by_id, by_label
+
+
 def evaluation_context(rule):
     """Data untuk kotak "Last evaluation" (rules/includes/evaluation.html)."""
     state = RuleState.objects.filter(rule=rule).first()
-    snapshot = state.snapshot if state else {}
+    # Salinan, karena tiap baris diberi alamat halaman variabelnya (row["url"]).
+    snapshot = copy.deepcopy(state.snapshot) if state else {}
+    urls, _ = variable_urls(rule)
+    for part in ("when", "clear"):
+        for group in snapshot.get(part, {}).get("groups", []):
+            for row in group.get("conditions", []):
+                row["url"] = urls.get(row.get("variable"))
     spec = getattr(rule, "eca", None)
     return {
         "rule": rule,
@@ -294,7 +318,20 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         rule = get_object_or_404(visible_rules(self.request.user), pk=self.kwargs["pk"])
         executions = Paginator(rule.executions.all(), EXECUTIONS_PAGE_SIZE).get_page(self.request.GET.get("page"))
+        # Nilai di execution log: (label, nilai, alamat halaman variabel atau None).
+        _, urls = variable_urls(rule)
+        for execution in executions:
+            execution.value_rows = [
+                (label, value, urls.get(label)) for label, value in (execution.snapshot or {}).items()
+            ]
+        spec = getattr(rule, "eca", None)
+        condition_variables = []
+        for condition in spec.condition_list() if spec else []:
+            if condition.variable not in condition_variables:
+                condition_variables.append(condition.variable)
         context.update(
+            spec=spec,
+            condition_variables=condition_variables,
             rule=rule,
             state=getattr(rule, "state", None),
             summary=rule.engine.describe(rule) if rule.engine.implemented else None,

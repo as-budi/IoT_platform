@@ -346,7 +346,10 @@ class RuleViewTests(RuleTestData):
         self.assertEqual(rule.eca.duration_seconds, 60)
         self.assertEqual(rule.actions.count(), 2)
         page = self.client.get(reverse("rules:detail", args=[rule.pk]))
-        self.assertContains(page, "Soil moisture &lt; 20 for 60 s")
+        soil_url = reverse("devices:variable_detail", args=[self.node.pk, self.soil.pk])
+        self.assertContains(page, f'href="{soil_url}"')
+        self.assertContains(page, "&lt; 20")
+        self.assertContains(page, "for 60 s")
 
     def test_overlapping_hysteresis_is_rejected(self):
         response = self.client.post(
@@ -803,3 +806,30 @@ class SampleRulesTests(TestCase):
         Device.objects.create(owner=User.objects.get(username="budi"), name="Fish Pond Node")
         with self.assertRaisesMessage(CommandError, "Several devices"):
             call_command("send_telemetry", "Fish Pond Node", "ph=7", stdout=out)
+
+
+class VariableLinkTests(MultiVariableData):
+    """Halaman aturan menautkan setiap variabel yang disebut ke halaman variabelnya."""
+
+    def test_links_on_rule_page(self):
+        rule = self.make_rule(when=[[(self.soil, "<", 20), (self.rain, "<", 1)]])
+        self.send(0, at(0), variable=self.rain)
+        self.send(15, at(10))                                  # aktif -> ada baris log
+        self.client.force_login(self.siti)
+        soil_url = reverse("devices:variable_detail", args=[self.node.pk, self.soil.pk])
+        rain_url = reverse("devices:variable_detail", args=[self.weather.pk, self.rain.pk])
+        pump_url = reverse("devices:variable_detail", args=[self.node.pk, self.pump.pk])
+        page = self.client.get(reverse("rules:detail", args=[rule.pk])).content.decode()
+        # When/If/Clear, aksi (pump), kotak Last evaluation, dan baris Values di log.
+        self.assertGreaterEqual(page.count(f'href="{soil_url}"'), 5)
+        self.assertGreaterEqual(page.count(f'href="{rain_url}"'), 3)
+        self.assertIn(f'href="{pump_url}"', page)
+        box = self.client.get(reverse("rules:evaluation", args=[rule.pk])).content.decode()
+        self.assertIn(f'href="{rain_url}"', box)
+
+    def test_inactivity_rule_links_device(self):
+        rule = Rule.objects.create(owner=self.siti, name="Silent")
+        EcaSpec.objects.create(rule=rule, event=EcaSpec.Event.INACTIVITY, device=self.weather, silence_seconds=60)
+        self.client.force_login(self.siti)
+        page = self.client.get(reverse("rules:detail", args=[rule.pk]))
+        self.assertContains(page, f'href="{reverse("devices:detail", args=[self.weather.pk])}"')

@@ -1,6 +1,6 @@
 {% comment %}Satu aksi dalam kalimat pendek. Butuh `action`.{% endcomment %}
-{% if action.kind == "SET_ACTUATOR" %}set <strong>{{ action.target_variable.device.name }} · {{ action.target_variable.display_name }}</strong> to <strong>{% if action.target_variable.is_boolean %}{% if action.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ action.value|floatformat:"-2" }}{{ action.target_variable.unit }}{% endif %}</strong>
-{% elif action.kind == "SEND_COMMAND" %}send command <code>{{ action.method }}</code>{% if action.params %} <code>{{ action.params }}</code>{% endif %} to <strong>{{ action.target_device.name }}</strong>
+{% if action.kind == "SET_ACTUATOR" %}set <strong>{% include "rules/includes/variable_link.html" with variable=action.target_variable %}</strong> to <strong>{% if action.target_variable.is_boolean %}{% if action.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ action.value|floatformat:"-2" }}{{ action.target_variable.unit }}{% endif %}</strong>
+{% elif action.kind == "SEND_COMMAND" %}send command <code>{{ action.method }}</code>{% if action.params %} <code>{{ action.params }}</code>{% endif %} to <strong><a class="var-link" href="{% url 'devices:detail' action.target_device.pk %}">{{ action.target_device.name }}</a></strong>
 {% elif action.kind == "ALARM" %}raise a <strong>{{ action.severity|lower }}</strong> alarm{% if action.message %}: “{{ action.message }}”{% endif %}
 {% elif action.kind == "EMAIL" %}email {{ action.recipients|default:"the rule owner" }}
 {% endif %}

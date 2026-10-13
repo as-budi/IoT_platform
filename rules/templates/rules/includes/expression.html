@@ -1,0 +1,5 @@
+{% comment %}
+  Ekspresi OR-berisi-AND dengan tautan ke setiap variabel.
+  Butuh `groups` (mis. rule.eca.when_groups): [[kondisi, ...], ...].
+{% endcomment %}
+{% for group in groups %}{% if not forloop.first %} <span class="expr-op">OR</span> {% endif %}{% if groups|length > 1 and group|length > 1 %}({% endif %}{% for c in group %}{% if not forloop.first %} <span class="expr-op">AND</span> {% endif %}{% include "rules/includes/variable_link.html" with variable=c.variable %} {{ c.get_operator_display }} {{ c.threshold|floatformat:"-2" }}{% endfor %}{% if groups|length > 1 and group|length > 1 %}){% endif %}{% endfor %}
