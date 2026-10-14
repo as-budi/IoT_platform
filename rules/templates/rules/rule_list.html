@@ -36,7 +36,7 @@
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           {% if user.is_admin %}<td>{{ rule.owner.username }}</td>{% endif %}
-          <td>{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled %}</td>
+          <td>{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled model=rule.model %}</td>
           <td class="small text-nowrap">{% if rule.state.last_activated_at %}{{ rule.state.last_activated_at|timesince }} ago{% else %}<span class="text-muted">never</span>{% endif %}</td>
         </tr>
         {% endfor %}

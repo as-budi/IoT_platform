@@ -60,6 +60,9 @@ di *device profile* ThingsBoard.
 
 ### b. Flow-based / graf berarah (rule chain)
 
+> Di project ini: diimplementasikan pada [tahap 8](tahap-08-rule-chain.md); mekanismenya
+> dijelaskan di [flow-mekanisme.md](flow-mekanisme.md).
+
 Aturan disusun sebagai **graf node** yang dihubungkan oleh relasi bernama. Ini model inti
 ThingsBoard dan Node-RED.
 

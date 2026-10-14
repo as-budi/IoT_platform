@@ -1,0 +1,24 @@
+{% comment %}Jejak satu pesan: satu baris per node yang dilewati. Butuh `trace`.{% endcomment %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0 small flow-trace">
+    <thead class="table-light">
+      <tr><th>#</th><th>From</th><th>Node</th><th>Result</th><th>What happened</th><th>Next</th></tr>
+    </thead>
+    <tbody>
+      {% for row in trace %}
+      {% if row.error %}
+      <tr><td>{{ row.step }}</td><td colspan="5" class="text-danger">{{ row.error }}</td></tr>
+      {% else %}
+      <tr>
+        <td class="text-muted">{{ row.step }}</td>
+        <td class="text-muted text-nowrap">{{ row.from }}</td>
+        <td class="text-nowrap"><strong>{{ row.name }}</strong> <span class="text-muted">{{ row.kind_label }}</span></td>
+        <td><span class="flow-result flow-result-{{ row.label|lower }}">{{ row.label_text|default:row.label }}</span></td>
+        <td>{{ row.detail }}</td>
+        <td class="text-nowrap">{% for name in row.next %}{{ name }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">end of branch</span>{% endfor %}</td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

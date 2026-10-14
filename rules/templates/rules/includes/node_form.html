@@ -1,0 +1,62 @@
+{% comment %}
+  Satu node rule chain di dalam formset. Field tampil sesuai jenis node lewat
+  atribut data-for (lihat skrip di rule_form_flow.html). Field `key`, `threshold`,
+  `seconds`, dan `message` dipakai beberapa jenis node dengan arti berbeda;
+  keterangan per jenis ada di baris data-for kecil di bawahnya.
+{% endcomment %}
+<div class="card node-row mb-3{% if form.DELETE.value %} d-none{% endif %}" data-node-row>
+  <div class="card-body">
+    {{ form.id }}
+    <div class="d-none">{{ form.DELETE }}</div>
+    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.name %}</div>
+      <div class="col-sm-5">{% include "rules/includes/field.html" with field=form.kind %}</div>
+      <div class="col-sm-3 text-sm-end mb-3">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-node>Remove</button>
+      </div>
+    </div>
+    <p class="small text-muted mt-n2 mb-3" data-node-help></p>
+
+    {# Filter, enrichment, transformation #}
+    <div class="row g-3">
+      <div class="col-sm-5" data-for="LATEST">{% include "rules/includes/field.html" with field=form.variable %}</div>
+      <div class="col-sm-4" data-for="CHECK CHANGED LATEST CALCULATE CREATE_ALARM">
+        {% include "rules/includes/field.html" with field=form.key %}
+        <div class="form-text mt-n2 mb-2" data-for="LATEST">Blank = the variable's own key.</div>
+        <div class="form-text mt-n2 mb-2" data-for="CALCULATE">Where the result is stored.</div>
+        <div class="form-text mt-n2 mb-2" data-for="CREATE_ALARM">Optional: stored as the alarm value.</div>
+      </div>
+      <div class="col-sm-3" data-for="CHECK">{% include "rules/includes/field.html" with field=form.operator %}</div>
+      <div class="col-sm-3" data-for="CHECK CHANGED">
+        {% include "rules/includes/field.html" with field=form.threshold %}
+        <div class="form-text mt-n2 mb-2" data-for="CHANGED">Minimum change. Blank = any change.</div>
+      </div>
+      <div class="col-sm-3" data-for="CALCULATE">{% include "rules/includes/field.html" with field=form.operand_a %}</div>
+      <div class="col-sm-2" data-for="CALCULATE">{% include "rules/includes/field.html" with field=form.math_op %}</div>
+      <div class="col-sm-3" data-for="CALCULATE">{% include "rules/includes/field.html" with field=form.operand_b %}</div>
+      <div class="col-sm-3" data-for="THROTTLE LATEST">
+        {% include "rules/includes/field.html" with field=form.seconds %}
+        <div class="form-text mt-n2 mb-2" data-for="THROTTLE">At most one message per this many seconds.</div>
+        <div class="form-text mt-n2 mb-2" data-for="LATEST">Older data fails. Blank = no limit.</div>
+      </div>
+    </div>
+
+    {# Aksi #}
+    <div class="row g-3" data-for="SET_ACTUATOR">
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.target_variable %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">1 = ON, 0 = OFF for on/off actuators.</div></div>
+    </div>
+    <div class="row g-3" data-for="SEND_COMMAND">
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.target_device %}</div>
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.method %}</div>
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.params %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.ttl_seconds %}</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-sm-4" data-for="CREATE_ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
+      <div class="col-sm-4" data-for="EMAIL">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      <div class="col-sm-8" data-for="CREATE_ALARM EMAIL">{% include "rules/includes/field.html" with field=form.message %}</div>
+    </div>
+  </div>
+</div>

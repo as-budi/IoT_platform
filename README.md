@@ -25,6 +25,8 @@ Penjelasan konsep:
 - [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md) — rule engine ECA: aturan otomatis, alarm, worker rule_engine
 - [docs/contoh-data-dan-aturan.md](docs/contoh-data-dan-aturan.md) — pengguna, device, dan aturan ECA multi-variabel contoh, beserta skenario mencobanya
 - [docs/eca-mekanisme.md](docs/eca-mekanisme.md) — ECA lebih dalam: kondisi AND/OR, logika tiga nilai, alur eksekusi, query database, contoh linimasa
+- [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md) — rule engine model rule chain (Flow): graf node filter/enrichment/transformation/action
+- [docs/flow-mekanisme.md](docs/flow-mekanisme.md) — rule chain lebih dalam: penelusuran graf, cara kerja tiap node, query database, contoh jejak eksekusi
 - [docs/rencana-ota.md](docs/rencana-ota.md) — rencana pembaruan firmware over-the-air (OTA): komponen, risiko, tahapan
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 
@@ -223,16 +225,20 @@ Setiap layanan tetap berjalan sebagai proses sendiri; `runall` menggabungkan log
 menyalakan ulang yang crash, dan mematikan semuanya saat Ctrl+C. Hanya untuk
 pengembangan; lihat [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md).
 
-## Rule engine (tahap 7)
+## Rule engine (tahap 7 dan 8)
 
-Aturan otomatis model Event–Condition–Action, mis. "bila soil_moisture < 20 selama
-60 detik, nyalakan pompa; pulih bila > 30". Dibuat di menu **Rules**; alarm tampil di
-menu **Alarms**. Lima model rule engine lain sudah tersedia sebagai pilihan, belum
-diimplementasikan.
+Dua model rule engine sudah bisa dipakai dari menu **Rules**; alarm tampil di menu **Alarms**:
+
+- **Event–Condition–Action** (tahap 7), mis. "bila soil_moisture < 20 selama 60 detik,
+  nyalakan pompa; pulih bila > 30".
+- **Flow-based rule chain** (tahap 8): graf node, mis. "hitung faktor daya = power ÷
+  (voltage × current); bila < 0.8, kirim email paling banyak tiap 10 menit".
+
+Empat model lain tersedia sebagai pilihan, belum diimplementasikan.
 
 ```bash
 python manage.py migrate                      # tabel rules_*
-python manage.py seed_rules                   # 6 aturan contoh (setelah seed_demo)
+python manage.py seed_rules                   # 6 aturan ECA + 4 rule chain contoh (setelah seed_demo)
 python manage.py rule_engine                  # worker, terminal terpisah dari runserver
 python manage.py send_telemetry "Fish Pond Node" dissolved_oxygen=3.5   # kirim data tiruan
 ```
@@ -240,7 +246,8 @@ python manage.py send_telemetry "Fish Pond Node" dissolved_oxygen=3.5   # kirim 
 Dengan `REDIS_URL` terisi, data diteruskan ke worker lewat antrean Redis. Tanpa Redis
 aturan dinilai langsung saat data disimpan, tetapi worker tetap diperlukan untuk aturan
 berdurasi dan "device diam". Email aksi aturan dicetak di terminal bila `EMAIL_HOST`
-kosong. Penjelasan lengkap: [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md).
+kosong. Penjelasan lengkap: [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md)
+dan [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md).
 
 ## Struktur project
 

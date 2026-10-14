@@ -1,0 +1,18 @@
+{% comment %}
+  Kotak "Last run": jalan pesan terakhir di rule chain (RuleState.snapshot,
+  dibuat rules/engines/flow.py). Dipakai di halaman detail dan oleh
+  /rules/<pk>/evaluation/ (diperbarui langsung setiap ada pesan baru).
+{% endcomment %}
+{% with snap=state.snapshot %}
+<div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2 mb-2">
+  <h2 class="h6 text-muted text-uppercase mb-0">Rule chain{% if snap.trace %} · last message{% endif %}</h2>
+  {% if snap.trace %}<span class="small text-muted">from <a class="var-link" href="{% url 'devices:detail' snap.device %}">{{ snap.device_name }}</a> · {{ state.last_evaluated_at|date:"H:i:s" }} · {{ state.last_evaluated_at|timesince }} ago</span>{% endif %}
+</div>
+{% include "rules/includes/flow_diagram.html" %}
+{% if snap.trace %}
+<div class="small mt-3 mb-1"><span class="text-muted">Input:</span> {% for key, value in snap.input.items %}<code>{{ key }}</code> = {{ value|floatformat:"-2" }}{% if not forloop.last %}, {% endif %}{% endfor %}</div>
+{% include "rules/includes/flow_trace.html" with trace=snap.trace %}
+{% else %}
+<p class="small text-muted mt-3 mb-0">No message has passed through the chain yet. It runs every time {% if rule.flow.device %}{{ rule.flow.device.name }}{% else %}one of the owner's devices{% endif %} sends data.</p>
+{% endif %}
+{% endwith %}

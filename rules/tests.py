@@ -248,9 +248,9 @@ class EcaEngineTests(RuleTestData):
 
 
 class RegistryTests(TestCase):
-    def test_all_six_models_are_registered_only_eca_implemented(self):
+    def test_all_six_models_are_registered_eca_and_flow_implemented(self):
         self.assertEqual(list(ENGINES), list(RuleModel.values))
-        self.assertEqual([e.key for e in implemented_engines()], [RuleModel.ECA])
+        self.assertEqual([e.key for e in implemented_engines()], [RuleModel.ECA, RuleModel.FLOW])
         self.assertIsInstance(ENGINES[RuleModel.ECA], EcaEngine)
         for engine in ENGINES.values():
             self.assertTrue(engine.summary and engine.example, engine.key)
@@ -327,8 +327,9 @@ class RuleViewTests(RuleTestData):
         response = self.client.get(reverse("rules:new"))
         for engine in ENGINES.values():
             self.assertContains(response, engine.label)
-        self.assertContains(response, "Coming in a later stage", count=5)
+        self.assertContains(response, "Coming in a later stage", count=4)
         self.assertContains(response, reverse("rules:new_model", args=["eca"]))
+        self.assertContains(response, reverse("rules:new_model", args=["flow"]))
 
     def test_planned_model_redirects_back(self):
         response = self.client.get(reverse("rules:new_model", args=["cep"]))
@@ -711,7 +712,8 @@ class SampleRulesTests(TestCase):
         out = StringIO()
         call_command("seed_rules", stdout=out)
         self.assertIn("0 sample rule(s) created", out.getvalue())
-        self.assertEqual(Rule.objects.count(), 6)
+        self.assertEqual(Rule.objects.filter(model=RuleModel.ECA).count(), 6)
+        self.assertEqual(Rule.objects.filter(model=RuleModel.FLOW).count(), 4)
         self.assertFalse(Rule.objects.get(name="Weather station silent").is_enabled)
         self.assertEqual(len(Rule.objects.get(name="Smart irrigation").eca.when_groups), 2)
         for username in ("andi", "rina"):
@@ -783,8 +785,9 @@ class SampleRulesTests(TestCase):
         self.assertEqual(self.tick(60), [])
         [activated] = self.tick(121)
         self.assertEqual(self.desired("Cold Storage Unit", "compressor_boost"), 1)
-        command = Command.objects.get(device__name="Cold Storage Unit", method="buzzer")
-        self.assertEqual(command.params, {"seconds": 10})
+        # Rule chain "Cold room door check" juga membunyikan buzzer (5 detik) untuk pesan yang sama.
+        commands = Command.objects.filter(device__name="Cold Storage Unit", method="buzzer")
+        self.assertCountEqual([c.params for c in commands], [{"seconds": 10}, {"seconds": 5}])
         [cleared] = self.send("Cold Storage Unit", 200, temperature=4, humidity=75)
         self.assertEqual(cleared.transition, "CLEAR")
 

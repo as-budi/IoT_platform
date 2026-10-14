@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}{{ rule.name }} · Rules · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ rule.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">
+      {{ rule.name }}
+      {% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled model=rule.model %}
+    </h1>
+    <div class="text-muted small">
+      <span class="badge model-badge">{{ rule.model }}</span> {{ rule.get_model_display }} · owner: {{ rule.owner.username }}
+    </div>
+    {% if rule.description %}<p class="mt-2 mb-0">{{ rule.description }}</p>{% endif %}
+  </div>
+  <div class="text-nowrap">
+    <form method="post" action="{% url 'rules:toggle' rule.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button class="btn btn-outline-secondary">{% if rule.is_enabled %}Disable{% else %}Enable{% endif %}</button>
+    </form>
+    <a class="btn btn-outline-secondary" href="{% url 'rules:edit' rule.pk %}">Edit</a>
+    <a class="btn btn-outline-danger" href="{% url 'rules:delete' rule.pk %}">Delete</a>
+  </div>
+</div>
+
+{% include "devices/includes/auto_refresh.html" %}
+
+{# Diagram dan jejak pesan terakhir; diperbarui langsung setiap ada pesan baru. #}
+<div class="card shadow-sm mb-4"><div class="card-body" data-evaluation data-url="{% url 'rules:evaluation' rule.pk %}">
+  {% include "rules/includes/flow_run.html" %}
+</div></div>
+
+<div class="row g-3 mb-4">
+  {# ---------- Daftar node ---------- #}
+  <div class="col-lg-8">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 text-muted text-uppercase">Nodes</h2>
+        <p class="small mb-2"><strong>Input</strong> receives every telemetry message from
+          {% if spec.device %}<a class="var-link" href="{% url 'devices:detail' spec.device_id %}">{{ spec.device.name }}</a>{% else %}any of the owner's devices{% endif %}
+          and passes it to {% for link in start_links %}<strong>{{ link.target.name }}</strong>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-danger">nothing</span>{% endfor %}.</p>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 small">
+            <thead class="table-light"><tr><th>Node</th><th>Type</th><th>Does</th><th>Then</th></tr></thead>
+            <tbody>
+              {% for item in flow_nodes %}
+              <tr>
+                <td class="text-nowrap"><strong>{{ item.node.name }}</strong></td>
+                <td class="text-nowrap"><span class="flow-cat flow-cat-{{ item.category|lower }}">{{ item.category }}</span> {{ item.node.get_kind_display }}</td>
+                <td>
+                  {% if item.node.kind == "LATEST" and item.node.variable %}{{ item.node.key|default:item.node.variable.key }} ← {% include "rules/includes/variable_link.html" with variable=item.node.variable %}{% if item.node.seconds %} (max {{ item.node.seconds }} s old){% endif %}
+                  {% elif item.node.kind == "SET_ACTUATOR" and item.node.target_variable %}set {% include "rules/includes/variable_link.html" with variable=item.node.target_variable %} to {% if item.node.target_variable.is_boolean %}{% if item.node.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ item.node.value|floatformat:"-2" }}{% endif %}
+                  {% elif item.node.kind == "CREATE_ALARM" %}{{ item.summary }}{% if item.node.message %}: “{{ item.node.message }}”{% endif %}
+                  {% else %}{{ item.summary }}{% endif %}
+                </td>
+                <td class="text-nowrap">{% for link in item.links %}<span class="flow-result flow-result-{{ link.label|lower }}">{{ link.get_label_display }}</span> → {{ link.target.name }}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="text-muted">end</span>{% endfor %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {# ---------- Keadaan ---------- #}
+  <div class="col-lg-4">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 text-muted text-uppercase">State</h2>
+        <dl class="row small mb-0">
+          <dt class="col-6 fw-normal text-muted">Status</dt>
+          <dd class="col-6">{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled model=rule.model %}</dd>
+          <dt class="col-6 fw-normal text-muted">Last message</dt>
+          <dd class="col-6">{% if state.last_evaluated_at %}{{ state.last_evaluated_at|timesince }} ago{% else %}never{% endif %}</dd>
+          <dt class="col-6 fw-normal text-muted">Last action</dt>
+          <dd class="col-6 mb-0">{% if state.last_activated_at %}{{ state.last_activated_at|timesince }} ago{% else %}never{% endif %}</dd>
+        </dl>
+        <p class="small text-muted mt-3 mb-0">A rule chain has no Idle/Active state: every message walks the graph from Input.
+          Repeats are held back by the <em>Value changed</em> and <em>Rate limit</em> nodes, which remember a little per device.
+          Saving the rule clears that memory.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if alarms %}
+<h2 class="h5 mb-3">Alarms from this rule</h2>
+<div class="mb-4">{% include "rules/includes/alarm_table.html" %}</div>
+{% endif %}
+
+<h2 class="h5 mb-1">Execution log</h2>
+<p class="small text-muted">Messages that changed something (an actuator, a command, an alarm, an email) or whose action failed.
+  A message that only found “already ON” is not logged; the box above always shows the last one.</p>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Time</th><th>Message</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for execution in executions %}
+        <tr>
+          <td class="text-nowrap align-top">{{ execution.created_at|date:"d M Y H:i:s" }}</td>
+          <td class="small align-top">{% for label, value, url in execution.value_rows %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+          <td class="small align-top">
+            {% for result in execution.results %}
+            <div class="{% if not result.ok %}text-danger{% endif %}">{% if result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
+            {% endfor %}
+            {% if execution.trace %}
+            <details class="mt-1"><summary class="text-muted">Path through the chain ({{ execution.trace|length }} step{{ execution.trace|length|pluralize }})</summary>
+              <div class="mt-2">{% include "rules/includes/flow_trace.html" with trace=execution.trace %}</div>
+            </details>
+            {% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" class="text-center text-muted py-4">No action has run yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% if executions.has_other_pages %}
+<nav class="mt-3" aria-label="Pages">
+  <ul class="pagination pagination-sm">
+    {% if executions.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ executions.previous_page_number }}">Newer</a></li>{% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ executions.number }} of {{ executions.paginator.num_pages }}</span></li>
+    {% if executions.has_next %}<li class="page-item"><a class="page-link" href="?page={{ executions.next_page_number }}">Older</a></li>{% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/*
+ * Halaman rule chain (sama dengan halaman ECA):
+ *   rule_eval  -> ada pesan baru yang melewati graf -> kotak diagram + jejak diambil ulang
+ *   rule       -> ada aksi yang berjalan (log baru)  -> muat ulang
+ *   alarm      -> alarm dari aturan ini berubah      -> muat ulang
+ */
+(function () {
+  "use strict";
+  if (!window.AutoRefresh) return;
+  const RULE_ID = {{ rule.pk }};
+  const box = document.querySelector("[data-evaluation]");
+  let loading = false;
+
+  async function reloadRun() {
+    if (loading) return;
+    loading = true;
+    try {
+      const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
+      if (response.ok) box.innerHTML = await response.text();
+    } catch (err) { /* dicoba lagi pada kabar berikutnya */ }
+    loading = false;
+  }
+
+  AutoRefresh.on("rule_eval", (event) => {
+    if (event.rule === RULE_ID) reloadRun();
+    return true;
+  });
+  AutoRefresh.on("rule", (event) => event.rule !== RULE_ID);
+  AutoRefresh.on("alarm", (event) => event.rule !== RULE_ID);
+  ["telemetry", "desired", "command"].forEach((type) => AutoRefresh.on(type, () => true));
+})();
+</script>
+{% endblock %}

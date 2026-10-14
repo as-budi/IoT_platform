@@ -1,5 +1,5 @@
 """
-Form untuk membuat aturan ECA.
+Form untuk membuat aturan ECA (tahap 7) dan rule chain (tahap 8, di bagian bawah file).
 
 Satu halaman berisi beberapa bagian yang disimpan bersamaan:
     RuleForm           nama, deskripsi, aktif
@@ -13,6 +13,7 @@ aturan (visible_devices), sehingga pengguna tidak bisa memilih device orang lain
 walaupun mengubah isi form di browser.
 """
 import json
+import re
 
 from django import forms
 from django.forms import inlineformset_factory
@@ -20,7 +21,9 @@ from django.forms import inlineformset_factory
 from accounts.forms import BootstrapFormMixin
 from devices.models import Variable
 
-from .models import Alarm, EcaCondition, EcaSpec, Operator, Rule, RuleAction
+from .models import (
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MathOp, Operator, Rule, RuleAction,
+)
 
 LOW = {Operator.LT, Operator.LTE}
 HIGH = {Operator.GT, Operator.GTE}
@@ -277,3 +280,270 @@ ActionFormSet = inlineformset_factory(
     validate_min=True,
     can_delete=True,
 )
+
+
+# --- Rule chain (Flow) -------------------------------------------------------------------
+#
+# Form rule chain terdiri dari:
+#     RuleForm        nama, deskripsi, aktif (sama dengan ECA)
+#     FlowSpecForm    pesan dari device mana yang masuk ke Input
+#     NodeFormSet     node-node graf (model formset: id node tetap, ingatannya tidak hilang)
+#     LinkFormSet     panah antar-node. Formset BIASA (bukan model formset), karena
+#                     node tujuan bisa saja node baru yang belum punya id: panah
+#                     menyebut node lewat NAMANYA, lalu view menerjemahkan nama -> node.
+
+INPUT = "Input"
+NODE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+# Field yang WAJIB untuk setiap jenis node (field lain milik jenis itu opsional).
+NODE_REQUIRED = {
+    FlowNode.Kind.CHECK: ("key", "operator", "threshold"),
+    FlowNode.Kind.CHANGED: ("key",),
+    FlowNode.Kind.THROTTLE: ("seconds",),
+    FlowNode.Kind.LATEST: ("variable",),
+    FlowNode.Kind.CALCULATE: ("key", "operand_a", "math_op", "operand_b"),
+    FlowNode.Kind.SET_ACTUATOR: ("target_variable", "value"),
+    FlowNode.Kind.SEND_COMMAND: ("target_device", "method"),
+    FlowNode.Kind.CREATE_ALARM: ("severity",),
+    FlowNode.Kind.CLEAR_ALARM: (),
+    FlowNode.Kind.EMAIL: (),
+}
+NODE_BLANKS = {
+    "key": "", "operator": "", "threshold": None, "operand_a": "", "math_op": "", "operand_b": "",
+    "variable": None, "seconds": None, "target_variable": None, "value": None, "target_device": None,
+    "method": "", "params": {}, "severity": "", "message": "", "recipients": "",
+}
+
+
+class FlowSpecForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = FlowSpec
+        fields = ("device",)
+
+    def __init__(self, *args, devices, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["device"].queryset = devices
+        self.fields["device"].empty_label = "— Any of my devices —"
+
+
+def kind_choices():
+    """Jenis node dikelompokkan per kategori (<optgroup>) di daftar pilihan."""
+    from .engines.flow import NODE_TYPES
+
+    groups = {}
+    for kind, label in FlowNode.Kind.choices:
+        groups.setdefault(NODE_TYPES[kind].category, []).append((kind, label))
+    return list(groups.items())
+
+
+class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
+    params = forms.CharField(
+        label="Parameters", required=False,
+        widget=forms.TextInput(attrs={"placeholder": '{"seconds": 10}'}),
+        help_text="Optional JSON object.",
+    )
+    severity = forms.ChoiceField(label="Severity", choices=Alarm.Severity.choices, required=False)
+
+    class Meta:
+        model = FlowNode
+        fields = (
+            "name", "kind", "key", "operator", "threshold", "operand_a", "math_op", "operand_b",
+            "variable", "seconds", "target_variable", "value", "target_device", "method",
+            "params", "ttl_seconds", "severity", "message", "recipients",
+        )
+        field_classes = {"variable": VariableChoiceField, "target_variable": VariableChoiceField}
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "e.g. too_hot", "data-node-name": ""}),
+            "key": forms.TextInput(attrs={"placeholder": "e.g. temperature"}),
+            "operand_a": forms.TextInput(attrs={"placeholder": "key or number"}),
+            "operand_b": forms.TextInput(attrs={"placeholder": "key or number"}),
+            "message": forms.TextInput(attrs={"placeholder": "{deviceName}: temperature {temperature} °C"}),
+            "method": forms.TextInput(attrs={"placeholder": "e.g. buzzer"}),
+        }
+        help_texts = {"name": "", "message": "Placeholders: {rule} {device} {values} and any message key, e.g. {temperature}."}
+
+    def __init__(self, *args, devices, **kwargs):
+        super().__init__(*args, **kwargs)
+        variables = Variable.objects.filter(device__in=devices).select_related("device").order_by("device__name", "key")
+        self.fields["variable"].queryset = variables
+        self.fields["target_variable"].queryset = variables.filter(kind=Variable.Kind.ACTUATOR)
+        self.fields["target_device"].queryset = devices
+        self.fields["variable"].empty_label = "— Variable —"
+        self.fields["target_variable"].empty_label = "— Choose an actuator —"
+        self.fields["target_device"].empty_label = "— Choose a device —"
+        self.fields["kind"].choices = kind_choices()
+        self.fields["kind"].widget.attrs["data-node-kind"] = ""
+        self.fields["operator"].choices = [("", "—")] + list(Operator.choices)
+        self.fields["math_op"].choices = [("", "—")] + list(MathOp.choices)
+        self.fields["key"].label = "Message key"
+        if self.instance.pk and self.instance.params:
+            self.initial["params"] = json.dumps(self.instance.params)
+        if not self.initial.get("severity"):
+            self.initial["severity"] = Alarm.Severity.MAJOR
+        self.fields["seconds"].widget.attrs["min"] = 0
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if not NODE_NAME.match(name):
+            raise forms.ValidationError("Use letters, digits and _, starting with a letter.")
+        if name.lower() == INPUT.lower():
+            raise forms.ValidationError("“Input” is reserved for the start of the chain.")
+        return name
+
+    def clean_params(self):
+        return RuleActionForm.clean_params(self)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        kind = cleaned.get("kind")
+        if kind not in NODE_REQUIRED:
+            return cleaned
+        from .engines.flow import NODE_TYPES
+
+        for name in NODE_REQUIRED[kind]:
+            if cleaned.get(name) in (None, ""):
+                self.add_error(name, "Required for this node type.")
+        for name in ("operand_a", "operand_b"):
+            text = (cleaned.get(name) or "").strip()
+            if kind == FlowNode.Kind.CALCULATE and text:
+                cleaned[name] = text
+                try:
+                    float(text)
+                except ValueError:
+                    if not re.match(r"^[A-Za-z_][A-Za-z0-9_\-]*$", text):
+                        self.add_error(name, "Enter a message key or a number.")
+        if kind == FlowNode.Kind.SET_ACTUATOR:
+            variable, value = cleaned.get("target_variable"), cleaned.get("value")
+            if variable and value is not None:
+                if variable.is_boolean and value not in (0, 1):
+                    self.add_error("value", "On/off actuators accept 1 (ON) or 0 (OFF).")
+                elif variable.min_value is not None and value < variable.min_value:
+                    self.add_error("value", f"Must be at least {variable.min_value:g}.")
+                elif variable.max_value is not None and value > variable.max_value:
+                    self.add_error("value", f"Must be at most {variable.max_value:g}.")
+        # Kosongkan field milik jenis node lain, supaya data tersimpan rapi.
+        used = set(NODE_TYPES[kind].fields)
+        for name, blank in NODE_BLANKS.items():
+            if name not in used:
+                cleaned[name] = blank
+        return cleaned
+
+
+class BaseNodeFormSet(forms.BaseInlineFormSet):
+    def live_forms(self):
+        return [
+            form for form in self.forms
+            if (form.has_changed() or form.instance.pk)
+            and not (self.can_delete and self._should_delete_form(form))
+            and form.cleaned_data
+        ]
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        seen = set()
+        for form in self.live_forms():
+            name = form.cleaned_data.get("name", "")
+            if name.lower() in seen:
+                form.add_error("name", "Another node already has this name.")
+            seen.add(name.lower())
+
+    def node_kinds(self):
+        """{nama node: jenis} untuk semua node yang akan disimpan."""
+        return {f.cleaned_data["name"]: f.cleaned_data["kind"] for f in self.live_forms()}
+
+
+NodeFormSet = inlineformset_factory(
+    Rule, FlowNode, form=FlowNodeForm, formset=BaseNodeFormSet,
+    extra=0, min_num=1, validate_min=True, max_num=30, validate_max=True, can_delete=True,
+)
+
+
+class LinkForm(forms.Form):
+    """Satu panah: <asal> —<label>→ <tujuan>. Asal/tujuan = NAMA node ("Input" = awal)."""
+
+    source = forms.CharField(max_length=40)
+    label = forms.ChoiceField(choices=FlowLink.Label.choices)
+    target = forms.CharField(max_length=40)
+
+
+LinkFormSet = forms.formset_factory(LinkForm, extra=0, can_delete=True, max_num=60, validate_max=True)
+
+
+def live_links(link_formset):
+    return [
+        form.cleaned_data for form in link_formset.forms
+        if form.cleaned_data and not form.cleaned_data.get("DELETE")
+    ]
+
+
+def check_graph(node_kinds, links):
+    """Pemeriksaan graf utuh. `node_kinds` = {nama: jenis}, `links` = [{"source", "label", "target"}].
+
+    Mengembalikan daftar pesan error. Aturan yang diperiksa:
+    - nama asal/tujuan harus ada; Input hanya boleh menjadi asal,
+    - label harus salah satu keluaran node asal (mis. filter: True/False/Failure),
+    - tidak ada panah kembar dan tidak ada SIKLUS (pesan bisa berputar selamanya),
+    - minimal satu panah dari Input.
+    """
+    from .engines.flow import NODE_TYPES
+
+    errors = []
+    seen = set()
+    for link in links:
+        source, label, target = link["source"], link["label"], link["target"]
+        arrow = f"{source} —{FlowLink.Label(label).label}→ {target}"
+        if source != INPUT and source not in node_kinds:
+            errors.append(f"{arrow}: there is no node called “{source}”.")
+            continue
+        if target not in node_kinds:
+            errors.append(f"{arrow}: there is no node called “{target}”." if target != INPUT
+                          else f"{arrow}: Input can only be the start of a link.")
+            continue
+        if source == target:
+            errors.append(f"{arrow}: a node cannot link to itself.")
+        if source == INPUT:
+            link["label"] = FlowLink.Label.SUCCESS   # panah dari Input selalu "Success"
+        else:
+            outputs = NODE_TYPES[node_kinds[source]].outputs
+            if label not in outputs:
+                names = "/".join(FlowLink.Label(o).label for o in outputs)
+                errors.append(f"{arrow}: “{source}” ends with {names}, not {FlowLink.Label(label).label}.")
+        key = (source, link["label"], target)
+        if key in seen:
+            errors.append(f"{arrow} appears twice.")
+        seen.add(key)
+    if not any(link["source"] == INPUT for link in links):
+        errors.append("Connect Input to the first node.")
+    if errors:
+        return errors
+
+    # Cari siklus dengan DFS berwarna: putih = belum, abu-abu = sedang ditelusuri, hitam = selesai.
+    # Bertemu node abu-abu lagi berarti ada jalan yang kembali ke dirinya sendiri.
+    following = {}
+    for link in links:
+        following.setdefault(link["source"], []).append(link["target"])
+    color = {}
+
+    def visit(name, path):
+        color[name] = "grey"
+        for nxt in following.get(name, []):
+            if color.get(nxt) == "grey":
+                cycle = path[path.index(nxt):] + [nxt]
+                return " → ".join(cycle)
+            if nxt not in color:
+                found = visit(nxt, path + [nxt])
+                if found:
+                    return found
+        color[name] = "black"
+        return None
+
+    for name in list(node_kinds):
+        if name not in color:
+            found = visit(name, [name])
+            if found:
+                errors.append(f"The links form a loop: {found}. A rule chain must not loop back.")
+                break
+    return errors

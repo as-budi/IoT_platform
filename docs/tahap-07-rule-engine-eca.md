@@ -20,7 +20,7 @@ Halaman **Rules → New rule** menampilkan keenam model sebagai pilihan:
 | Model | Status di tahap ini | File |
 |---|---|---|
 | Event–Condition–Action | **tersedia** | `rules/engines/eca.py` |
-| Flow-based rule chain | direncanakan | `rules/engines/flow.py` |
+| Flow-based rule chain | direncanakan (tersedia sejak [tahap 8](tahap-08-rule-chain.md)) | `rules/engines/flow.py` |
 | SQL over the message stream | direncanakan | `rules/engines/sql.py` |
 | Complex event processing | direncanakan | `rules/engines/cep.py` |
 | Production rules (RETE) | direncanakan | `rules/engines/production.py` |

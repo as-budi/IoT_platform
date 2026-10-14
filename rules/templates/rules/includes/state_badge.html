@@ -1,8 +1,11 @@
 {% comment %}
   Lencana keadaan aturan. Butuh: status ("IDLE" / "PENDING" / "ACTIVE") dan enabled.
+  Opsional: model. Rule chain (FLOW) tidak punya keadaan; ia "Listening" selama aktif.
 {% endcomment %}
 {% if not enabled %}
 <span class="badge text-bg-secondary">Disabled</span>
+{% elif model == "FLOW" %}
+<span class="badge rule-state rule-state-listening" title="Every message from its devices runs through the chain">Listening</span>
 {% elif status == "ACTIVE" %}
 <span class="badge rule-state rule-state-active">Active</span>
 {% elif status == "PENDING" %}

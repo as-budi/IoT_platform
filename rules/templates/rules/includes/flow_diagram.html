@@ -1,0 +1,40 @@
+{% comment %}
+  Gambar rule chain (SVG). Butuh `diagram` dari rules/flow_diagram.py:layout().
+  Node/panah yang dilewati pesan terakhir diberi class "is-walked".
+{% endcomment %}
+<div class="flow-diagram-wrap">
+<svg class="flow-diagram" width="{{ diagram.width|floatformat:0 }}" height="{{ diagram.height|floatformat:0 }}" viewBox="0 0 {{ diagram.width|floatformat:0 }} {{ diagram.height|floatformat:0 }}" role="img" aria-label="Rule chain diagram">
+  <defs>
+    <marker id="flow-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="flow-arrowhead"/></marker>
+  </defs>
+  {% for link in diagram.links %}
+  <path d="{{ link.d }}" class="flow-link flow-link-{{ link.kind }}{% if link.walked %} is-walked{% endif %}" marker-end="url(#flow-arrow)"/>
+  {% endfor %}
+  {% for link in diagram.links %}{% if link.label %}
+  <g class="flow-label flow-label-{{ link.kind }}{% if link.walked %} is-walked{% endif %}" transform="translate({{ link.lx|floatformat:1 }},{{ link.ly|floatformat:1 }})">
+    <rect x="-28" y="-9" width="56" height="18" rx="9"/><text text-anchor="middle" y="4">{{ link.label }}</text>
+  </g>
+  {% endif %}{% endfor %}
+  <g class="flow-node flow-node-input{% if diagram.input.visited %} is-walked{% endif %}">
+    <rect x="{{ diagram.input.x }}" y="{{ diagram.input.y|floatformat:1 }}" width="{{ diagram.input.w }}" height="{{ diagram.input.h }}" rx="30"/>
+    <text x="{{ diagram.input.cx }}" y="{{ diagram.input.cy|floatformat:1 }}" text-anchor="middle" class="flow-node-name">Input</text>
+  </g>
+  {% for node in diagram.nodes %}
+  <g class="flow-node flow-node-{{ node.category }}{% if node.visited %} is-walked{% endif %}{% if not node.reachable %} is-unreachable{% endif %}">
+    <title>{{ node.name }} ({{ node.kind }}){% if node.result %} → {{ node.result }}{% endif %}</title>
+    <rect x="{{ node.x }}" y="{{ node.y|floatformat:1 }}" width="{{ node.w }}" height="{{ node.h }}" rx="8"/>
+    <rect x="{{ node.x }}" y="{{ node.y|floatformat:1 }}" width="5" height="{{ node.h }}" rx="2" class="flow-node-stripe"/>
+    <text x="{{ node.tx }}" y="{{ node.ty1|floatformat:1 }}" class="flow-node-name">{{ node.name }}{% if node.result %} <tspan class="flow-node-result">→ {{ node.result }}</tspan>{% endif %}</text>
+    <text x="{{ node.tx }}" y="{{ node.ty2|floatformat:1 }}" class="flow-node-kind">{{ node.kind }}</text>
+    <text x="{{ node.tx }}" y="{{ node.ty3|floatformat:1 }}" class="flow-node-summary">{{ node.summary }}</text>
+  </g>
+  {% endfor %}
+</svg>
+</div>
+<div class="flow-legend small text-muted">
+  <span><i class="flow-swatch flow-node-filter"></i>Filter</span>
+  <span><i class="flow-swatch flow-node-enrichment"></i>Enrichment</span>
+  <span><i class="flow-swatch flow-node-transformation"></i>Transformation</span>
+  <span><i class="flow-swatch flow-node-action"></i>Action</span>
+  {% if diagram.has_unreachable %}<span>dashed = not connected to Input (never runs)</span>{% endif %}
+</div>

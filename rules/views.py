@@ -1,5 +1,5 @@
 """
-Halaman rule engine: daftar aturan, pilih model, form ECA, detail, dan alarm.
+Halaman rule engine: daftar aturan, pilih model, form ECA dan rule chain, detail, dan alarm.
 
 Kepemilikan mengikuti device: pengguna biasa melihat aturan miliknya sendiri,
 Admin melihat semua. Pilihan device/variabel di form dibatasi ke
@@ -10,6 +10,7 @@ import hashlib
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.views import redirect_to_login
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Max, Q
@@ -23,16 +24,24 @@ from realtime.routing import DASHBOARD_WS_PATH, device_ws_path
 
 from .engines import ENGINES
 from .events import originator_device_id
-from .forms import ActionFormSet, ClearFormSet, EcaSpecForm, RuleForm, WhenFormSet, cross_check
-from .models import Alarm, EcaSpec, Rule, RuleExecution, RuleModel, RuleState
+from .engines.flow import NODE_TYPES, node_summary
+from .flow_diagram import layout as flow_layout
+from .forms import (
+    INPUT, ActionFormSet, ClearFormSet, EcaSpecForm, FlowSpecForm, LinkFormSet, NodeFormSet, RuleForm,
+    WhenFormSet, check_graph, cross_check, live_links,
+)
+from .models import Alarm, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleState
 
 EXECUTIONS_PAGE_SIZE = 25
 
 
 def visible_rules(user):
     queryset = Rule.objects.select_related(
-        "owner", "state", "eca", "eca__device"
-    ).prefetch_related("eca__conditions__variable__device")
+        "owner", "state", "eca", "eca__device", "flow", "flow__device"
+    ).prefetch_related(
+        "eca__conditions__variable__device",
+        "nodes__variable__device", "nodes__target_variable__device", "nodes__target_device", "links",
+    )
     if user.is_admin:
         return queryset
     return queryset.filter(owner=user)
@@ -147,10 +156,7 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         pk = self.kwargs.get("pk")
         if pk is None:
             return None
-        rule = get_object_or_404(visible_rules(self.request.user), pk=pk)
-        if rule.model != RuleModel.ECA:
-            raise Http404("Only ECA rules can be edited in this stage.")
-        return rule
+        return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.ECA)
 
     def build_forms(self, rule, data=None):
         # Pilihan device mengikuti PEMILIK aturan (Admin yang mengedit aturan
@@ -247,16 +253,154 @@ def save_conditions(formset, spec):
         condition.save()
 
 
-def eca_create_or_planned(request, model):
-    """/rules/new/<model>/: ECA ke form; model lain belum tersedia."""
-    if model == RuleModel.ECA.lower():
-        return EcaRuleFormView.as_view()(request)
+class FlowRuleFormView(LoginRequiredMixin, View):
+    """Form rule chain (tahap 8). Dipakai untuk membuat dan mengubah aturan.
+
+    Node disimpan lewat model formset; panah lewat formset biasa yang menyebut
+    node dengan NAMANYA (node baru belum punya id saat form diisi).
+    """
+
+    template_name = "rules/rule_form_flow.html"
+
+    def get_rule(self):
+        pk = self.kwargs.get("pk")
+        if pk is None:
+            return None
+        return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.FLOW)
+
+    def build_forms(self, rule, data=None):
+        owner = rule.owner if rule else self.request.user
+        devices = visible_devices(owner).order_by("name")
+        spec = getattr(rule, "flow", None) if rule else None
+        initial_links = []
+        if rule and data is None:
+            names = {node.pk: node.name for node in rule.nodes.all()}
+            initial_links = [
+                {"source": names.get(link.source_id, INPUT), "label": link.label, "target": names[link.target_id]}
+                for link in rule.links.all()
+            ]
+        return {
+            "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+            "spec_form": FlowSpecForm(data, instance=spec, devices=devices, prefix="flow"),
+            "node_formset": NodeFormSet(
+                data, instance=rule or Rule(), prefix="nodes", form_kwargs={"devices": devices}
+            ),
+            "link_formset": LinkFormSet(data, initial=initial_links, prefix="links"),
+        }
+
+    def render_forms(self, rule, forms, graph_errors=()):
+        # Nama node yang sudah diketik, untuk pilihan asal/tujuan panah.
+        names = []
+        for form in forms["node_formset"].forms:
+            name = (form["name"].value() or "").strip()
+            deleted = form["DELETE"].value() if "DELETE" in form.fields else False
+            if name and not deleted and name not in names:
+                names.append(name)
+        return render(self.request, self.template_name, {
+            "rule": rule,
+            **forms,
+            "graph_errors": graph_errors,
+            "node_names": names,
+            "input_name": INPUT,
+            "node_types": [
+                {"kind": kind, "label": FlowNode.Kind(kind).label, "category": info.category,
+                 "outputs": [FlowLink.Label(o).label for o in info.outputs], "help": info.help}
+                for kind, info in NODE_TYPES.items()
+            ],
+            "node_outputs": {kind: list(info.outputs) for kind, info in NODE_TYPES.items()},
+            "engine": ENGINES[RuleModel.FLOW],
+            "diagram": flow_layout(rule) if rule else None,
+        })
+
+    def get(self, request, pk=None):
+        rule = self.get_rule()
+        return self.render_forms(rule, self.build_forms(rule))
+
+    def post(self, request, pk=None):
+        rule = self.get_rule()
+        forms = self.build_forms(rule, request.POST)
+        valid = [form.is_valid() for form in forms.values()]
+        if not all(valid):
+            return self.render_forms(rule, forms)
+        node_kinds = forms["node_formset"].node_kinds()
+        links = live_links(forms["link_formset"])
+        graph_errors = check_graph(node_kinds, links)
+        if graph_errors:
+            return self.render_forms(rule, forms, graph_errors)
+
+        with transaction.atomic():
+            saved = forms["rule_form"].save(commit=False)
+            if rule is None:
+                saved.owner = request.user
+                saved.model = RuleModel.FLOW
+            saved.save()
+            spec = forms["spec_form"].save(commit=False)
+            spec.rule = saved
+            spec.save()
+            save_flow_graph(saved, forms["node_formset"], links)
+            reset_state(saved)
+
+        messages.success(request, f"Rule \"{saved.name}\" saved.")
+        return redirect("rules:detail", pk=saved.pk)
+
+
+def save_flow_graph(rule, node_formset, links):
+    """Simpan node, lalu ganti semua panah dengan yang baru (nama -> node).
+
+    Ingatan node (Value changed, Rate limit) dikosongkan: graf mungkin berubah,
+    jadi aturan mulai dari awal, sama seperti ECA kembali ke IDLE.
+    """
+    node_formset.instance = rule
+    node_formset.save(commit=False)
+    for removed in node_formset.deleted_objects:
+        removed.delete()
+    by_name = {}
+    for order, form in enumerate(node_formset.live_forms()):
+        node = form.instance
+        node.rule = rule
+        node.order = order
+        node.memory = {}
+        node.save()
+        by_name[node.name] = node
+    rule.links.all().delete()
+    FlowLink.objects.bulk_create([
+        FlowLink(
+            rule=rule,
+            source=None if link["source"] == INPUT else by_name[link["source"]],
+            label=link["label"],
+            target=by_name[link["target"]],
+            order=order,
+        )
+        for order, link in enumerate(links)
+    ])
+
+
+FORM_VIEWS = {
+    RuleModel.ECA: EcaRuleFormView,
+    RuleModel.FLOW: FlowRuleFormView,
+}
+
+
+def create_rule(request, model):
+    """/rules/new/<model>/: form model itu, atau kembali bila model belum tersedia."""
     try:
         engine = ENGINES[model.upper()]
     except KeyError:
         raise Http404("Unknown rule model.")
+    if engine.key in FORM_VIEWS:
+        return FORM_VIEWS[engine.key].as_view()(request)
     messages.info(request, f"The {engine.label} model is planned for a later stage and cannot be used yet.")
     return redirect("rules:new")
+
+
+def edit_rule(request, pk):
+    """/rules/<pk>/edit/: form sesuai model aturan."""
+    if not request.user.is_authenticated:
+        return redirect_to_login(request.get_full_path())
+    rule = get_object_or_404(visible_rules(request.user), pk=pk)
+    if rule.model not in FORM_VIEWS:
+        raise Http404("This rule model cannot be edited yet.")
+    return FORM_VIEWS[rule.model].as_view()(request, pk=pk)
 
 
 def variable_urls(rule):
@@ -299,6 +443,21 @@ def evaluation_context(rule):
     }
 
 
+def flow_run_context(rule):
+    """Data untuk kotak "Last run" rule chain (rules/includes/flow_run.html)."""
+    state = RuleState.objects.filter(rule=rule).first()
+    trace = (state.snapshot or {}).get("trace", []) if state else []
+    for row in trace:
+        if "label" in row:
+            row["label_text"] = FlowLink.Label(row["label"]).label
+    return {
+        "rule": rule,
+        "state": state,
+        "trace": trace,
+        "diagram": flow_layout(rule, trace),
+    }
+
+
 def rule_evaluation(request, pk):
     """GET /rules/<pk>/evaluation/ -> potongan HTML kotak "Last evaluation".
 
@@ -308,16 +467,25 @@ def rule_evaluation(request, pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not logged in."}, status=401)
     rule = get_object_or_404(visible_rules(request.user), pk=pk)
+    if rule.model == RuleModel.FLOW:
+        return render(request, "rules/includes/flow_run.html", flow_run_context(rule))
     return render(request, "rules/includes/evaluation.html", evaluation_context(rule))
 
 
 class RuleDetailView(LoginRequiredMixin, TemplateView):
     template_name = "rules/rule_detail.html"
 
+    def get_template_names(self):
+        rule = get_object_or_404(visible_rules(self.request.user), pk=self.kwargs["pk"])
+        return ["rules/rule_detail_flow.html" if rule.model == RuleModel.FLOW else self.template_name]
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         rule = get_object_or_404(visible_rules(self.request.user), pk=self.kwargs["pk"])
         executions = Paginator(rule.executions.all(), EXECUTIONS_PAGE_SIZE).get_page(self.request.GET.get("page"))
+        if rule.model == RuleModel.FLOW:
+            context.update(self.flow_context(rule, executions))
+            return context
         # Nilai di execution log: (label, nilai, alamat halaman variabel atau None).
         _, urls = variable_urls(rule)
         for execution in executions:
@@ -340,14 +508,47 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             alarms=rule.alarms.select_related("device")[:10],
             **{k: v for k, v in evaluation_context(rule).items() if k not in ("rule", "state")},
         )
+        context.update(self.live(rule))
+        return context
+
+    def live(self, rule):
         # Halaman berlangganan kabar dari device asal aturan (lihat rules/events.py).
+        # Rule chain untuk "semua device": kabar dashboard (semua device pemilik).
         device_id = originator_device_id(rule)
-        context.update(live_context(
+        return live_context(
             device_ws_path(device_id) if device_id else DASHBOARD_WS_PATH,
             reverse("rules:detail_updates", args=[rule.pk]),
             rule_version(rule),
-        ))
-        return context
+        )
+
+    def flow_context(self, rule, executions):
+        for execution in executions:
+            execution.value_rows = [(label, value, None) for label, value in (execution.snapshot or {}).items()]
+            for row in execution.trace or []:
+                if "label" in row:
+                    row["label_text"] = FlowLink.Label(row["label"]).label
+        nodes = []
+        for node in rule.nodes.all():
+            info = NODE_TYPES[node.kind]
+            nodes.append({
+                "node": node,
+                "category": info.category,
+                "summary": node_summary(node),
+                "links": [link for link in rule.links.all() if link.source_id == node.pk],
+            })
+        start = [link for link in rule.links.all() if link.source_id is None]
+        return {
+            "rule": rule,
+            "spec": getattr(rule, "flow", None),
+            "state": getattr(rule, "state", None),
+            "summary": rule.engine.describe(rule),
+            "flow_nodes": nodes,
+            "start_links": start,
+            "executions": executions,
+            "alarms": rule.alarms.select_related("device")[:10],
+            **{k: v for k, v in flow_run_context(rule).items() if k not in ("rule", "state")},
+            **self.live(rule),
+        }
 
 
 class RuleToggleView(LoginRequiredMixin, View):

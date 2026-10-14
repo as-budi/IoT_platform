@@ -1,0 +1,22 @@
+{% comment %}
+  Satu panah di formset link: <asal> —<label>→ <tujuan>. Pilihan nama node
+  disusun ulang oleh JavaScript setiap kali nama node diubah; versi server
+  (node_names) dipakai saat halaman pertama kali tampil.
+{% endcomment %}
+<div class="link-row{% if form.DELETE.value %} d-none{% endif %}" data-link-row>
+  <div hidden>{{ form.DELETE }}</div>
+  <select class="form-select form-select-sm" name="{{ form.source.html_name }}" data-link-source data-value="{{ form.source.value|default:'' }}" aria-label="From">
+    <option value="{{ input_name }}"{% if form.source.value == input_name %} selected{% endif %}>Input</option>
+    {% for name in node_names %}<option value="{{ name }}"{% if form.source.value == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+  </select>
+  <select class="form-select form-select-sm link-label" name="{{ form.label.html_name }}" data-link-label aria-label="Label">
+    {% for value, text in form.fields.label.choices %}<option value="{{ value }}"{% if form.label.value == value %} selected{% endif %}>{{ text }}</option>{% endfor %}
+  </select>
+  <span class="link-arrow" aria-hidden="true">→</span>
+  <select class="form-select form-select-sm" name="{{ form.target.html_name }}" data-link-target data-value="{{ form.target.value|default:'' }}" aria-label="To">
+    <option value="">— node —</option>
+    {% for name in node_names %}<option value="{{ name }}"{% if form.target.value == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+  </select>
+  <button type="button" class="btn btn-sm btn-link text-danger" data-remove-link aria-label="Remove link">✕</button>
+  {% for field in form %}{% for error in field.errors %}<div class="text-danger small w-100">{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
+</div>

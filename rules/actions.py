@@ -27,6 +27,10 @@ from .models import Alarm, RuleAction, RuleExecution, alarm_changed
 logger = logging.getLogger(__name__)
 
 
+# Akhiran hasil "Set actuator" bila desired state sudah bernilai sama (tidak ada perubahan).
+ALREADY_REQUESTED = "(already requested)"
+
+
 class ActionError(Exception):
     """Aksi tidak bisa dijalankan; pesannya ditampilkan di log aturan."""
 
@@ -84,7 +88,7 @@ def set_actuator(action, rule, context):
     variable = Variable.objects.get(pk=variable.pk)
     label = f"{variable.display_name} = {show_value(variable, value)}"
     if variable.desired_value is not None and abs(variable.desired_value - value) < 1e-9:
-        return f"{label} (already requested)"
+        return f"{label} {ALREADY_REQUESTED}"
     variable.set_desired(value, None)  # None = bukan pengguna, melainkan aturan
     return label
 

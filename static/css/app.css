@@ -668,3 +668,92 @@ h1, .h1, h2, .h2, h3, .h3 {
   letter-spacing: 0.04em;
   color: var(--app-muted);
 }
+
+/* ---------- Rule chain / Flow (tahap 8) ---------- */
+/* Warna kategori node: filter (ungu), enrichment (biru), transformation (teal), action (oranye). */
+:root, [data-bs-theme="light"] {
+  --flow-filter: #7c4dff;
+  --flow-enrichment: #2a78d6;
+  --flow-transformation: #0f9488;
+  --flow-action: #e4572e;
+  --flow-true: #0b8a0b;
+  --flow-false: #8a94a6;
+  --flow-success: #2a78d6;
+  --flow-failure: #c62828;
+}
+[data-bs-theme="dark"] {
+  --flow-filter: #a283ff;
+  --flow-enrichment: #5aa0f0;
+  --flow-transformation: #2cc4b5;
+  --flow-action: #ff7a52;
+  --flow-true: #4cc94c;
+  --flow-false: #8a94a6;
+  --flow-success: #5aa0f0;
+  --flow-failure: #ff6b6b;
+}
+
+.rule-state-listening {
+  color: var(--app-accent);
+  background: var(--app-accent-soft);
+  border-color: rgba(42, 120, 214, 0.35);
+}
+
+.flow-diagram-wrap { overflow-x: auto; padding-bottom: 0.25rem; }
+.flow-diagram { display: block; font-family: inherit; }
+.flow-diagram text { fill: var(--bs-body-color); }
+.flow-node rect { fill: var(--app-surface); stroke: var(--app-border); stroke-width: 1.5; }
+.flow-node .flow-node-stripe { stroke: none; }
+.flow-node-filter .flow-node-stripe { fill: var(--flow-filter); }
+.flow-node-enrichment .flow-node-stripe { fill: var(--flow-enrichment); }
+.flow-node-transformation .flow-node-stripe { fill: var(--flow-transformation); }
+.flow-node-action .flow-node-stripe { fill: var(--flow-action); }
+.flow-node-input rect { fill: var(--app-surface-2); }
+.flow-node.is-walked rect:first-of-type { stroke: var(--app-accent); stroke-width: 2.5; }
+.flow-node.is-unreachable rect:first-of-type { stroke-dasharray: 5 4; }
+.flow-node.is-unreachable text { opacity: 0.55; }
+.flow-node-name { font-size: 13px; font-weight: 600; }
+.flow-node-kind { font-size: 11px; fill: var(--app-muted) !important; }
+.flow-node-summary { font-size: 11px; font-family: var(--bs-font-monospace); }
+.flow-node-result { font-weight: 600; fill: var(--app-accent) !important; }
+
+.flow-link { fill: none; stroke: var(--app-border); stroke-width: 2; }
+.flow-arrowhead { fill: var(--app-muted); }
+.flow-link.is-walked { stroke: var(--app-accent); stroke-width: 3; }
+.flow-label rect { fill: var(--app-surface); stroke-width: 1.2; }
+.flow-label text { font-size: 10.5px; font-weight: 600; }
+.flow-label-true rect { stroke: var(--flow-true); } .flow-label-true text { fill: var(--flow-true); }
+.flow-label-false rect { stroke: var(--flow-false); } .flow-label-false text { fill: var(--flow-false); }
+.flow-label-success rect { stroke: var(--flow-success); } .flow-label-success text { fill: var(--flow-success); }
+.flow-label-failure rect { stroke: var(--flow-failure); } .flow-label-failure text { fill: var(--flow-failure); }
+.flow-label.is-walked rect { stroke-width: 2.4; }
+
+.flow-legend { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.4rem; }
+.flow-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: -0.05rem; }
+.flow-swatch.flow-node-filter { background: var(--flow-filter); }
+.flow-swatch.flow-node-enrichment { background: var(--flow-enrichment); }
+.flow-swatch.flow-node-transformation { background: var(--flow-transformation); }
+.flow-swatch.flow-node-action { background: var(--flow-action); }
+
+/* Hasil node (True/False/Success/Failure) dan kategori node dalam teks. */
+.flow-result { font-weight: 600; }
+.flow-result-true { color: var(--flow-true); }
+.flow-result-false { color: var(--flow-false); }
+.flow-result-success { color: var(--flow-success); }
+.flow-result-failure { color: var(--flow-failure); }
+.flow-cat { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+.flow-cat-filter { color: var(--flow-filter); }
+.flow-cat-enrichment { color: var(--flow-enrichment); }
+.flow-cat-transformation { color: var(--flow-transformation); }
+.flow-cat-action { color: var(--flow-action); }
+
+/* Form rule chain */
+.node-row { border-left: 3px solid var(--app-border); }
+.link-head, .link-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) 7.5rem 1.2rem minmax(7rem, 1fr) 2rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+.link-row { margin-bottom: 0.4rem; }
+.link-arrow { color: var(--app-muted); text-align: center; }
+.flow-trace td { vertical-align: top; }

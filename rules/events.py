@@ -1,8 +1,9 @@
 """
 Kabar perubahan aturan untuk browser (WebSocket).
 
-Kabar dikirim ke group DEVICE asal aturan (device milik variabel di kondisi PERTAMA, atau
-device yang diamati untuk event "device diam"). Dengan begitu tidak perlu
+Kabar dikirim ke group DEVICE asal aturan (ECA: device milik variabel di kondisi
+PERTAMA, atau device yang diamati untuk event "device diam"; rule chain: device
+yang pesannya baru saja melewati graf). Dengan begitu tidak perlu
 consumer baru: halaman aturan cukup berlangganan ws/devices/<id>/ milik device
 itu, dan dashboard yang sudah berlangganan semua device ikut menerimanya.
 
@@ -14,7 +15,14 @@ from realtime import events
 
 
 def originator_device_id(rule):
-    """Device asal sebuah aturan ECA, atau None."""
+    """Device asal sebuah aturan, atau None.
+
+    Rule chain yang mendengarkan SEMUA device tidak punya satu device asal;
+    halamannya berlangganan kabar dashboard (semua device) sebagai gantinya.
+    """
+    flow = getattr(rule, "flow", None) if rule.model == "FLOW" else None
+    if flow is not None:
+        return flow.device_id
     spec = getattr(rule, "eca", None)
     if spec is None:
         return None
@@ -24,8 +32,8 @@ def originator_device_id(rule):
     return primary.variable.device_id if primary else None
 
 
-def rule_changed(rule, state, transition=None, value=None):
-    device_id = originator_device_id(rule)
+def rule_changed(rule, state, transition=None, value=None, device_id=None):
+    device_id = device_id or originator_device_id(rule)
     if device_id is None:
         return
     events.emit(device_id, {
@@ -37,9 +45,9 @@ def rule_changed(rule, state, transition=None, value=None):
     })
 
 
-def rule_evaluated(rule):
+def rule_evaluated(rule, device_id=None):
     """Aturan baru saja dinilai tanpa berganti status. Halaman detail aturan
     memakai kabar ini untuk memuat ulang kotak "Last evaluation" saja."""
-    device_id = originator_device_id(rule)
+    device_id = device_id or originator_device_id(rule)
     if device_id is not None:
         events.emit(device_id, {"type": "rule_eval", "rule": rule.pk})

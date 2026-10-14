@@ -131,6 +131,20 @@ THEN  alarm Warning
 Aturan ini **nonaktif secara bawaan**, karena data contoh tidak terus dikirim dan alarmnya
 akan langsung muncul. Aktifkan dari halaman aturan untuk mencobanya.
 
+### 3.7 Contoh rule chain (tahap 8)
+
+`seed_rules` juga membuat empat contoh model **Flow-based rule chain**:
+
+| Aturan | Pemilik | Device |
+|---|---|---|
+| Lab power monitor | budi | Lab Power Meter |
+| Pond pH watch | andi | Fish Pond Node |
+| Cold room door check | rina | Cold Storage Unit |
+| Greenhouse watering chain (nonaktif bawaan) | siti | Greenhouse Node |
+
+Graf, pesan yang bisa dikirim, dan jejak hasilnya dijelaskan di
+[flow-mekanisme.md](flow-mekanisme.md#8-contoh-lengkap-lab-power-monitor).
+
 ## 4. Mencoba aturan
 
 ### 4.1 Persiapan
@@ -212,6 +226,9 @@ Suhu belum melewati 8 °C, tetapi kelembapan 90 % memenuhi grup 2. Setelah 120 d
 - Compressor boost diminta ON,
 - command `buzzer {"seconds": 10}` muncul di daftar **Commands** halaman device,
 - alarm **Critical** dibuat.
+
+Rule chain "Cold room door check" bereaksi pada pesan yang sama tanpa menunggu: command
+`buzzer {"seconds": 5}` langsung masuk antrean (lihat [flow-mekanisme.md](flow-mekanisme.md#92-cold-room-door-check-rina-and-dengan-filter-berurutan)).
 
 ```bash
 python manage.py send_telemetry "Cold Storage Unit" temperature=4 humidity=75

@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New rule chain{% endif %} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    {% if rule %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    {% else %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:new' %}">New rule</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ engine.label }}</li>
+    {% endif %}
+  </ol>
+</nav>
+
+<div class="row justify-content-center">
+  <div class="col-xl-10">
+    <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">FLOW</span></h1>
+    <p class="text-muted mb-4">Every message enters at <strong>Input</strong> and travels from node to node.
+      Each node ends with a result — <strong>True/False</strong> for filters, <strong>Success/Failure</strong> for the others —
+      and the message follows the links with that label. A branch without a matching link simply ends.</p>
+
+    {% if rule_form.errors or spec_form.errors or node_formset.total_error_count or link_formset.total_error_count or graph_errors %}
+    <div class="alert alert-danger">Please correct the errors below.</div>
+    {% endif %}
+
+    {% if diagram %}
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <h2 class="h6 text-muted text-uppercase">Current chain</h2>
+      {% include "rules/includes/flow_diagram.html" %}
+    </div></div>
+    {% endif %}
+
+    <form method="post" novalidate id="rule-form">
+      {% csrf_token %}
+
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">{% include "rules/includes/field.html" with field=rule_form.name %}</div>
+          <div class="col-md-6 d-flex align-items-center">
+            <div class="form-check form-switch mt-md-3">
+              {{ rule_form.is_enabled }}
+              <label class="form-check-label" for="{{ rule_form.is_enabled.id_for_label }}">{{ rule_form.is_enabled.label }}</label>
+            </div>
+          </div>
+          <div class="col-12">{% include "rules/includes/field.html" with field=rule_form.description %}</div>
+        </div>
+      </div></div>
+
+      {# ---------- 1. Input ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">1</span> Input</h2>
+        <div class="row g-3">
+          <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
+        </div>
+        <p class="small text-muted mb-0">The chain runs once for <strong>every telemetry message</strong> from this device.
+          The message carries the keys the device sent, e.g. <code>temperature</code>, <code>humidity</code>.</p>
+      </div></div>
+
+      {# ---------- 2. Nodes ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">2</span> Nodes</h2>
+        <p class="small text-muted">
+          <span class="flow-cat flow-cat-filter">Filter</span> checks the message ·
+          <span class="flow-cat flow-cat-enrichment">Enrichment</span> adds stored data ·
+          <span class="flow-cat flow-cat-transformation">Transformation</span> calculates ·
+          <span class="flow-cat flow-cat-action">Action</span> changes something outside the message.
+        </p>
+        {{ node_formset.management_form }}
+        {% for error in node_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div id="node-list">
+          {% for form in node_formset %}{% include "rules/includes/node_form.html" %}{% endfor %}
+        </div>
+        <template id="node-template">{% include "rules/includes/node_form.html" with form=node_formset.empty_form %}</template>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-node">Add node</button>
+      </div></div>
+
+      {# ---------- 3. Links ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">3</span> Links</h2>
+        <p class="small text-muted">Read each row as “when <em>from</em> ends with <em>label</em>, send the message to <em>to</em>”.
+          Two links with the same label send a copy down each branch. Links must not loop back.</p>
+        {% for error in graph_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        {{ link_formset.management_form }}
+        {% for error in link_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div class="link-head small text-muted"><span>From</span><span>Label</span><span></span><span>To</span></div>
+        <div id="link-list">
+          {% for form in link_formset %}{% include "rules/includes/link_row.html" %}{% endfor %}
+        </div>
+        <template id="link-template">{% include "rules/includes/link_row.html" with form=link_formset.empty_form %}</template>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-link">Add link</button>
+      </div></div>
+
+      <button type="submit" class="btn btn-primary">Save rule</button>
+      <a class="btn btn-link" href="{% if rule %}{% url 'rules:detail' rule.pk %}{% else %}{% url 'rules:list' %}{% endif %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{{ node_types|json_script:"node-types" }}
+{{ node_outputs|json_script:"node-outputs" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+/*
+ * Form rule chain:
+ * - menampilkan field sesuai jenis node, beserta penjelasan dan label keluarannya,
+ * - menambah/menghapus node dan link (Django formset: hapus = centang DELETE),
+ * - menyusun ulang pilihan asal/tujuan link dari NAMA node yang sedang diketik,
+ * - membatasi pilihan label sesuai jenis node asal (filter: True/False/Failure, lainnya: Success/Failure).
+ * Server tetap memeriksa semuanya lagi (rules/forms.py: check_graph).
+ */
+(function () {
+  "use strict";
+  const form = document.getElementById("rule-form");
+  const INPUT = "{{ input_name }}";
+  const TYPES = Object.fromEntries(JSON.parse(document.getElementById("node-types").textContent).map((t) => [t.kind, t]));
+  const OUTPUTS = JSON.parse(document.getElementById("node-outputs").textContent);
+
+  function nodeRows() {
+    return [...form.querySelectorAll("#node-list [data-node-row]")].filter((row) => !row.classList.contains("d-none"));
+  }
+  function nodes() {
+    // {nama: jenis} untuk node yang masih ada dan sudah diberi nama.
+    const result = {};
+    nodeRows().forEach((row) => {
+      const name = row.querySelector("[data-node-name]").value.trim();
+      if (name) result[name] = row.querySelector("[data-node-kind]").value;
+    });
+    return result;
+  }
+
+  // --- node ---------------------------------------------------------------
+  function showNodeFields(row) {
+    const kind = row.querySelector("[data-node-kind]").value;
+    row.querySelectorAll("[data-for]").forEach((el) => {
+      el.hidden = !el.dataset.for.split(" ").includes(kind);
+    });
+    const type = TYPES[kind];
+    row.querySelector("[data-node-help]").textContent = type
+      ? `${type.category}. ${type.help} Ends with: ${type.outputs.join(" / ")}.` : "";
+  }
+
+  function wireNode(row) {
+    row.querySelector("[data-node-kind]").addEventListener("change", () => { showNodeFields(row); refreshLinks(); });
+    row.querySelector("[data-node-name]").addEventListener("input", refreshLinks);
+    row.querySelector("[data-remove-node]").addEventListener("click", () => {
+      row.querySelector("input[name$='-DELETE']").checked = true;
+      row.classList.add("d-none");
+      refreshLinks();
+    });
+    showNodeFields(row);
+  }
+
+  function addFromTemplate(templateId, listId, totalName) {
+    const total = form.querySelector(`input[name='${totalName}']`);
+    const index = parseInt(total.value, 10);
+    const html = document.getElementById(templateId).innerHTML.replace(/__prefix__/g, index);
+    const holder = document.createElement("div");
+    holder.innerHTML = html.trim();
+    const row = holder.firstElementChild;
+    document.getElementById(listId).appendChild(row);
+    total.value = index + 1;
+    return row;
+  }
+
+  form.querySelectorAll("#node-list [data-node-row]").forEach(wireNode);
+  document.getElementById("add-node").addEventListener("click", () => {
+    const row = addFromTemplate("node-template", "node-list", "nodes-TOTAL_FORMS");
+    wireNode(row);
+    row.querySelector("[data-node-name]").focus();
+  });
+
+  // --- link ---------------------------------------------------------------
+  function fill(select, names, withInput) {
+    const current = select.value || select.dataset.value || "";
+    select.innerHTML = "";
+    const options = withInput ? [[INPUT, "Input"]] : [["", "— node —"]];
+    names.forEach((n) => options.push([n, n]));
+    options.forEach(([value, text]) => select.add(new Option(text, value, false, value === current)));
+    if (current && ![...select.options].some((o) => o.value === current)) {
+      select.add(new Option(`${current} (missing)`, current, false, true));
+    }
+  }
+
+  function refreshLinkRow(row, nodeMap) {
+    const names = Object.keys(nodeMap);
+    const source = row.querySelector("[data-link-source]");
+    const target = row.querySelector("[data-link-target]");
+    const label = row.querySelector("[data-link-label]");
+    fill(source, names, true);
+    fill(target, names, false);
+    // Panah dari Input yang belum punya tujuan: arahkan ke node pertama.
+    if (!target.value && source.value === INPUT && names.length) target.value = names[0];
+    source.dataset.value = source.value;
+    target.dataset.value = target.value;
+    // Label yang boleh = keluaran node asal. Dari Input selalu "Success".
+    const allowed = source.value === INPUT ? ["SUCCESS"] : (OUTPUTS[nodeMap[source.value]] || []);
+    [...label.options].forEach((o) => { o.hidden = o.disabled = !allowed.includes(o.value); });
+    if (!allowed.includes(label.value) && allowed.length) label.value = allowed[0];
+    label.classList.toggle("invisible", source.value === INPUT);
+  }
+
+  function refreshLinks() {
+    const nodeMap = nodes();
+    form.querySelectorAll("#link-list [data-link-row]").forEach((row) => refreshLinkRow(row, nodeMap));
+  }
+
+  function wireLink(row) {
+    row.querySelector("[data-link-source]").addEventListener("change", refreshLinks);
+    row.querySelector("[data-link-target]").addEventListener("change", (e) => { e.target.dataset.value = e.target.value; });
+    row.querySelector("[data-remove-link]").addEventListener("click", () => {
+      row.querySelector("input[name$='-DELETE']").checked = true;
+      row.classList.add("d-none");
+    });
+  }
+
+  form.querySelectorAll("#link-list [data-link-row]").forEach(wireLink);
+  document.getElementById("add-link").addEventListener("click", () => {
+    const row = addFromTemplate("link-template", "link-list", "links-TOTAL_FORMS");
+    // Saran awal: dari node terakhir yang belum punya link keluar.
+    const names = Object.keys(nodes());
+    const source = row.querySelector("[data-link-source]");
+    source.dataset.value = form.querySelector("#link-list [data-link-row]:not(.d-none)") === row ? INPUT : (names[names.length - 2] || INPUT);
+    row.querySelector("[data-link-target]").dataset.value = names[names.length - 1] || "";
+    wireLink(row);
+    refreshLinks();
+  });
+
+  // Aturan baru: sediakan satu node kosong dan link dari Input.
+  if (!nodeRows().length) document.getElementById("add-node").click();
+  if (!form.querySelector("#link-list [data-link-row]")) document.getElementById("add-link").click();
+  refreshLinks();
+})();
+</script>
+{% endblock %}

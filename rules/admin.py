@@ -1,6 +1,8 @@
 from django.contrib import admin
 
-from .models import Alarm, EcaCondition, EcaSpec, Rule, RuleAction, RuleExecution, RuleState
+from .models import (
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleExecution, RuleState,
+)
 
 
 class EcaSpecInline(admin.StackedInline):
@@ -13,12 +15,29 @@ class RuleActionInline(admin.TabularInline):
     extra = 0
 
 
+class FlowSpecInline(admin.StackedInline):
+    model = FlowSpec
+    can_delete = False
+
+
+class FlowNodeInline(admin.TabularInline):
+    model = FlowNode
+    extra = 0
+    fields = ("name", "kind", "key", "operator", "threshold", "seconds", "order")
+
+
+class FlowLinkInline(admin.TabularInline):
+    model = FlowLink
+    extra = 0
+    fk_name = "rule"
+
+
 @admin.register(Rule)
 class RuleAdmin(admin.ModelAdmin):
     list_display = ("name", "owner", "model", "is_enabled", "updated_at")
     list_filter = ("model", "is_enabled")
     search_fields = ("name",)
-    inlines = [EcaSpecInline, RuleActionInline]
+    inlines = [EcaSpecInline, RuleActionInline, FlowSpecInline, FlowNodeInline, FlowLinkInline]
 
 
 @admin.register(RuleState)
