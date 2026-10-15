@@ -65,6 +65,8 @@ def handle_message(topic, payload, prefix):
         data = decode_json(payload)
         if kind == topics.TELEMETRY:
             return handle_telemetry(device, data)
+        if kind == topics.FIRMWARE:
+            return handle_firmware(device, data)
         return handle_command_response(device, command_id, data)
     except PayloadError as exc:
         message = str(exc)
@@ -85,3 +87,10 @@ def handle_command_response(device, command_id, data):
     """Device melaporkan hasil command (aturannya di devices/control.py)."""
     command = record_command_result(device, command_id, data)
     return Result(True, f"command {command_id} ({command.method}): {command.status}", device)
+
+
+def handle_firmware(device, data):
+    """Versi firmware dan progres OTA (aturannya di ota/services.py)."""
+    from ota.services import handle_report
+
+    return Result(True, f"firmware: {handle_report(device, data, protocol=Device.Protocol.MQTT)}", device)

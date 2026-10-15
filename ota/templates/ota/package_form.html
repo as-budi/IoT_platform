@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Upload firmware · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'ota:package_list' %}">Firmware</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Upload</li>
+  </ol>
+</nav>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <h1 class="h3 mb-3">Upload firmware</h1>
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        {# enctype wajib untuk mengirim file; tanpanya browser hanya mengirim nama file. #}
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          {% include "includes/form_fields.html" %}
+          <button type="submit" class="btn btn-primary">Upload</button>
+          <a class="btn btn-link" href="{% url 'ota:package_list' %}">Cancel</a>
+        </form>
+      </div>
+    </div>
+    <div class="small text-muted">
+      <p class="mb-1"><strong>Version</strong> must be exactly what the new firmware reports after it starts
+        (e.g. <code>#define FW_VERSION "1.2.0"</code>). That report is how the platform knows the update worked.</p>
+      <p class="mb-0">The server computes the MD5 and SHA-256 checksums. The device checks the MD5 before it switches to the new firmware.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

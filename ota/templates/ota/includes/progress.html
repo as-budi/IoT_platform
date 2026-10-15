@@ -1,0 +1,13 @@
+{% comment %}
+  Langkah pembaruan (QUEUED → ... → UPDATED) dan bilah progres unduhan. Butuh `update`.
+  data-ota-* dipakai JavaScript halaman device untuk memperbarui tampilan tanpa memuat ulang.
+{% endcomment %}
+<ol class="ota-steps" data-ota-steps>
+  {% for label, state in update.steps %}<li class="ota-step is-{{ state }}">{{ label }}</li>{% endfor %}
+</ol>
+{% if not update.is_final %}
+<div class="progress ota-progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ update.progress }}" data-ota-progress>
+  <div class="progress-bar{% if update.status == 'DOWNLOADING' %} progress-bar-striped progress-bar-animated{% endif %}" style="width: {{ update.progress }}%">{{ update.progress }}%</div>
+</div>
+{% endif %}
+{% if update.error %}<div class="small text-danger mt-2">{{ update.error }}</div>{% endif %}

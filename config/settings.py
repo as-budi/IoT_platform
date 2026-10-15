@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "coap_gateway", # komunikasi device lewat CoAP (perintah: manage.py coap_server)
     "rules",        # rule engine & alarm (perintah: manage.py rule_engine)
     "launcher",     # perintah manage.py runall: menjalankan semua layanan sekaligus
+    "ota",          # pembaruan firmware over-the-air (tahap 9)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -142,6 +143,9 @@ AUTH_PASSWORD_VALIDATORS = [
 LOGIN_URL = "accounts:login"             # tujuan bila belum login
 LOGIN_REDIRECT_URL = "dashboard:index"   # tujuan setelah berhasil login
 LOGOUT_REDIRECT_URL = "accounts:login"   # tujuan setelah logout
+# Pendaftaran mandiri (/accounts/register/). Di server publik sebaiknya False:
+# siapa pun di internet bisa membuat akun bila dibiarkan terbuka.
+ALLOW_SIGNUP = os.getenv("DJANGO_ALLOW_SIGNUP", "True") == "True"
 
 
 # --- Bahasa & zona waktu ----------------------------------------------------
@@ -158,6 +162,9 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+# Tujuan `python manage.py collectstatic` di server produksi. Nginx melayani
+# folder ini langsung, tanpa melewati Django (lihat deploy/nginx/).
+STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", "") or BASE_DIR / "staticfiles")
 
 
 # --- MQTT -------------------------------------------------------------------
@@ -260,3 +267,74 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "IoT Platform <iot@localhost>")
+
+
+# --- Pembaruan firmware OTA (tahap 9) ----------------------------------------------
+# Lihat ota/services.py dan docs/tahap-09-ota.md.
+# Folder file firmware. SENGAJA di luar static/media: file hanya boleh diambil
+# lewat URL bertoken sekali pakai, bukan lewat alamat yang bisa ditebak.
+OTA_STORAGE_DIR = Path(os.getenv("OTA_STORAGE_DIR", "") or BASE_DIR / "private_media" / "firmware")
+# Alamat server yang dipakai DEVICE untuk mengunduh, mis. http://192.168.1.10:8000
+# Kosong = alamat dari address bar browser (127.0.0.1 tidak bisa dijangkau ESP32!).
+OTA_BASE_URL = os.getenv("OTA_BASE_URL", "").rstrip("/")
+OTA_MAX_FIRMWARE_SIZE = int(os.getenv("OTA_MAX_FIRMWARE_SIZE", str(4 * 1024 * 1024)))  # 4 MB
+OTA_COMMAND_TTL = int(os.getenv("OTA_COMMAND_TTL", "600"))       # device harus mengambil command dalam 10 menit
+OTA_DOWNLOAD_TTL = int(os.getenv("OTA_DOWNLOAD_TTL", "1800"))    # link unduhan berlaku 30 menit
+OTA_UPDATE_TIMEOUT = int(os.getenv("OTA_UPDATE_TIMEOUT", "900")) # seluruh update harus selesai dalam 15 menit
+
+
+# --- Produksi (lihat docs/deploy-lightsail.md) ----------------------------------------
+# Semua di bawah hanya berlaku bila DJANGO_DEBUG=False. Di laptop (DEBUG=True)
+# tidak ada yang berubah.
+
+# Alamat lengkap yang boleh mengirim form (POST) ke situs ini, mis. https://iot.contoh.my.id
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip() for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if origin.strip()
+]
+
+if not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+
+    # Kunci bawaan tertulis di kode yang publik: dengan kunci itu orang bisa
+    # memalsukan cookie sesi. Server produksi WAJIB punya kuncinya sendiri.
+    if SECRET_KEY.startswith("dev-only") or len(SECRET_KEY) < 40:
+        raise ImproperlyConfigured("Set DJANGO_SECRET_KEY in .env to a long random value (50+ characters).")
+
+    # Django berada di belakang Nginx. Nginx yang menerima HTTPS lalu meneruskan
+    # ke Daphne lewat HTTP biasa, sambil memberi tahu "aslinya https" lewat header ini.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+    # DJANGO_HTTPS=True setelah sertifikat terpasang (langkah 8 panduan).
+    if os.getenv("DJANGO_HTTPS", "False") == "True":
+        SESSION_COOKIE_SECURE = True    # cookie login hanya dikirim lewat HTTPS
+        CSRF_COOKIE_SECURE = True
+        # HSTS: browser diminta SELALU memakai HTTPS untuk domain ini. Mulai kecil
+        # (mis. 3600), naikkan ke 31536000 setelah yakin HTTPS berjalan baik.
+        SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "3600"))
+        SECURE_HSTS_INCLUDE_SUBDOMAINS = False
+        # Pengalihan http -> https dilakukan Nginx, KECUALI /api/ untuk device
+        # tanpa TLS (lihat deploy/nginx/iot-platform.conf). Karena itu Django
+        # sendiri tidak mengalihkan.
+        SECURE_SSL_REDIRECT = False
+        # Peringatan `check --deploy` yang SENGAJA dibungkam, beserta alasannya:
+        #   W008  pengalihan ke https dikerjakan Nginx, bukan Django (lihat di atas)
+        #   W005  HSTS tidak dipaksakan ke subdomain lain milik domain yang sama
+        #   W021  domain tidak didaftarkan ke daftar preload browser (sulit dibatalkan)
+        SILENCED_SYSTEM_CHECKS = ["security.W008", "security.W005", "security.W021"]
+
+    SESSION_COOKIE_HTTPONLY = True      # JavaScript tidak bisa membaca cookie sesi
+    X_FRAME_OPTIONS = "DENY"            # halaman tidak boleh dibungkus <iframe> situs lain
+
+    # Log ke stdout/stderr; systemd menyimpannya di journal (journalctl -u iot-web).
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {"plain": {"format": "{levelname} {name}: {message}", "style": "{"}},
+        "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+        "root": {"handlers": ["console"], "level": "INFO"},
+        "loggers": {
+            "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+            # Percobaan Host palsu (pemindai otomatis) cukup dicatat sebagai peringatan.
+            "django.security.DisallowedHost": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        },
+    }

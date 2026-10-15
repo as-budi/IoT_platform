@@ -1,0 +1,24 @@
+# Backup harian: dump MySQL + file firmware, disimpan 14 hari (deploy/scripts/backup.sh).
+[Unit]
+Description=IoT platform: daily backup
+
+[Service]
+Type=oneshot
+User=iot
+Group=iot
+ExecStart=/srv/iot/app/deploy/scripts/backup.sh
+ReadWritePaths=/srv/iot/backups
+# --- Pengamanan proses (systemd sandboxing) ---
+# Proses tidak bisa menjadi root lagi, tidak bisa menulis ke sistem berkas
+# kecuali folder yang disebut, dan tidak melihat /home maupun /tmp bersama.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

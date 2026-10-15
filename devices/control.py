@@ -89,4 +89,9 @@ def record_command_result(device, command_id, data):
         raise PayloadError(
             f"Command {command_id} is already {command.get_status_display().lower()}; response ignored."
         )
+    if command.method == "ota":
+        # Jawaban command "ota" juga mengubah status pembaruan firmware (tahap 9).
+        from ota.services import command_finished
+
+        command_finished(command)
     return command

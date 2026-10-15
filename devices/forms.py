@@ -16,6 +16,7 @@ class DeviceForm(BootstrapFormMixin, forms.ModelForm):
             "name",
             "device_type",
             "location",
+            "board",
             "description",
             "is_active",
             "owner",

@@ -757,3 +757,33 @@ h1, .h1, h2, .h2, h3, .h3 {
 .link-row { margin-bottom: 0.4rem; }
 .link-arrow { color: var(--app-muted); text-align: center; }
 .flow-trace td { vertical-align: top; }
+
+/* ---------- Firmware OTA (tahap 9) ---------- */
+.ota-status { font-weight: 600; border: 1px solid transparent; }
+.ota-status-queued, .ota-status-canceled { color: var(--app-muted); background: var(--app-surface-2); border-color: var(--app-border); }
+.ota-status-downloading, .ota-status-downloaded, .ota-status-verified, .ota-status-updating {
+  color: var(--app-accent); background: var(--app-accent-soft); border-color: rgba(42, 120, 214, 0.35);
+}
+.ota-status-updated { color: #0b8a0b; background: rgba(12, 163, 12, 0.1); border-color: rgba(12, 163, 12, 0.35); }
+.ota-status-failed { color: #fff; background: #c62828; }
+[data-bs-theme="dark"] .ota-status-updated { color: #4cc94c; }
+
+/* Langkah pembaruan: Queued › Downloading › ... › Updated */
+.ota-steps { display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem; list-style: none; padding: 0; margin: 0 0 0.75rem; }
+.ota-step {
+  position: relative;
+  font-size: 0.78rem; padding: 0.2rem 0.6rem; border-radius: 999px;
+  border: 1px solid var(--app-border); color: var(--app-muted); background: var(--app-surface);
+}
+/* Tanda › di ANTARA dua langkah, di luar kotaknya. */
+.ota-step + .ota-step::before {
+  content: "›"; position: absolute; left: -0.8rem; top: 50%; transform: translateY(-55%);
+  color: var(--app-muted); font-weight: 400;
+}
+.ota-step.is-done { color: #0b8a0b; border-color: rgba(12, 163, 12, 0.35); background: rgba(12, 163, 12, 0.08); }
+.ota-step.is-current { color: var(--app-accent); border-color: var(--app-accent); background: var(--app-accent-soft); font-weight: 600; }
+.ota-step.is-failed { color: #c62828; border-color: rgba(198, 40, 40, 0.5); background: rgba(198, 40, 40, 0.08); font-weight: 600; }
+[data-bs-theme="dark"] .ota-step.is-done { color: #4cc94c; }
+[data-bs-theme="dark"] .ota-step.is-failed { color: #ff6b6b; }
+.ota-progress { height: 1.1rem; }
+.ota-timeline li + li { margin-top: 0.45rem; }

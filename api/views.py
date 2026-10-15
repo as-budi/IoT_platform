@@ -67,3 +67,32 @@ def telemetry(request, token):
     # 4) Simpan.
     created_keys = save_telemetry(device, rows, protocol=Device.Protocol.HTTP)
     return JsonResponse({"saved": len(rows), "new_variables": created_keys})
+
+
+@csrf_exempt
+@require_POST
+def firmware(request, token):
+    """POST /api/v1/<token>/firmware — laporan firmware dari device (tahap 9, OTA).
+
+        {"version": "1.2.0", "board": "esp32"}                    saat menyala
+        {"update": 7, "state": "DOWNLOADING", "progress": 40}     selama pembaruan
+
+    Payload sama dengan MQTT dan CoAP (lihat ota/services.handle_report).
+    """
+    from ota.services import handle_report
+
+    device = Device.objects.filter(access_token=token).first()
+    if device is None:
+        return error(401, "Invalid access token.")
+    if not device.is_active:
+        return error(403, "Device is inactive.")
+    try:
+        data = json.loads(request.body, parse_constant=reject_constant)
+    except (ValueError, UnicodeDecodeError):
+        return error(400, "Request body must be valid JSON.")
+    try:
+        message = handle_report(device, data, protocol=Device.Protocol.HTTP)
+    except PayloadError as exc:
+        message = str(exc)
+        return error(400, message[:1].upper() + message[1:])
+    return JsonResponse({"ok": True, "result": message})

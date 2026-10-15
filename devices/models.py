@@ -78,6 +78,18 @@ class Location(models.Model):
         return self.name
 
 
+class Board(models.TextChoices):
+    """Jenis board/mikrokontroler. Dipakai OTA untuk menolak firmware yang salah board
+    (firmware ESP32-S3 tidak boleh ditulis ke ESP32 biasa)."""
+
+    ESP32 = "esp32", "ESP32"
+    ESP32S2 = "esp32s2", "ESP32-S2"
+    ESP32S3 = "esp32s3", "ESP32-S3"
+    ESP32C3 = "esp32c3", "ESP32-C3"
+    ESP8266 = "esp8266", "ESP8266"
+    SIMULATED = "sim", "Simulated device"
+
+
 class Device(models.Model):
     class Protocol(models.TextChoices):
         """Jalur yang dipakai device saat terakhir mengirim telemetri."""
@@ -135,6 +147,16 @@ class Device(models.Model):
     last_protocol = models.CharField(
         "last protocol", max_length=4, choices=Protocol.choices, blank=True, editable=False
     )
+    # --- Firmware (tahap 9, OTA) ---
+    # Board diisi pengguna di form device, atau dilaporkan device sendiri saat menyala.
+    board = models.CharField(
+        "board", max_length=10, choices=Board.choices, blank=True,
+        help_text="Used by firmware updates to refuse firmware built for another board.",
+    )
+    # Versi firmware yang SEDANG berjalan, menurut laporan device (bukan menurut
+    # server): hanya device yang tahu pasti firmware mana yang menyala.
+    firmware_version = models.CharField("firmware version", max_length=40, blank=True, editable=False)
+    firmware_reported_at = models.DateTimeField("firmware reported", null=True, blank=True, editable=False)
 
     class Meta:
         ordering = ["name"]

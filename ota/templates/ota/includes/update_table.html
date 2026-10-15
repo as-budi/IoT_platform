@@ -1,0 +1,29 @@
+{% comment %}Daftar pembaruan. Butuh `updates`; opsional `show_device`, `show_package`.{% endcomment %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>Started</th>
+        {% if show_device %}<th>Device</th>{% endif %}
+        <th>Version</th>
+        <th>Status</th>
+        <th>By</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for update in updates %}
+      <tr>
+        <td class="text-nowrap">{{ update.created_at|date:"d M H:i:s" }}</td>
+        {% if show_device %}<td><a href="{% url 'devices:detail' update.device_id %}">{{ update.device.name }}</a></td>{% endif %}
+        <td class="text-nowrap">{{ update.previous_version|default:"?" }} → <strong>{{ update.package.version }}</strong></td>
+        <td>{% include "ota/includes/status_badge.html" %}{% if update.error %} <span class="small text-muted">{{ update.error|truncatechars:70 }}</span>{% endif %}</td>
+        <td>{{ update.created_by.username|default:"—" }}</td>
+        <td class="text-end"><a class="small" href="{% url 'ota:update_detail' update.pk %}">Details</a></td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-3">No updates yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

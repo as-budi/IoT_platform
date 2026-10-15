@@ -124,6 +124,9 @@
 </div>
 {% endif %}
 
+{# ---------- Firmware & pembaruan OTA (tahap 9) ---------- #}
+{% include "ota/includes/device_firmware.html" %}
+
 {# ---------- Koneksi device: access token & endpoint API ---------- #}
 <h2 class="h5 mb-3" id="connect">Connect a device</h2>
 <div class="card shadow-sm mb-4">
@@ -159,6 +162,11 @@
           <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-example">Copy</button>
         </div>
+        <label class="form-label small mb-1" for="curl-firmware-example">Report the running firmware version (for firmware updates)</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="curl-firmware-example" rows="2" readonly>curl -X POST {{ firmware_url }} -H "Content-Type: application/json" -d '{"version": "1.0.0", "board": "esp32"}'</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-firmware-example">Copy</button>
+        </div>
       </div>
 
       {# ---------- MQTT: alamat broker dan topik device ini (.env) ---------- #}
@@ -176,6 +184,7 @@
               <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id", "method", "params"}</code></td></tr>
               <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
               <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message was rejected</td></tr>
+              <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.firmware }}</code></td><td>firmware version and update progress, see <a href="#firmware">Firmware</a></td></tr>
             </tbody>
           </table>
         </div>
@@ -216,6 +225,7 @@
               <tr><td class="text-nowrap">GET + Observe</td><td><code>{{ coap.desired }}</code></td><td>requested actuator states; pushed when they change</td></tr>
               <tr><td class="text-nowrap">GET + Observe</td><td><code>{{ coap.commands }}</code></td><td><code>{"commands": [{"id", "method", "params"}]}</code></td></tr>
               <tr><td>POST</td><td><code>{{ coap.response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
+              <tr><td>POST</td><td><code>{{ coap.firmware }}</code></td><td>firmware version and update progress</td></tr>
             </tbody>
           </table>
         </div>
@@ -361,6 +371,23 @@
       // Sorot sebentar supaya perubahan terlihat.
       card.classList.add("live-flash");
       setTimeout(() => card.classList.remove("live-flash"), 1200);
+    }
+    return true;
+  });
+
+  // Pembaruan firmware (tahap 9). Progres unduhan diterapkan langsung ke bilah
+  // progres; status yang berganti (langkah baru, selesai) memuat ulang halaman.
+  AutoRefresh.on("ota", (event) => {
+    const box = document.querySelector(`[data-ota-update="${event.update}"]`);
+    if (!box || event.final) return false;
+    const badge = box.querySelector("[data-ota-badge]");
+    if (badge.textContent.trim() !== event.status_label) return false;
+    const bar = box.querySelector("[data-ota-progress]");
+    if (bar) {
+      bar.setAttribute("aria-valuenow", event.progress);
+      const fill = bar.querySelector(".progress-bar");
+      fill.style.width = event.progress + "%";
+      fill.textContent = event.progress + "%";
     }
     return true;
   });

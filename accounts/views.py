@@ -5,7 +5,10 @@ Di sini kita memakai "class-based generic views": Django sudah menyediakan
 view siap pakai untuk pola umum (daftar, tambah, ubah, hapus). Kita tinggal
 menyebutkan model, form, dan template-nya.
 """
+from django.conf import settings
 from django.contrib.auth import login
+from django.contrib.auth import views as auth_views
+from django.http import Http404
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db.models import Count
 from django.shortcuts import redirect
@@ -15,6 +18,15 @@ from django.views.generic import CreateView, DeleteView, ListView, UpdateView
 from .forms import RegisterForm, UserCreateForm, UserUpdateForm
 from .mixins import AdminRequiredMixin
 from .models import User
+
+
+class LoginView(auth_views.LoginView):
+    """Login bawaan Django, ditambah informasi apakah tautan "Sign up" ditampilkan."""
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["allow_signup"] = settings.ALLOW_SIGNUP
+        return context
 
 
 class RegisterView(SuccessMessageMixin, CreateView):
@@ -30,6 +42,10 @@ class RegisterView(SuccessMessageMixin, CreateView):
         # Pengguna yang sudah login tidak perlu mendaftar lagi.
         if request.user.is_authenticated:
             return redirect("dashboard:index")
+        # Di server publik pendaftaran bisa ditutup (DJANGO_ALLOW_SIGNUP=False):
+        # akun hanya dibuat oleh Admin lewat halaman Users.
+        if not settings.ALLOW_SIGNUP:
+            raise Http404("Sign-up is closed.")
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):

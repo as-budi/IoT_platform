@@ -1,0 +1,27 @@
+# Menyusun akun Mosquitto dari daftar device (manage.py mqtt_accounts).
+# Dijalankan iot-mqtt-accounts.timer setiap 2 menit.
+[Unit]
+Description=IoT platform: sync Mosquitto accounts from devices
+After=mysql.service
+
+[Service]
+Type=oneshot
+User=iot
+Group=iot
+WorkingDirectory=/srv/iot/app
+ExecStart=/srv/iot/venv/bin/python manage.py mqtt_accounts --passwd-file /srv/iot/mosquitto/passwd --acl-file /srv/iot/mosquitto/acl
+ReadWritePaths=/srv/iot/mosquitto
+# --- Pengamanan proses (systemd sandboxing) ---
+# Proses tidak bisa menjadi root lagi, tidak bisa menulis ke sistem berkas
+# kecuali folder yang disebut, dan tidak melihat /home maupun /tmp bersama.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

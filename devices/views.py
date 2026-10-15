@@ -107,10 +107,14 @@ def data_version(device, variable=None):
         commands = device.commands.aggregate(
             last=Max("pk"), sent=Max("sent_at"), done=Max("completed_at")
         )
+        # Pembaruan firmware (tahap 9): status/progres terakhir, dan versi yang dilaporkan.
+        ota = device.ota_updates.aggregate(last=Max("updated_at"))["last"]
         parts += [
             commands["last"],
             commands["sent"] and commands["sent"].timestamp(),
             commands["done"] and commands["done"].timestamp(),
+            ota and ota.timestamp(),
+            device.firmware_reported_at and device.firmware_reported_at.timestamp(),
         ]
     return "-".join(str(part or 0) for part in parts)
 
@@ -212,6 +216,14 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
             "all": mqtt_topics.device_base(prefix, token) + "/#",
         }
         context["coap"] = coap_info(self.request, device)
+        context["firmware_url"] = self.request.build_absolute_uri(
+            reverse("api:firmware", args=[device.access_token])
+        )
+        context["mqtt"]["firmware"] = mqtt_topics.firmware(prefix, token)
+        # Kartu "Firmware" (tahap 9, OTA): versi, tombol update, progres, riwayat.
+        from ota.views import device_firmware_context
+
+        context.update(device_firmware_context(self.request, device))
         # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
         context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
 
@@ -272,6 +284,7 @@ def coap_info(request, device):
         "desired": f"{base}/desired",
         "commands": f"{base}/commands",
         "response": f"{base}/commands/<id>/response",
+        "firmware": f"{base}/firmware",
     }
 
 

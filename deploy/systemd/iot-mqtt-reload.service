@@ -1,0 +1,12 @@
+# Dipicu iot-mqtt-reload.path setiap kali manage.py mqtt_accounts menulis akun baru.
+# Berjalan sebagai root: menyalin file akun ke /etc/mosquitto/iot dengan pemilik
+# mosquitto dan izin 600 (Mosquitto 2.x menolak/memperingatkan file milik user lain),
+# lalu memuat ulang broker. Koneksi device yang sudah ada tidak terputus.
+[Unit]
+Description=IoT platform: install Mosquitto accounts and reload the broker
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/install -D -o mosquitto -g mosquitto -m 600 /srv/iot/mosquitto/passwd /etc/mosquitto/iot/passwd
+ExecStart=/usr/bin/install -D -o mosquitto -g mosquitto -m 600 /srv/iot/mosquitto/acl /etc/mosquitto/iot/acl
+ExecStart=/usr/bin/systemctl reload-or-restart mosquitto.service

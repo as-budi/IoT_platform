@@ -22,6 +22,8 @@ urlpatterns = [
     path("devices/", include("devices.urls")),
     # /rules/...    -> rule engine (aturan otomatis) dan alarm
     path("rules/", include("rules.urls")),
+    # /firmware/...  -> paket firmware dan pembaruan OTA (tahap 9)
+    path("firmware/", include("ota.urls")),
     # /api/...       -> API untuk device sungguhan (mis. ESP32), lihat api/urls.py
     path("api/", include("api.urls")),
     # Halaman depan langsung diarahkan ke dashboard.

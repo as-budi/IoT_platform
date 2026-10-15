@@ -4,7 +4,7 @@ Tes otomatis untuk hak akses manajemen pengguna.
 Jalankan dengan:  python manage.py test
 Django membuat database sementara (test_<nama db>) lalu menghapusnya lagi.
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .models import User
@@ -108,3 +108,21 @@ class RegisterTests(TestCase):
         self.client.force_login(User.objects.create_user("budi", password="x"))
         response = self.client.get(reverse("accounts:register"))
         self.assertRedirects(response, reverse("dashboard:index"))
+
+
+class SignupSwitchTests(TestCase):
+    """DJANGO_ALLOW_SIGNUP=False menutup pendaftaran mandiri (server publik)."""
+
+    def test_open_by_default(self):
+        self.assertContains(self.client.get(reverse("accounts:login")), "Sign up")
+        self.assertEqual(self.client.get(reverse("accounts:register")).status_code, 200)
+
+    @override_settings(ALLOW_SIGNUP=False)
+    def test_closed(self):
+        self.assertNotContains(self.client.get(reverse("accounts:login")), "Sign up")
+        self.assertEqual(self.client.get(reverse("accounts:register")).status_code, 404)
+        response = self.client.post(reverse("accounts:register"), {
+            "username": "intruder", "password1": "Very-long-pass-123", "password2": "Very-long-pass-123",
+        })
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(User.objects.filter(username="intruder").exists())

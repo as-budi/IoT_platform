@@ -1,7 +1,9 @@
 # Rencana: Pembaruan Firmware Over-the-Air (OTA)
 
-Status: **rencana**, belum dikerjakan. Dokumen ini merangkum diskusi tentang penambahan OTA
-ke platform: kelayakan, komponen yang dibutuhkan, risiko, dan tahapan pengerjaannya.
+Status: **Tahap 1 (OTA dasar) sudah dikerjakan** pada tahap 9 project, lihat
+[tahap-09-ota.md](tahap-09-ota.md). Tahap 2 (rollout) dan Tahap 3 (keamanan lanjutan) masih
+rencana. Dokumen ini merangkum diskusi awal tentang penambahan OTA ke platform: kelayakan,
+komponen yang dibutuhkan, risiko, dan tahapan pengerjaannya.
 
 ## 1. Ringkasan
 
@@ -32,7 +34,7 @@ device dan menyambungkannya ke laptop.
 2. **Versi firmware setiap device**: device melaporkan versinya setiap kali menyala, disimpan
    di `Device.firmware_version`. Dengan begitu terlihat device mana yang sudah atau belum
    diperbarui.
-3. **Endpoint unduhan**: `GET /api/v1/<token>/firmware/<id>.bin`, sebaiknya memakai token
+3. **Endpoint unduhan**: dikerjakan sebagai `GET /api/v1/ota/<token-unduhan>.bin`, memakai token
    unduhan sekali pakai yang kedaluwarsa (lihat bagian 5).
 4. **Status update per device**, mengikuti pola ThingsBoard:
 
@@ -88,7 +90,7 @@ Pengguna klik "Update firmware"
 
 ## 6. Tahapan pengerjaan
 
-### Tahap 1: OTA dasar (prioritas)
+### Tahap 1: OTA dasar (prioritas) — selesai, lihat [tahap-09-ota.md](tahap-09-ota.md)
 
 - model paket firmware, upload, dan checksum otomatis;
 - `Device.firmware_version`, dilaporkan device saat menyala;

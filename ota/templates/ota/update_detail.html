@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Firmware update #{{ update.pk }} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'devices:detail' update.device_id %}">{{ update.device.name }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Firmware update #{{ update.pk }}</li>
+  </ol>
+</nav>
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ update.previous_version|default:"?" }} → {{ update.package.version }} {% include "ota/includes/status_badge.html" %}</h1>
+    <div class="text-muted"><a href="{% url 'devices:detail' update.device_id %}">{{ update.device.name }}</a> ·
+      <a href="{% url 'ota:package_detail' update.package_id %}">{{ update.package.title }} {{ update.package.version }}</a> · started by {{ update.created_by.username|default:"—" }}</div>
+  </div>
+  {% if not update.is_final %}
+  <form method="post" action="{% url 'ota:cancel' update.pk %}">
+    {% csrf_token %}
+    <button class="btn btn-outline-danger" type="submit">Cancel update</button>
+  </form>
+  {% endif %}
+</div>
+
+{% include "devices/includes/auto_refresh.html" %}
+
+<div class="card shadow-sm mb-4"><div class="card-body">{% include "ota/includes/progress.html" %}</div></div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 text-muted text-uppercase">History</h2>
+        <ol class="ota-timeline list-unstyled mb-0">
+          {% for event in update.events.all %}
+          <li>
+            <span class="text-muted small text-nowrap">{{ event.created_at|date:"H:i:s" }}</span>
+            <span class="badge ota-status ota-status-{{ event.status|lower }}">{{ event.get_status_display }}</span>
+            {{ event.message }}{% if event.source %} <span class="text-muted small">· {{ event.source }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ol>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <h2 class="h6 text-muted text-uppercase">Delivery</h2>
+        <dl class="row small mb-0">
+          <dt class="col-6 fw-normal text-muted">Command</dt>
+          <dd class="col-6">{% if update.command %}<code>ota</code> #{{ update.command.pk }} · {% include "devices/includes/command_status.html" with status=update.command.status %}{% else %}—{% endif %}</dd>
+          <dt class="col-6 fw-normal text-muted">Download link</dt>
+          <dd class="col-6">{% if update.token_used_at %}used {{ update.token_used_at|date:"H:i:s" }}{% if update.downloaded_by %} by {{ update.downloaded_by }}{% endif %}{% elif update.is_final %}not used{% else %}valid until {{ update.token_expires_at|date:"H:i" }}{% endif %}</dd>
+          <dt class="col-6 fw-normal text-muted">Checksum (MD5)</dt>
+          <dd class="col-6"><code>{{ update.package.md5|truncatechars:13 }}</code></dd>
+          <dt class="col-6 fw-normal text-muted">Finished</dt>
+          <dd class="col-6 mb-0">{{ update.finished_at|date:"d M H:i:s"|default:"—" }}</dd>
+        </dl>
+        <p class="small text-muted mt-3 mb-0">The download link works once and expires; it is not the device's access token, so seeing it on a public broker does not let anyone act as the device.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Halaman ini memuat ulang dirinya setiap ada kabar OTA (lihat auto_refresh.js);
+  // kabar lain dari device ini diabaikan.
+  if (window.AutoRefresh) {
+    ["telemetry", "desired", "command", "rule", "rule_eval", "alarm"].forEach((type) => AutoRefresh.on(type, () => true));
+  }
+</script>
+{% endblock %}

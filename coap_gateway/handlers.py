@@ -12,6 +12,7 @@ Alamat (setelah coap://<server>:5683/api/v1/):
     GET   <token>/desired                  {"pump": 1, ...}          (bisa di-Observe)
     GET   <token>/commands                 {"commands": [...]}        (bisa di-Observe)
     POST  <token>/commands/<id>/response   {"success": true, ...}
+    POST  <token>/firmware                 versi firmware & progres OTA (tahap 9)
 """
 import json
 from dataclasses import dataclass, field
@@ -37,6 +38,7 @@ TELEMETRY = "telemetry"
 DESIRED = "desired"
 COMMANDS = "commands"
 COMMAND_RESPONSE = "command_response"
+FIRMWARE = "firmware"
 
 # Jenis alamat -> metode yang diizinkan.
 ALLOWED = {
@@ -44,6 +46,7 @@ ALLOWED = {
     DESIRED: "GET",
     COMMANDS: "GET",
     COMMAND_RESPONSE: "POST",
+    FIRMWARE: "POST",
 }
 # Alamat yang boleh di-Observe (server mengirim kabar saat isinya berubah).
 OBSERVABLE = {DESIRED, COMMANDS}
@@ -70,7 +73,7 @@ def route(segments):
     Alamat yang tidak dikenal -> None.
     """
     segments = list(segments)
-    if len(segments) == 2 and segments[0] and segments[1] in (TELEMETRY, DESIRED, COMMANDS):
+    if len(segments) == 2 and segments[0] and segments[1] in (TELEMETRY, DESIRED, COMMANDS, FIRMWARE):
         return segments[1], segments[0], None
     if (
         len(segments) == 4
@@ -125,6 +128,12 @@ def handle(method, segments, payload=b""):
 
         if kind == DESIRED:
             return Reply(CONTENT, control.desired_state(device), device)
+
+        if kind == FIRMWARE:
+            from ota.services import handle_report
+
+            result = handle_report(device, decode_json(payload), protocol=Device.Protocol.COAP)
+            return Reply(CHANGED, {"ok": True, "result": result}, device)
 
         if kind == COMMANDS:
             commands = control.pending_commands(device)

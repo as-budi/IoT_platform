@@ -1,0 +1,2 @@
+{% comment %}Lencana status pembaruan firmware. Butuh `update`.{% endcomment %}
+<span class="badge ota-status ota-status-{{ update.status|lower }}" data-ota-badge>{{ update.get_status_display }}</span>

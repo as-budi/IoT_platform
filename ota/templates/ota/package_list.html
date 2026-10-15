@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Firmware · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-1">
+  <h1 class="h3 mb-0">Firmware</h1>
+  <a class="btn btn-primary" href="{% url 'ota:package_upload' %}">Upload firmware</a>
+</div>
+<p class="text-muted mb-4">Upload a compiled firmware once, then update devices over the air from each device's page.</p>
+
+{% if packages %}
+<div class="card shadow-sm mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Firmware</th><th>Version</th><th>Board</th><th class="text-end">Size</th><th>MD5</th><th>Uploaded</th><th class="text-end">Devices updated</th></tr>
+      </thead>
+      <tbody>
+        {% for package in packages %}
+        <tr>
+          <td><a href="{% url 'ota:package_detail' package.pk %}">{{ package.title }}</a></td>
+          <td><strong>{{ package.version }}</strong></td>
+          <td>{{ package.get_board_display }}</td>
+          <td class="text-end text-nowrap">{{ package.size|filesizeformat }}</td>
+          <td><code class="small">{{ package.md5|truncatechars:13 }}</code></td>
+          <td class="small text-nowrap">{{ package.created_at|date:"d M Y" }}{% if user.is_admin %} · {{ package.uploaded_by.username }}{% endif %}</td>
+          <td class="text-end">{{ package.updated_count }}{% if package.update_count != package.updated_count %} <span class="text-muted small">of {{ package.update_count }} tries</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card shadow-sm mb-4"><div class="card-body text-center py-5">
+  <h2 class="h5">No firmware yet</h2>
+  <p class="text-muted mb-3">In Arduino IDE use <strong>Sketch → Export Compiled Binary</strong>, then upload the <code>.bin</code> file here.</p>
+  <a class="btn btn-primary" href="{% url 'ota:package_upload' %}">Upload the first firmware</a>
+</div></div>
+{% endif %}
+
+<h2 class="h5 mb-3">Recent updates</h2>
+<div class="card shadow-sm">{% include "ota/includes/update_table.html" with updates=recent_updates show_device=True %}</div>
+{% endblock %}

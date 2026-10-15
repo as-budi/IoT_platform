@@ -1,0 +1,9 @@
+# Bila file akun/ACL berubah, muat ulang Mosquitto (koneksi yang ada tidak putus).
+[Unit]
+Description=IoT platform: watch Mosquitto account files
+
+[Path]
+PathChanged=/srv/iot/mosquitto/passwd.sha256
+
+[Install]
+WantedBy=multi-user.target

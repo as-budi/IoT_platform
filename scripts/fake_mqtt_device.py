@@ -18,8 +18,18 @@ Alamat broker dan prefix dibaca dari .env (MQTT_HOST, MQTT_PORT,
 MQTT_TOPIC_PREFIX, ...) bila file itu ada, dan bisa ditimpa lewat argumen
 --host, --port, --prefix.
 
-Command yang dikenal: ping, reboot, blink {"times": 3}.
+Command yang dikenal: ping, reboot, blink {"times": 3}, dan ota (tahap 9).
 Method lain dijawab gagal, supaya status Failed juga bisa dicoba.
+
+Pembaruan firmware (OTA, tahap 9):
+    python scripts/fake_mqtt_device.py <TOKEN> --firmware-version 1.0.0 --board sim
+Device tiruan ini melaporkan versinya setiap kali tersambung, menerima command
+"ota", MENGUNDUH file dari URL di command (HTTP sungguhan), memeriksa MD5,
+melaporkan setiap langkah, lalu "restart" dengan versi baru. Untuk mencoba
+kegagalan:
+    --ota-fail download   unduhan dianggap putus di tengah jalan
+    --ota-fail md5        checksum tidak cocok
+    --ota-fail boot       firmware baru "tidak menyala": restart dengan versi lama (rollback)
 """
 import argparse
 import hashlib
@@ -29,6 +39,8 @@ import os
 import random
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 try:
@@ -57,6 +69,10 @@ class FakeDevice:
         self.topic_desired = f"{base}/desired"
         self.topic_commands = f"{base}/commands/"   # + <id>
         self.topic_errors = f"{base}/errors"
+        self.topic_firmware = f"{base}/firmware"
+        # Firmware yang "sedang berjalan" di device tiruan ini.
+        self.firmware_version = args.firmware_version
+        self.seen_updates = set()   # command ota bisa terkirim ulang (QoS 1): jalankan sekali saja
         # Keadaan aktuator "fisik" device ini, mis. {"lamp": 1}.
         self.actuators = {}
         self.lock = threading.Lock()
@@ -87,6 +103,9 @@ class FakeDevice:
             (self.topic_commands + "+", 1),  # + = satu level: hanya nomor command
             (self.topic_errors, 0),
         ])
+        # Setiap kali (re)start: beri tahu platform firmware apa yang berjalan.
+        # Laporan inilah yang menyelesaikan pembaruan OTA (UPDATED).
+        self.publish(self.topic_firmware, {"version": self.firmware_version, "board": self.args.board})
 
     # --- pesan masuk --------------------------------------------------------------
 
@@ -124,9 +143,74 @@ class FakeDevice:
             result = {"success": True, "message": "Rebooted (pretend)."}
         elif method == "blink":
             result = {"success": True, "blinked": int(params.get("times", 3))}
+        elif method == "ota":
+            update_id = params.get("update")
+            if params.get("version") == self.firmware_version:
+                result = {"success": False, "error": f"Already running {self.firmware_version}."}
+            elif update_id in self.seen_updates:
+                return  # kiriman ulang dari broker; pembaruan ini sudah ditangani
+            else:
+                self.seen_updates.add(update_id)
+                result = {"success": True, "message": "Update accepted."}
+                # Pembaruan berjalan di thread sendiri: callback MQTT tidak boleh diblokir lama.
+                threading.Thread(target=self.run_ota, args=(params,), daemon=True).start()
         else:
             result = {"success": False, "error": f"Unknown method '{method}'."}
         self.publish(f"{self.topic_commands}{command_id}/response", result)
+
+    # --- pembaruan firmware (OTA) ------------------------------------------------------
+
+    def ota_report(self, update_id, state, **extra):
+        self.publish(self.topic_firmware, {"update": update_id, "state": state, **extra})
+
+    def run_ota(self, params):
+        """Meniru yang dilakukan ESP32 dengan HTTPUpdate: unduh, cek MD5, tulis, restart."""
+        update_id, fail = params["update"], self.args.ota_fail
+        delay = self.args.ota_delay
+        self.ota_report(update_id, "DOWNLOADING", progress=0)
+        md5 = hashlib.md5()
+        try:
+            with urllib.request.urlopen(params["url"], timeout=30) as response:
+                total = int(response.headers.get("Content-Length") or params.get("size") or 0)
+                header_md5 = response.headers.get("x-MD5", "")
+                received, last_step = 0, 0
+                while True:
+                    chunk = response.read(4096)
+                    if not chunk:
+                        break
+                    md5.update(chunk)
+                    received += len(chunk)
+                    percent = int(received * 100 / total) if total else 0
+                    if fail == "download" and percent >= 50:
+                        raise OSError("connection lost at 50 %")
+                    if percent - last_step >= 25 or percent == 100:
+                        last_step = percent
+                        self.ota_report(update_id, "DOWNLOADING", progress=percent)
+                        time.sleep(delay)
+        except (urllib.error.URLError, OSError) as exc:
+            reason = getattr(exc, "reason", exc)
+            self.ota_report(update_id, "FAILED", error=f"Download failed: {reason}")
+            return
+        self.ota_report(update_id, "DOWNLOADED")
+        time.sleep(delay)
+        digest = md5.hexdigest() if fail != "md5" else "0" * 32
+        if digest != params.get("md5") or (header_md5 and digest != header_md5):
+            self.ota_report(update_id, "FAILED", error="MD5 mismatch")
+            return
+        self.ota_report(update_id, "VERIFIED")
+        time.sleep(delay)
+        self.ota_report(update_id, "UPDATING")
+        time.sleep(delay)
+        # "Restart": putuskan koneksi, ganti versi, sambung lagi. Setelah tersambung,
+        # on_connect() melaporkan versi baru. --ota-fail boot meniru rollback.
+        print(f"{now()}  restarting into firmware {params['version']} …")
+        self.client.disconnect()
+        time.sleep(2)
+        if fail != "boot":
+            self.firmware_version = params["version"]
+        else:
+            print(f"{now()}  new firmware did not start: rolled back to {self.firmware_version}")
+        self.client.reconnect()
 
     # --- pesan keluar ---------------------------------------------------------------
 
@@ -171,6 +255,10 @@ def main():
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD", ""))
     parser.add_argument("--tls", action="store_true", default=os.getenv("MQTT_TLS") == "True")
     parser.add_argument("--interval", type=float, default=10, help="Seconds between telemetry messages")
+    parser.add_argument("--firmware-version", default="1.0.0", help="Firmware version this device starts with")
+    parser.add_argument("--board", default="sim", help="Board reported to the platform (sim, esp32, ...)")
+    parser.add_argument("--ota-fail", choices=["download", "md5", "boot"], help="Make the next update fail")
+    parser.add_argument("--ota-delay", type=float, default=0.7, help="Seconds between update steps")
     FakeDevice(parser.parse_args()).run()
 
 

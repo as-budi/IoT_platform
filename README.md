@@ -27,8 +27,10 @@ Penjelasan konsep:
 - [docs/eca-mekanisme.md](docs/eca-mekanisme.md) — ECA lebih dalam: kondisi AND/OR, logika tiga nilai, alur eksekusi, query database, contoh linimasa
 - [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md) — rule engine model rule chain (Flow): graf node filter/enrichment/transformation/action
 - [docs/flow-mekanisme.md](docs/flow-mekanisme.md) — rule chain lebih dalam: penelusuran graf, cara kerja tiap node, query database, contoh jejak eksekusi
-- [docs/rencana-ota.md](docs/rencana-ota.md) — rencana pembaruan firmware over-the-air (OTA): komponen, risiko, tahapan
+- [docs/tahap-09-ota.md](docs/tahap-09-ota.md) — pembaruan firmware over-the-air (OTA): paket firmware, unduhan bertoken sekali pakai, status per langkah, ESP32 & device tiruan
+- [docs/rencana-ota.md](docs/rencana-ota.md) — rencana awal OTA (tahap 1 sudah dikerjakan; rollout & keamanan lanjutan masih rencana)
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
+- [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 
 ## Prasyarat
 
@@ -249,6 +251,23 @@ berdurasi dan "device diam". Email aksi aturan dicetak di terminal bila `EMAIL_H
 kosong. Penjelasan lengkap: [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md)
 dan [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md).
 
+## Pembaruan firmware OTA (tahap 9)
+
+Firmware device bisa diperbarui tanpa kabel: unggah file `.bin` di menu **Firmware**, lalu
+pilih versinya di halaman device dan klik **Update firmware**. Device menerima command `ota`
+(lewat MQTT atau CoAP), mengunduh file dari URL bertoken sekali pakai, melaporkan setiap
+langkah, lalu restart. Server menandai berhasil saat device melaporkan versi barunya.
+
+```bash
+python manage.py migrate                      # tabel ota_* dan kolom firmware di device
+python scripts/fake_mqtt_device.py <TOKEN> --firmware-version 1.0.0 --board sim   # coba tanpa ESP32
+```
+
+Untuk ESP32 sungguhan (`firmware/esp32_mqtt_ota/`), device harus bisa menjangkau komputer
+ini: isi `OTA_BASE_URL=http://<IP-Wi-Fi>:8000`, tambahkan IP itu ke `DJANGO_ALLOWED_HOSTS`,
+lalu jalankan `python manage.py runall 0.0.0.0:8000`. Penjelasan lengkap:
+[docs/tahap-09-ota.md](docs/tahap-09-ota.md).
+
 ## Struktur project
 
 ```
@@ -263,8 +282,12 @@ coap_gateway/        app: komunikasi device lewat CoAP (manage.py coap_server)
 realtime/            app: WebSocket (Django Channels)
 dashboard/           app: dashboard per lokasi & device
 rules/               app: rule engine & alarm (manage.py rule_engine)
+ota/                 app: paket firmware & pembaruan OTA
+firmware/            contoh firmware ESP32 (HTTP, MQTT, CoAP, MQTT + OTA)
 launcher/            app: manage.py runall (menjalankan semua layanan)
 templates/           template lintas-app (base.html, login, 403)
 static/              CSS
 docs/                catatan belajar per tahap
+deploy/              konfigurasi server produksi (Nginx, systemd, Mosquitto, skrip backup & update)
+private_media/       file firmware yang diunggah (tidak di-commit)
 ```

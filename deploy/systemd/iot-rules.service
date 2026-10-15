@@ -1,0 +1,32 @@
+[Unit]
+Description=IoT platform rule engine worker
+After=network-online.target mysql.service redis-server.service mosquitto.service
+Wants=network-online.target
+PartOf=iot.target
+
+[Service]
+User=iot
+Group=iot
+WorkingDirectory=/srv/iot/app
+ExecStart=/srv/iot/venv/bin/python manage.py rule_engine
+Restart=always
+RestartSec=5
+# Output Python langsung masuk journal (tanpa buffer).
+Environment=PYTHONUNBUFFERED=1
+# --- Pengamanan proses (systemd sandboxing) ---
+# Proses tidak bisa menjadi root lagi, tidak bisa menulis ke sistem berkas
+# kecuali folder yang disebut, dan tidak melihat /home maupun /tmp bersama.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=iot.target
