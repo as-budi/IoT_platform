@@ -185,6 +185,18 @@ MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "")
 # Detik antar "ping" ke broker untuk menjaga koneksi tetap hidup.
 MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
 
+# Alamat broker yang dipakai DEVICE, untuk ditampilkan di tab MQTT halaman device.
+# Bisa berbeda dari MQTT_HOST di atas (alamat yang dipakai mqtt_bridge). Contoh di
+# server produksi: mqtt_bridge tersambung ke 127.0.0.1:1883 tanpa TLS, sedangkan
+# device dari internet memakai iot.domain-anda:8883 dengan TLS.
+# Kosong = sama dengan pengaturan mqtt_bridge (cocok untuk broker publik saat belajar).
+MQTT_PUBLIC_HOST = os.getenv("MQTT_PUBLIC_HOST", "") or MQTT_HOST
+MQTT_PUBLIC_PORT = int(os.getenv("MQTT_PUBLIC_PORT", "") or MQTT_PORT)
+MQTT_PUBLIC_TLS = (os.getenv("MQTT_PUBLIC_TLS", "") or str(MQTT_TLS)) == "True"
+# True = broker meminta device login dengan username = password = access token
+# (broker sendiri + `python manage.py mqtt_accounts`, lihat docs/deploy-lightsail.md).
+MQTT_DEVICE_LOGIN = os.getenv("MQTT_DEVICE_LOGIN", "False") == "True"
+
 
 # --- CoAP ---------------------------------------------------------------------
 # Server CoAP (UDP) untuk device; dijalankan dengan `python manage.py coap_server`.

@@ -171,9 +171,17 @@
 
       {# ---------- MQTT: alamat broker dan topik device ini (.env) ---------- #}
       <div class="tab-pane fade" id="pane-mqtt" role="tabpanel" aria-labelledby="tab-mqtt" tabindex="0">
+        <table class="table table-sm small w-auto mb-2">
+          <tbody>
+            <tr><th class="fw-normal text-muted pe-3">Host</th><td><code>{{ mqtt.host }}</code></td></tr>
+            <tr><th class="fw-normal text-muted pe-3">Port</th><td><code>{{ mqtt.port }}</code></td></tr>
+            <tr><th class="fw-normal text-muted pe-3">TLS</th><td>{% if mqtt.tls %}yes, the broker uses a Let's Encrypt certificate (CA: ISRG Root X1){% else %}no{% endif %}</td></tr>
+            <tr><th class="fw-normal text-muted pe-3">Username / password</th><td>{% if mqtt.login %}the access token, for both{% else %}none{% endif %}</td></tr>
+          </tbody>
+        </table>
         <p class="small text-muted mb-2">
-          Broker <code>{{ mqtt.host }}:{{ mqtt.port }}</code>{% if mqtt.tls %} (TLS){% endif %}.
-          Data is exchanged only while <code>python manage.py mqtt_bridge</code> is running.
+          {% if mqtt.show_bridge_hint %}Data is exchanged only while <code>python manage.py mqtt_bridge</code> is running.{% endif %}
+          {% if mqtt.login %}A new device, or a new token, can connect within about 2 minutes. Each device may use only the topics below.{% endif %}
         </p>
         <div class="table-responsive">
           <table class="table table-sm small align-middle">
@@ -190,12 +198,19 @@
         </div>
         <label class="form-label small mb-1" for="mqtt-pub-example">Send telemetry with mosquitto</label>
         <div class="input-group mb-2">
-          <textarea class="form-control font-monospace small" id="mqtt-pub-example" rows="2" readonly>mosquitto_pub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</textarea>
+          <textarea class="form-control font-monospace small" id="mqtt-pub-example" rows="2" readonly>mosquitto_pub {{ mqtt.options }} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-pub-example">Copy</button>
         </div>
+        {% if mqtt.login %}
+        {# Dengan ACL, device hanya boleh membaca topik "Device subscribes"; "#" akan ditolak. #}
+        <label class="form-label small mb-1" for="mqtt-sub-example">Watch what the platform sends to this device</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="mqtt-sub-example" rows="2" readonly>mosquitto_sub {{ mqtt.options }} -t "{{ mqtt.desired }}" -t "{{ mqtt.commands }}" -t "{{ mqtt.errors }}" -v</textarea>
+        {% else %}
         <label class="form-label small mb-1" for="mqtt-sub-example">Watch everything sent to and from this device</label>
         <div class="input-group mb-3">
-          <textarea class="form-control font-monospace small" id="mqtt-sub-example" rows="2" readonly>mosquitto_sub -h {{ mqtt.host }} -p {{ mqtt.port }} -t "{{ mqtt.all }}" -v</textarea>
+          <textarea class="form-control font-monospace small" id="mqtt-sub-example" rows="2" readonly>mosquitto_sub {{ mqtt.options }} -t "{{ mqtt.all }}" -v</textarea>
+        {% endif %}
           <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-sub-example">Copy</button>
         </div>
       </div>

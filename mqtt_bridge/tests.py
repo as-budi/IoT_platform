@@ -259,11 +259,12 @@ class OutboxTests(MqttTestData):
         self.assertEqual(self.flush(), (1, 1))
 
 
-@override_settings(MQTT_HOST="broker.example.org", MQTT_PORT=1883, MQTT_TOPIC_PREFIX=PREFIX)
+@override_settings(MQTT_PUBLIC_HOST="broker.example.org", MQTT_PUBLIC_PORT=1883, MQTT_PUBLIC_TLS=False,
+                   MQTT_DEVICE_LOGIN=False, MQTT_TOPIC_PREFIX=PREFIX)
 class DevicePageMqttTests(MqttTestData):
     def test_device_page_lists_mqtt_topics(self):
         self.client.force_login(self.budi)
         response = self.client.get(reverse("devices:detail", args=[self.device.pk]))
-        self.assertContains(response, "broker.example.org:1883")
+        self.assertContains(response, "-h broker.example.org -p 1883")
         self.assertContains(response, topics.telemetry(PREFIX, self.device.access_token))
         self.assertContains(response, topics.desired(PREFIX, self.device.access_token))

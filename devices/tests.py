@@ -5,7 +5,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -264,6 +264,41 @@ class SeedDemoTests(TestCase):
         # Aktuator contoh dibuat dalam keadaan "In sync".
         for variable in Variable.objects.filter(kind=Variable.Kind.ACTUATOR):
             self.assertEqual(variable.sync_status, Variable.SyncStatus.SYNCED, variable.key)
+
+
+class MqttConnectionInfoTests(TestCase):
+    """Tab MQTT menulis alamat broker untuk DEVICE (MQTT_PUBLIC_*), bukan alamat mqtt_bridge."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+
+    def setUp(self):
+        self.client.force_login(self.budi)
+
+    def page(self):
+        return self.client.get(reverse("devices:detail", args=[self.device.pk]))
+
+    @override_settings(MQTT_PUBLIC_HOST="iot.example.org", MQTT_PUBLIC_PORT=8883,
+                       MQTT_PUBLIC_TLS=True, MQTT_DEVICE_LOGIN=True, MQTT_TOPIC_PREFIX="iot")
+    def test_production_broker_with_login(self):
+        response = self.page()
+        token = self.device.access_token
+        mqtt = response.context["mqtt"]
+        self.assertEqual((mqtt["host"], mqtt["port"], mqtt["tls"], mqtt["login"]), ("iot.example.org", 8883, True, True))
+        self.assertEqual(mqtt["options"], f"-h iot.example.org -p 8883 --tls-use-os-certs -u {token} -P {token}")
+        self.assertContains(response, f"mosquitto_pub {mqtt['options']} -t")
+        # Dengan ACL, contoh langganan memakai topik satu per satu, bukan "#".
+        self.assertNotContains(response, f'-t "iot/{token}/#"')
+        self.assertContains(response, f'-t "iot/{token}/desired"')
+
+    @override_settings(MQTT_PUBLIC_HOST="broker.emqx.io", MQTT_PUBLIC_PORT=1883,
+                       MQTT_PUBLIC_TLS=False, MQTT_DEVICE_LOGIN=False, MQTT_TOPIC_PREFIX="demo")
+    def test_public_broker_without_login(self):
+        response = self.page()
+        self.assertEqual(response.context["mqtt"]["options"], "-h broker.emqx.io -p 1883")
+        self.assertContains(response, f'-t "demo/{self.device.access_token}/#"')
 
 
 class DesiredStateTests(TestCase):

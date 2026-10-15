@@ -204,17 +204,15 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         )
         # Alamat broker dan topik MQTT device ini (lihat mqtt_bridge/topics.py).
         prefix, token = settings.MQTT_TOPIC_PREFIX, device.access_token
-        context["mqtt"] = {
-            "host": settings.MQTT_HOST,
-            "port": settings.MQTT_PORT,
-            "tls": settings.MQTT_TLS,
+        context["mqtt"] = mqtt_info(device)
+        context["mqtt"].update({
             "telemetry": mqtt_topics.telemetry(prefix, token),
             "desired": mqtt_topics.desired(prefix, token),
             "commands": mqtt_topics.command(prefix, token, "+"),
             "command_response": mqtt_topics.command_response(prefix, token, "<id>"),
             "errors": mqtt_topics.errors(prefix, token),
             "all": mqtt_topics.device_base(prefix, token) + "/#",
-        }
+        })
         context["coap"] = coap_info(self.request, device)
         context["firmware_url"] = self.request.build_absolute_uri(
             reverse("api:firmware", args=[device.access_token])
@@ -251,6 +249,32 @@ def device_updates(request, pk):
             return JsonResponse({"error": "Invalid variable."}, status=400)
         variable = get_object_or_404(device.variables, pk=int(variable_id))
     return JsonResponse({"version": data_version(device, variable)})
+
+
+def mqtt_info(device):
+    """Alamat broker untuk DEVICE (bukan untuk mqtt_bridge), untuk tab MQTT.
+
+    MQTT_PUBLIC_* di .env menentukan host/port/TLS yang ditulis di halaman;
+    MQTT_DEVICE_LOGIN menentukan apakah device harus login dengan access token.
+    "options" adalah opsi mosquitto_pub/mosquitto_sub yang sesuai, supaya contoh
+    perintah di halaman bisa langsung disalin dan dijalankan.
+    """
+    token = device.access_token
+    options = f"-h {settings.MQTT_PUBLIC_HOST} -p {settings.MQTT_PUBLIC_PORT}"
+    if settings.MQTT_PUBLIC_TLS:
+        # Percaya pada daftar CA sistem operasi (Let's Encrypt sudah ada di dalamnya).
+        options += " --tls-use-os-certs"
+    if settings.MQTT_DEVICE_LOGIN:
+        options += f" -u {token} -P {token}"
+    return {
+        "host": settings.MQTT_PUBLIC_HOST,
+        "port": settings.MQTT_PUBLIC_PORT,
+        "tls": settings.MQTT_PUBLIC_TLS,
+        "login": settings.MQTT_DEVICE_LOGIN,
+        "options": options,
+        # Bridge berjalan sebagai service di server (DEBUG=False); di laptop, manual.
+        "show_bridge_hint": settings.DEBUG,
+    }
 
 
 def coap_info(request, device):

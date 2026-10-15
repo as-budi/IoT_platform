@@ -412,7 +412,7 @@ Yang **wajib** diubah:
 | `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://iot.contoh.my.id` |
 | `DB_PASSWORD` | password MySQL dari langkah 6 |
 | `MQTT_PASSWORD` | acak, untuk akun `iot-bridge` di broker |
-| `COAP_PUBLIC_HOST`, `OTA_BASE_URL` | domain Anda |
+| `COAP_PUBLIC_HOST`, `OTA_BASE_URL`, `MQTT_PUBLIC_HOST` | domain Anda |
 
 `DJANGO_DEBUG=False` dan `DJANGO_ALLOW_SIGNUP=False` sudah terisi di contoh:
 
@@ -431,7 +431,15 @@ sudo -u iot -H /srv/iot/venv/bin/python manage.py migrate
 sudo -u iot -H /srv/iot/venv/bin/python manage.py createsuperuser
 sudo -u iot -H /srv/iot/venv/bin/python manage.py collectstatic --noinput
 sudo install -d -o iot -g iot -m 750 /srv/iot/app/private_media
+sudo chmod 711 /srv/iot     # Nginx (www-data) boleh MELEWATI folder ini menuju staticfiles
 ```
+
+- `/srv/iot` dibuat dengan mode `750`, sehingga Nginx (user `www-data`) tidak bisa
+  masuk dan semua `/static/...` dijawab `403`: halaman tampil tanpa CSS dan live update
+  macet di *Connecting...* karena JavaScript-nya juga tidak termuat. Mode `711` hanya
+  memberi izin *lewat* (bukan melihat isi folder); `.env` (600), `private_media` (750)
+  dan backup tetap tertutup.
+- Cek: `curl -sI https://DOMAIN-ANDA/static/css/app.css | head -1` harus `HTTP/2 200`.
 
 - Untuk `createsuperuser`, pakai username yang tidak mudah ditebak (bukan `admin`) dan
   password panjang.
@@ -445,7 +453,9 @@ sudo install -d -o iot -g iot -m 750 /srv/iot/app/private_media
 ### 8.1 Layanan systemd
 
 ```bash
-sudo cp /srv/iot/app/deploy/systemd/* /etc/systemd/system/
+# Folder /srv/iot hanya bisa dibuka user iot (izin 750), jadi tanda * tidak bisa
+# diuraikan oleh shell user ubuntu. Salin isi foldernya dengan "/." sebagai gantinya.
+sudo cp -rv /srv/iot/app/deploy/systemd/. /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start iot-web
 sudo systemctl status iot-web --no-pager
@@ -642,6 +652,19 @@ Device lama yang memakai `http://` (mis. `firmware/esp32_telemetry`) masih diter
 | Username, password | access token device |
 | Prefix topik | `iot` (sesuai `MQTT_TOPIC_PREFIX`) |
 
+Nilai-nilai ini juga tampil di tab **MQTT** halaman device, lengkap dengan contoh perintah
+`mosquitto_pub`/`mosquitto_sub` yang siap disalin. Sumbernya empat baris di `.env`:
+
+```ini
+MQTT_PUBLIC_HOST=iot.contoh.my.id   # alamat untuk DEVICE (MQTT_HOST tetap 127.0.0.1 untuk mqtt_bridge)
+MQTT_PUBLIC_PORT=8883
+MQTT_PUBLIC_TLS=True
+MQTT_DEVICE_LOGIN=True              # device login dengan username = password = access token
+```
+
+Server yang sudah berjalan sebelum pengaturan ini ada: tambahkan keempat baris itu ke
+`/srv/iot/app/.env` setelah `update.sh`, lalu `sudo systemctl restart iot-web`.
+
 Device tiruan dari laptop:
 
 ```bash
@@ -704,11 +727,11 @@ pengaturan masih berlaku.
 | 9 | Django | HTTPS, cookie secure, HSTS | `curl -sI https://…` menampilkan `strict-transport-security` |
 | 10 | Django | Pendaftaran mandiri ditutup; tidak ada akun demo; superuser berpassword kuat | `/accounts/register/` → 404 |
 | 11 | Login | Batas laju 10 percobaan per menit per IP (Nginx, burst 5) | percobaan ke-7 yang beruntun dibalas 503 |
-| 12 | Rahasia | `.env` milik `iot`, izin `600`; tidak masuk git | `ls -l /srv/iot/app/.env` → `-rw-------` |
+| 12 | Rahasia | `.env` milik `iot`, izin `600`; tidak masuk git | `sudo ls -l /srv/iot/app/.env` → `-rw-------` |
 | 13 | Database | User MySQL khusus, hanya `localhost`, hanya satu database | `sudo mysql -e "SELECT user,host FROM mysql.user"` |
 | 14 | MQTT | Tanpa tamu, akun per device, ACL per token, TLS | `mosquitto_sub` tanpa akun → *not authorised* |
 | 15 | OTA | File firmware di luar folder publik; link unduhan sekali pakai | `curl https://…/private_media/` → 404 |
-| 16 | Backup | Snapshot Lightsail harian + dump database harian | `ls /srv/iot/backups`, tab Snapshots |
+| 16 | Backup | Snapshot Lightsail harian + dump database harian | `sudo ls /srv/iot/backups`, tab Snapshots |
 | 17 | Pemantauan | Alarm metrik Lightsail (CPU, status check) ke email | tab Metrics → Add alarm |
 
 ---
@@ -727,18 +750,26 @@ Ada dua lapis backup:
 Backup yang hanya ada di server yang sama ikut hilang bila server rusak. Sesekali (mis.
 mingguan) salin ke laptop:
 
+User `ubuntu` tidak bisa membaca `/srv/iot` (izin 750), jadi salin dulu ke folder sementara
+miliknya, di server:
+
 ```bash
-scp -i ~/Downloads/iot-platform-key.pem "ubuntu@203.0.113.10:/srv/iot/backups/db-*.sql.gz" ~/Backups/iot/
+sudo sh -c 'mkdir -p /tmp/iot-backup && cp /srv/iot/backups/db-*.sql.gz /tmp/iot-backup/ && chown -R ubuntu: /tmp/iot-backup'
 ```
 
-User `ubuntu` perlu izin baca. Cara paling mudah: `sudo cp` ke `/tmp`, `chown ubuntu`, lalu
-`scp` dari `/tmp`. Hapus salinan di `/tmp` setelahnya.
+Lalu dari laptop:
+
+```bash
+scp -i ~/Downloads/iot-platform-key.pem "ubuntu@203.0.113.10:/tmp/iot-backup/*" ~/Backups/iot/
+```
+
+Setelah selesai, hapus salinannya di server dengan `rm -r /tmp/iot-backup`.
 
 Memulihkan database dari dump:
 
 ```bash
 sudo systemctl stop iot.target
-gunzip < /srv/iot/backups/db-20261015-0230.sql.gz | sudo mysql iot_platform
+sudo sh -c 'gunzip < /srv/iot/backups/db-20261015-0230.sql.gz | mysql iot_platform'
 sudo systemctl start iot.target
 ```
 
@@ -799,7 +830,7 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | `400 Bad Request` | domain tidak ada di `DJANGO_ALLOWED_HOSTS` | perbaiki `.env`, lalu `restart iot-web` |
 | `403 CSRF verification failed` saat login | `DJANGO_CSRF_TRUSTED_ORIGINS` kosong atau tanpa `https://` | isi `https://domain` |
 | `502 Bad Gateway` | `iot-web` mati | `journalctl -u iot-web -n 50` |
-| Halaman tanpa CSS | `collectstatic` belum dijalankan | jalankan `collectstatic`; cek path `alias` di Nginx |
+| Halaman tanpa CSS, live update *Connecting...* | `/static/` dijawab 403 (`/srv/iot` mode 750) atau `collectstatic` belum dijalankan | `sudo chmod 711 /srv/iot`; jalankan `collectstatic`; cek `sudo tail /var/log/nginx/error.log` |
 | Live update tidak jalan | WebSocket diblokir proxy atau `REDIS_URL` salah | cek blok `/ws/` di Nginx dan `redis-cli ping` |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |
 | `iot-mqtt` terus restart | `MQTT_USERNAME`/`MQTT_PASSWORD` di `.env` tidak sama dengan akun broker | jalankan ulang `iot-mqtt-accounts` setelah mengubah `.env` |
