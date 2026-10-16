@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Activate account · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        {# GET menampilkan tombol; aktivasi terjadi saat POST (lihat ActivateView). #}
+        {% if valid %}
+        <h1 class="h4 mb-2">Activate your account</h1>
+        <p>Username: <strong>{{ target_user.username }}</strong></p>
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary w-100">Activate account</button>
+        </form>
+        {% else %}
+        <h1 class="h4 mb-2">Link not valid</h1>
+        <p>This activation link was already used, has expired, or is incomplete.
+          If your account is already active, just log in.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-primary" href="{% url 'accounts:login' %}">Log in</a>
+          <a class="btn btn-outline-secondary" href="{% url 'accounts:activation_resend' %}">Send a new link</a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

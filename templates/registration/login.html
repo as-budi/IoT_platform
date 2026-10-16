@@ -16,8 +16,15 @@
           <input type="hidden" name="next" value="{{ next }}">
           <button type="submit" class="btn btn-primary w-100">Log in</button>
         </form>
+        {# form.activation_pending diisi LoginForm bila akun belum diaktivasi (password benar). #}
+        {% if form.activation_pending %}
+        <a class="btn btn-outline-secondary w-100 mt-2" href="{% url 'accounts:activation_resend' %}">Resend activation link</a>
+        {% endif %}
+        <p class="text-center mt-3 mb-0 small">
+          <a href="{% url 'accounts:password_reset' %}">Forgot your password?</a>
+        </p>
         {% if allow_signup %}
-        <p class="text-center mt-3 mb-0">
+        <p class="text-center mt-2 mb-0">
           Don't have an account? <a href="{% url 'accounts:register' %}">Sign up</a>
         </p>
         {% endif %}

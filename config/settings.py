@@ -146,6 +146,9 @@ LOGOUT_REDIRECT_URL = "accounts:login"   # tujuan setelah logout
 # Pendaftaran mandiri (/accounts/register/). Di server publik sebaiknya False:
 # siapa pun di internet bisa membuat akun bila dibiarkan terbuka.
 ALLOW_SIGNUP = os.getenv("DJANGO_ALLOW_SIGNUP", "True") == "True"
+# Lama berlaku (detik) tautan di email: aktivasi akun, konfirmasi email baru,
+# dan reset password (tahap 11). Bawaan Django 3 hari; di sini 24 jam.
+PASSWORD_RESET_TIMEOUT = int(os.getenv("DJANGO_EMAIL_LINK_HOURS", "24")) * 3600
 
 
 # --- Bahasa & zona waktu ----------------------------------------------------
@@ -265,9 +268,10 @@ if sys.argv[1:2] == ["test"]:
 RULE_ENGINE_TICK = float(os.getenv("RULE_ENGINE_TICK", "1"))
 
 
-# --- Email (aksi "Send email" pada aturan) ---------------------------------------
+# --- Email (aksi "Send email" pada aturan, aktivasi akun, lupa password) ----------
 # EMAIL_HOST kosong: email TIDAK dikirim, melainkan dicetak di terminal proses
 # yang menjalankan aksi (console backend) — cukup untuk belajar dan menguji.
+# Tautan aktivasi akun dan reset password juga muncul di terminal web server.
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 if EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

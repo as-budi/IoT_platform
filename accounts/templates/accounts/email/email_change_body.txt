@@ -1,0 +1,10 @@
+{% autoescape off %}Hello {{ user.get_full_name|default:user.username }},
+
+You asked to change the email address of your IoT Platform account ({{ user.username }}) to this address.
+Open this link to confirm:
+
+{{ link }}
+
+The link expires in {{ hours }} hours. Until you confirm, the old address stays in use.
+If you did not ask for this, ignore this email.
+{% endautoescape %}

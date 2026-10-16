@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm email · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        {# GET menampilkan tombol; perubahan terjadi saat POST (lihat EmailChangeConfirmView). #}
+        {% if valid %}
+        <h1 class="h4 mb-2">Confirm your new email</h1>
+        <p>Change the email of <strong>{{ target_user.username }}</strong> to
+          <strong>{{ target_user.pending_email }}</strong>?</p>
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary w-100">Confirm</button>
+        </form>
+        {% else %}
+        <h1 class="h4 mb-2">Link not valid</h1>
+        {% if taken %}
+        <p>Another account started using this email address in the meantime, so it was not changed.</p>
+        {% else %}
+        <p>This link was already used, has expired, or the change was canceled.
+          You can ask for a new link on your profile page.</p>
+        {% endif %}
+        <a class="btn btn-primary" href="{% url 'accounts:profile' %}">My profile</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -419,7 +419,9 @@ Yang **wajib** diubah:
 - **`DEBUG=False`**: dengan `True`, halaman error menampilkan potongan kode dan pengaturan
   kepada siapa saja.
 - **`ALLOW_SIGNUP=False`**: di internet, siapa pun bisa membuat akun bila pendaftaran
-  dibiarkan terbuka. Akun dibuat Admin di menu **Users**.
+  dibiarkan terbuka. Akun dibuat Admin di menu **Users**. Sign up baru boleh dibuka
+  (`True`) setelah pengiriman email berfungsi (langkah 10.1), karena akun baru harus
+  diaktivasi lewat tautan di email.
 
 `DJANGO_HTTPS` tetap `False` sampai sertifikat terpasang (langkah 8.3).
 
@@ -607,6 +609,7 @@ pattern read  iot/%u/errors
 ```bash
 sudo systemctl enable --now iot.target          # web, MQTT bridge, rule engine
 sudo systemctl enable --now iot-backup.timer
+sudo systemctl enable --now iot-cleanup.timer   # hapus akun Sign up yang tidak diaktivasi > 7 hari
 systemctl list-units 'iot-*' --no-pager
 systemctl list-timers 'iot-*' --no-pager
 ```
@@ -624,6 +627,45 @@ sudo reboot
 # tunggu ±1 menit, lalu SSH lagi:
 systemctl is-active iot-web iot-mqtt iot-rules mosquitto nginx mysql redis-server
 ```
+
+### 10.1 Email: aktivasi akun dan lupa password
+
+Sejak tahap 11, aplikasi mengirim email untuk tiga hal: tautan aktivasi akun baru (Sign up),
+konfirmasi saat pengguna mengganti email di profil, dan tautan **Forgot your password?**.
+Selama `EMAIL_HOST` kosong, email hanya dicetak ke log `iot-web` dan tidak pernah sampai ke
+pengguna. Isi bagian email di `/srv/iot/app/.env` dengan akun SMTP:
+
+| Penyedia | `EMAIL_HOST` | `EMAIL_HOST_USER` | `EMAIL_HOST_PASSWORD` | Catatan |
+|---|---|---|---|---|
+| Gmail / Google Workspace | `smtp.gmail.com` | alamat Gmail | *App Password* 16 huruf (myaccount.google.com → Security → 2-Step Verification → App passwords) | ±500 email/hari; cocok untuk kelas |
+| Brevo | `smtp-relay.brevo.com` | login SMTP dari dasbor Brevo | SMTP key | gratis 300 email/hari; verifikasi domain pengirim |
+| Amazon SES | `email-smtp.<region>.amazonaws.com` | SMTP username SES | SMTP password SES | murah untuk jumlah besar; awalnya *sandbox* (hanya ke alamat terverifikasi) |
+
+```ini
+EMAIL_HOST=smtp.gmail.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=akun.anda@gmail.com
+EMAIL_HOST_PASSWORD=abcdefghijklmnop
+EMAIL_USE_TLS=True
+DEFAULT_FROM_EMAIL=IoT Platform <akun.anda@gmail.com>
+```
+
+- Port **587** (STARTTLS). Lightsail memblokir port 25 keluar, jadi jangan memakai 25.
+- Untuk Gmail, `DEFAULT_FROM_EMAIL` harus alamat Gmail itu sendiri; alamat lain akan
+  ditulis ulang oleh Gmail. Untuk Brevo/SES, pakai alamat di domain yang sudah diverifikasi.
+- `.env` tetap mode 600: password SMTP sama sensitifnya dengan password database.
+
+Terapkan dan uji:
+
+```bash
+sudo systemctl restart iot-web iot-rules
+cd /srv/iot/app
+sudo -u iot -H /srv/iot/venv/bin/python manage.py sendtestemail alamat-anda@contoh.com
+```
+
+Bila email uji sampai (periksa juga folder spam), coba alur lengkapnya di browser:
+**Forgot your password?** di halaman login, dan bila `DJANGO_ALLOW_SIGNUP=True`, Sign up
+dengan alamat email lain. Kegagalan kirim tercatat di `journalctl -u iot-web`.
 
 ---
 
@@ -726,7 +768,7 @@ pengaturan masih berlaku.
 | 8 | Django | `DEBUG=False`, `SECRET_KEY` acak, `ALLOWED_HOSTS` hanya domain | `manage.py check --deploy` → no issues |
 | 9 | Django | HTTPS, cookie secure, HSTS | `curl -sI https://…` menampilkan `strict-transport-security` |
 | 10 | Django | Pendaftaran mandiri ditutup; tidak ada akun demo; superuser berpassword kuat | `/accounts/register/` → 404 |
-| 11 | Login | Batas laju 10 percobaan per menit per IP (Nginx, burst 5) | percobaan ke-7 yang beruntun dibalas 503 |
+| 11 | Login | Batas laju 10 percobaan per menit per IP (Nginx, burst 5) untuk login, sign up, kirim ulang aktivasi, dan lupa password | percobaan ke-7 yang beruntun dibalas 503 |
 | 12 | Rahasia | `.env` milik `iot`, izin `600`; tidak masuk git | `sudo ls -l /srv/iot/app/.env` → `-rw-------` |
 | 13 | Database | User MySQL khusus, hanya `localhost`, hanya satu database | `sudo mysql -e "SELECT user,host FROM mysql.user"` |
 | 14 | MQTT | Tanpa tamu, akun per device, ACL per token, TLS | `mosquitto_sub` tanpa akun → *not authorised* |

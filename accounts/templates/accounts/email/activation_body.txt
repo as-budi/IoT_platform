@@ -1,0 +1,9 @@
+{% autoescape off %}Hello {{ user.get_full_name|default:user.username }},
+
+Thanks for signing up for IoT Platform. Open this link to activate your account:
+
+{{ link }}
+
+The link works once and expires in {{ hours }} hours.
+If you did not sign up, ignore this email: the account stays inactive.
+{% endautoescape %}

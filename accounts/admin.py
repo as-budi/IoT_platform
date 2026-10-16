@@ -13,8 +13,12 @@ from .models import User
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     list_display = (*BaseUserAdmin.list_display, "role")
-    list_filter = (*BaseUserAdmin.list_filter, "role")
-    fieldsets = (*BaseUserAdmin.fieldsets, ("Platform role", {"fields": ("role",)}))
+    list_filter = (*BaseUserAdmin.list_filter, "role", "activation_pending")
+    fieldsets = (
+        *BaseUserAdmin.fieldsets,
+        ("Platform role", {"fields": ("role",)}),
+        ("Email confirmation", {"fields": ("activation_pending", "pending_email")}),
+    )
     add_fieldsets = (
         *BaseUserAdmin.add_fieldsets,
         ("Platform role", {"fields": ("role",)}),

@@ -29,9 +29,20 @@
     <div class="card shadow-sm mb-3">
       <div class="card-body">
         <h2 class="h5 mb-3">Personal details</h2>
+        {% if user.pending_email %}
+        {# Email baru menunggu konfirmasi (tahap 11). Kolom email masih berisi alamat lama. #}
+        <div class="alert alert-info small d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span>Waiting for confirmation of <strong>{{ user.pending_email }}</strong>. Open the link we sent there.</span>
+          <form method="post" action="{% url 'accounts:email_cancel' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Cancel change</button>
+          </form>
+        </div>
+        {% endif %}
         <form method="post">
           {% csrf_token %}
           {% include "includes/form_fields.html" %}
+          <p class="form-text mt-n2">A new email address is used only after you confirm it from that inbox.</p>
           <button type="submit" class="btn btn-primary">Save</button>
         </form>
       </div>

@@ -109,10 +109,8 @@ Tes otomatis:
 python manage.py test accounts
 ```
 
-## Catatan untuk tahap berikutnya
+## Lanjutan
 
-- Email belum diverifikasi dan belum wajib unik. Keduanya dikerjakan bersama fitur
-  verifikasi email saat signup; saat itu mengganti email di halaman profil juga akan meminta
-  verifikasi ke alamat baru.
-- Begitu pengiriman email berfungsi, fitur **lupa password** (reset lewat email) bisa
-  ditambahkan dengan view bawaan Django (`PasswordResetView` dan kawan-kawan).
+Verifikasi email saat Sign up, konfirmasi email baru di halaman profil, dan **lupa password**
+dikerjakan di [tahap 11](tahap-11-verifikasi-email-dan-lupa-password.md). Sejak tahap itu
+email di halaman profil wajib diisi dan alamat baru baru berlaku setelah dikonfirmasi.

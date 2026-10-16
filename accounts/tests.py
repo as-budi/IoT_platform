@@ -73,7 +73,7 @@ class RegisterTests(TestCase):
         "username": "dewi",
         "first_name": "Dewi",
         "last_name": "",
-        "email": "",
+        "email": "dewi@example.com",
         "password1": "kata-Sandi-9876",
         "password2": "kata-Sandi-9876",
     }
@@ -82,14 +82,17 @@ class RegisterTests(TestCase):
         response = self.client.get(reverse("accounts:register"))
         self.assertEqual(response.status_code, 200)
 
-    def test_register_creates_user_and_logs_in(self):
+    def test_register_creates_inactive_user_awaiting_activation(self):
+        # Sejak tahap 11 akun baru belum aktif dan TIDAK langsung login;
+        # alur aktivasinya diuji di accounts/tests_email.py.
         response = self.client.post(reverse("accounts:register"), self.form_data)
-        self.assertRedirects(response, reverse("dashboard:index"))
+        self.assertRedirects(response, reverse("accounts:register_done"))
         user = User.objects.get(username="dewi")
         self.assertEqual(user.role, User.Role.USER)
         self.assertFalse(user.is_staff)
-        # Sesi login sudah terbentuk: id pengguna tersimpan di session.
-        self.assertEqual(int(self.client.session["_auth_user_id"]), user.pk)
+        self.assertFalse(user.is_active)
+        self.assertTrue(user.activation_pending)
+        self.assertNotIn("_auth_user_id", self.client.session)
 
     def test_register_cannot_choose_admin_role(self):
         data = {**self.form_data, "role": User.Role.ADMIN, "is_superuser": "on"}
@@ -157,18 +160,22 @@ class ProfileTests(TestCase):
         })
         self.assertRedirects(response, reverse("accounts:profile"))
         self.budi.refresh_from_db()
+        # Nama langsung berubah; email baru menunggu konfirmasi (tests_email.py).
         self.assertEqual((self.budi.first_name, self.budi.last_name, self.budi.email),
-                         ("Budi", "Santoso", "budi.s@example.com"))
+                         ("Budi", "Santoso", "budi@example.com"))
+        self.assertEqual(self.budi.pending_email, "budi.s@example.com")
         self.siti.refresh_from_db()
         self.assertEqual(self.siti.first_name, "")
 
     def test_cannot_raise_own_privileges(self):
-        self.client.post(reverse("accounts:profile"), {
-            "first_name": "Budi", "last_name": "", "email": "",
+        response = self.client.post(reverse("accounts:profile"), {
+            "first_name": "Budi", "last_name": "", "email": "budi@example.com",
             "username": "root", "role": User.Role.ADMIN,
             "is_staff": "on", "is_superuser": "on", "is_active": "",
         })
+        self.assertRedirects(response, reverse("accounts:profile"))   # form valid, tersimpan
         self.budi.refresh_from_db()
+        self.assertEqual(self.budi.first_name, "Budi")
         self.assertEqual(self.budi.username, "budi")
         self.assertEqual(self.budi.role, User.Role.USER)
         self.assertFalse(self.budi.is_admin or self.budi.is_staff)
@@ -194,7 +201,7 @@ class PasswordChangeTests(TestCase):
     new = "Kata-Sandi-Baru-2026"
 
     def setUp(self):
-        self.budi = User.objects.create_user("budi", password=self.old)
+        self.budi = User.objects.create_user("budi", password=self.old, email="budi@example.com")
         # Login sungguhan (bukan force_login) supaya session menyimpan hash password.
         self.client.login(username="budi", password=self.old)
 

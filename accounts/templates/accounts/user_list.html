@@ -34,7 +34,7 @@
               {{ u.get_role_display }}
             </span>
           </td>
-          <td>{% if u.is_active %}Active{% else %}<span class="text-muted">Inactive</span>{% endif %}</td>
+          <td>{% if u.is_active %}Active{% elif u.activation_pending %}<span class="text-muted">Awaiting email confirmation</span>{% else %}<span class="text-muted">Inactive</span>{% endif %}</td>
           <td class="text-end">{{ u.device_count }}</td>
           <td class="text-end text-nowrap">
             <a class="btn btn-sm btn-outline-secondary" href="{% url 'accounts:user_edit' u.pk %}">Edit</a>
