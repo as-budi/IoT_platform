@@ -19,6 +19,9 @@ urlpatterns = [
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     # Pendaftaran mandiri (terbuka untuk siapa saja yang belum login).
     path("register/", views.RegisterView.as_view(), name="register"),
+    # Profil dan password milik pengguna yang sedang login (tanpa <pk>).
+    path("profile/", views.ProfileView.as_view(), name="profile"),
+    path("profile/password/", views.PasswordChangeView.as_view(), name="password_change"),
     # Manajemen pengguna (khusus Admin).
     path("users/", views.UserListView.as_view(), name="user_list"),
     path("users/add/", views.UserCreateView.as_view(), name="user_add"),

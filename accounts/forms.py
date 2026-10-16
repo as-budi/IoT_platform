@@ -3,7 +3,7 @@ Form = class yang mengurus input pengguna: menghasilkan elemen HTML,
 memvalidasi data yang dikirim, dan (untuk ModelForm) menyimpannya ke database.
 """
 from django import forms
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, PasswordChangeForm, UserCreationForm
 
 from .models import User
 
@@ -63,3 +63,25 @@ class UserUpdateForm(BootstrapFormMixin, forms.ModelForm):
     class Meta:
         model = User
         fields = ("username", "first_name", "last_name", "email", "role", "is_active")
+
+
+class ProfileForm(BootstrapFormMixin, forms.ModelForm):
+    """Form "My profile": data diri yang boleh diubah pemilik akun sendiri.
+
+    Sama seperti RegisterForm, yang menentukan keamanan adalah DAFTAR FIELD:
+    username, role, is_active, is_staff, dan is_superuser tidak tercantum,
+    sehingga tidak bisa diubah lewat form ini walaupun disisipkan ke data POST.
+    """
+
+    class Meta:
+        model = User
+        fields = ("first_name", "last_name", "email")
+
+
+class PasswordChangeBootstrapForm(BootstrapFormMixin, PasswordChangeForm):
+    """Form ubah password bawaan Django (password lama + dua kali password baru).
+
+    PasswordChangeForm sudah memeriksa password lama, menjalankan aturan
+    AUTH_PASSWORD_VALIDATORS di settings.py untuk password baru, dan menyimpan
+    hasilnya sebagai hash. Kita hanya menambahkan tampilan Bootstrap.
+    """

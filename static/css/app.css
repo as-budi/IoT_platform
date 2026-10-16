@@ -217,7 +217,22 @@ h1, .h1, h2, .h2, h3, .h3 {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
   font-size: 0.9rem;
+}
+
+/* Di sidebar, user-chip adalah tautan ke halaman profil. */
+a.user-chip {
+  margin: -0.25rem -0.4rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+a.user-chip:hover,
+a.user-chip.active {
+  background: var(--app-surface-2);
 }
 
 .user-chip .avatar {

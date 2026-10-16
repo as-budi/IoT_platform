@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}My profile · IoT Platform{% endblock %}
+
+{% block content %}
+{# Halaman profil milik pengguna yang sedang login (ProfileView). #}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <h1 class="h3 mb-3">My profile</h1>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <dl class="row small mb-0">
+          <dt class="col-sm-4 fw-normal text-muted">Username</dt>
+          <dd class="col-sm-8"><code>{{ user.username }}</code></dd>
+          <dt class="col-sm-4 fw-normal text-muted">Role</dt>
+          <dd class="col-sm-8">{% if user.is_admin %}Admin{% else %}User{% endif %}</dd>
+          <dt class="col-sm-4 fw-normal text-muted">Devices</dt>
+          <dd class="col-sm-8"><a href="{% url 'devices:list' %}">{{ device_count }}</a></dd>
+          <dt class="col-sm-4 fw-normal text-muted">Member since</dt>
+          <dd class="col-sm-8">{{ user.date_joined|date:"j M Y" }}</dd>
+          <dt class="col-sm-4 fw-normal text-muted">Last login</dt>
+          <dd class="col-sm-8 mb-0">{{ user.last_login|date:"j M Y, H:i"|default:"—" }}</dd>
+        </dl>
+        <p class="form-text mb-0 mt-2">The username and role can only be changed by an Admin.</p>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <h2 class="h5 mb-3">Personal details</h2>
+        <form method="post">
+          {% csrf_token %}
+          {% include "includes/form_fields.html" %}
+          <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card shadow-sm">
+      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h2 class="h5 mb-1">Password</h2>
+          <p class="small text-muted mb-0">Changing it logs you out of every other browser.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="{% url 'accounts:password_change' %}">Change password</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -9,3 +9,5 @@ staticfiles/
 
 # File firmware OTA (tahap 9)
 private_media/
+
+Claude outputs/

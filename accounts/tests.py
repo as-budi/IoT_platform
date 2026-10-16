@@ -126,3 +126,106 @@ class SignupSwitchTests(TestCase):
         })
         self.assertEqual(response.status_code, 404)
         self.assertFalse(User.objects.filter(username="intruder").exists())
+
+
+class ProfileTests(TestCase):
+    """Halaman "My profile": setiap pengguna mengubah data dirinya SENDIRI."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345", email="budi@example.com")
+        cls.siti = User.objects.create_user("siti", password="rahasia-12345")
+
+    def setUp(self):
+        self.client.force_login(self.budi)
+
+    def test_anonymous_is_redirected_to_login(self):
+        self.client.logout()
+        for name in ("accounts:profile", "accounts:password_change"):
+            response = self.client.get(reverse(name))
+            self.assertRedirects(response, f"{reverse('accounts:login')}?next={reverse(name)}")
+
+    def test_regular_user_can_open_profile(self):
+        response = self.client.get(reverse("accounts:profile"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["object"], self.budi)
+        self.assertContains(response, "budi@example.com")
+
+    def test_update_own_details(self):
+        response = self.client.post(reverse("accounts:profile"), {
+            "first_name": "Budi", "last_name": "Santoso", "email": "budi.s@example.com",
+        })
+        self.assertRedirects(response, reverse("accounts:profile"))
+        self.budi.refresh_from_db()
+        self.assertEqual((self.budi.first_name, self.budi.last_name, self.budi.email),
+                         ("Budi", "Santoso", "budi.s@example.com"))
+        self.siti.refresh_from_db()
+        self.assertEqual(self.siti.first_name, "")
+
+    def test_cannot_raise_own_privileges(self):
+        self.client.post(reverse("accounts:profile"), {
+            "first_name": "Budi", "last_name": "", "email": "",
+            "username": "root", "role": User.Role.ADMIN,
+            "is_staff": "on", "is_superuser": "on", "is_active": "",
+        })
+        self.budi.refresh_from_db()
+        self.assertEqual(self.budi.username, "budi")
+        self.assertEqual(self.budi.role, User.Role.USER)
+        self.assertFalse(self.budi.is_admin or self.budi.is_staff)
+        self.assertTrue(self.budi.is_active)
+
+    def test_invalid_email_is_rejected(self):
+        response = self.client.post(reverse("accounts:profile"), {
+            "first_name": "", "last_name": "", "email": "not-an-email",
+        })
+        self.assertEqual(response.status_code, 200)
+        self.budi.refresh_from_db()
+        self.assertEqual(self.budi.email, "budi@example.com")
+
+    def test_sidebar_links_to_profile(self):
+        response = self.client.get(reverse("dashboard:index"))
+        self.assertContains(response, f'href="{reverse("accounts:profile")}"')
+
+
+class PasswordChangeTests(TestCase):
+    """Ubah password: wajib password lama, sesi ini tetap login, sesi lain keluar."""
+
+    old = "rahasia-12345"
+    new = "Kata-Sandi-Baru-2026"
+
+    def setUp(self):
+        self.budi = User.objects.create_user("budi", password=self.old)
+        # Login sungguhan (bukan force_login) supaya session menyimpan hash password.
+        self.client.login(username="budi", password=self.old)
+
+    def post(self, old_password, new1, new2=None):
+        return self.client.post(reverse("accounts:password_change"), {
+            "old_password": old_password, "new_password1": new1, "new_password2": new2 or new1,
+        })
+
+    def test_change_password(self):
+        other_browser = self.client_class()
+        other_browser.login(username="budi", password=self.old)
+
+        response = self.post(self.old, self.new)
+        self.assertRedirects(response, reverse("accounts:profile"))
+        self.budi.refresh_from_db()
+        self.assertTrue(self.budi.check_password(self.new))
+        # Browser ini tetap login...
+        self.assertEqual(self.client.get(reverse("accounts:profile")).status_code, 200)
+        # ...sedangkan browser lain dikeluarkan dan diarahkan ke halaman login.
+        self.assertEqual(other_browser.get(reverse("accounts:profile")).status_code, 302)
+
+    def test_wrong_old_password_is_rejected(self):
+        response = self.post("salah-total", self.new)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors["old_password"])
+        self.budi.refresh_from_db()
+        self.assertTrue(self.budi.check_password(self.old))
+
+    def test_weak_or_mismatched_password_is_rejected(self):
+        for new1, new2 in (("12345678", "12345678"), (self.new, self.new + "x")):
+            response = self.post(self.old, new1, new2)
+            self.assertEqual(response.status_code, 200)
+        self.budi.refresh_from_db()
+        self.assertTrue(self.budi.check_password(self.old))

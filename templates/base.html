@@ -75,7 +75,7 @@
         {% if user.is_admin or user.is_staff %}
         <div class="sidebar-section">Administration</div>
         {% if user.is_admin %}
-        <a class="sidebar-link{% if path|slice:':10' == '/accounts/' %} active{% endif %}" href="{% url 'accounts:user_list' %}">
+        <a class="sidebar-link{% if path|slice:':15' == '/accounts/users' %} active{% endif %}" href="{% url 'accounts:user_list' %}">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>
           Users
         </a>
@@ -96,11 +96,12 @@
           {% include "includes/theme_switch.html" %}
         </div>
         <div class="d-flex align-items-center justify-content-between gap-2">
-          <span class="user-chip">
+          {# Klik nama sendiri untuk membuka halaman profil dan ubah password. #}
+          <a class="user-chip{% if path|slice:':17' == '/accounts/profile' %} active{% endif %}" href="{% url 'accounts:profile' %}" title="My profile">
             <span class="avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
             <span class="text-truncate">{{ user.username }}</span>
             <span class="badge rounded-pill {% if user.is_admin %}text-bg-primary{% else %}text-bg-secondary{% endif %}">{% if user.is_admin %}Admin{% else %}User{% endif %}</span>
-          </span>
+          </a>
           {# Logout harus lewat POST (aturan keamanan Django), jadi berbentuk form. #}
           <form method="post" action="{% url 'accounts:logout' %}">
             {% csrf_token %}
