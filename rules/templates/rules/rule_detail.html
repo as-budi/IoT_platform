@@ -27,6 +27,11 @@
       <button class="btn btn-outline-secondary">{% if rule.is_enabled %}Disable{% else %}Enable{% endif %}</button>
     </form>
     {% if rule.engine.implemented %}<a class="btn btn-outline-secondary" href="{% url 'rules:edit' rule.pk %}">Edit</a>{% endif %}
+    {% if rule_json %}
+    {# Ekspor/impor JSON (tahap 13): Export mengunduh file, Import mengganti isi aturan ini. #}
+    <a class="btn btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Export</a>
+    <a class="btn btn-outline-secondary" href="{% url 'rules:import_into' rule.pk %}">Import</a>
+    {% endif %}
     <a class="btn btn-outline-danger" href="{% url 'rules:delete' rule.pk %}">Delete</a>
   </div>
 </div>
@@ -98,6 +103,24 @@
   {% include "rules/includes/evaluation.html" %}
 </div></div>
 
+{% if rule_json %}
+{# Definisi aturan dalam JSON: bentuk yang sama dengan file Export dan yang diterima Import. #}
+<details class="card shadow-sm mb-4 rule-json">
+  <summary class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
+    <span class="h6 text-muted text-uppercase mb-0 rule-json-title">JSON</span>
+    <span class="small text-muted">Device and variable names, not database ids</span>
+  </summary>
+  <div class="card-body pt-0">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-json>Copy</button>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}" target="_blank" rel="noopener">Open raw</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Download</a>
+    </div>
+    <pre class="rule-json-code mb-0" id="rule-json">{{ rule_json }}</pre>
+  </div>
+</details>
+{% endif %}
+
 {% if alarms %}
 <h2 class="h5 mb-3">Alarms from this rule</h2>
 <div class="mb-4">{% include "rules/includes/alarm_table.html" %}</div>
@@ -153,6 +176,17 @@
  */
 (function () {
   "use strict";
+  // Tombol Copy di kartu JSON.
+  const copyButton = document.querySelector("[data-copy-json]");
+  if (copyButton) {
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById("rule-json").textContent);
+        copyButton.textContent = "Copied";
+        setTimeout(() => { copyButton.textContent = "Copy"; }, 1500);
+      } catch (err) { /* clipboard ditolak browser: pengguna bisa memilih teksnya manual */ }
+    });
+  }
   if (!window.AutoRefresh) return;
   const RULE_ID = {{ rule.pk }};
   const box = document.querySelector("[data-evaluation]");

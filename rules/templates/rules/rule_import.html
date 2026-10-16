@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Import rule · IoT Platform{% endblock %}
+
+{% block content %}
+{# Dipakai dua URL: /rules/import/ (aturan baru) dan /rules/<pk>/import/ (ganti isi aturan). #}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    {% if rule %}<li class="breadcrumb-item"><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></li>{% endif %}
+    <li class="breadcrumb-item active" aria-current="page">Import</li>
+  </ol>
+</nav>
+
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <h1 class="h3 mb-2">{% if rule %}Replace {{ rule.name }} from JSON{% else %}Import an ECA rule{% endif %}</h1>
+    {% if rule %}
+    <div class="alert alert-warning small">
+      The name, event, conditions, and actions of <strong>{{ rule.name }}</strong> are replaced by the JSON.
+      Its history and alarms are kept, and the rule restarts from Idle.
+      <a href="{% url 'rules:json' rule.pk %}?download=1">Export the current version</a> first if you may need it again.
+    </div>
+    {% else %}
+    <p class="text-muted">The rule is created for you. Device and variable names in the JSON must match your devices.</p>
+    {% endif %}
+
+    {% if errors %}
+    <div class="alert alert-danger small">
+      <strong>Nothing was saved.</strong>
+      <ul class="mb-0 mt-1">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="import-file">JSON file</label>
+            <input class="form-control" type="file" id="import-file" name="file" accept=".json,application/json">
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="import-text">…or paste the JSON</label>
+            <textarea class="form-control font-monospace small" id="import-text" name="text" rows="16"
+                      spellcheck="false" placeholder='{"format": "iot-platform.rule", "version": 1, "model": "ECA", ...}'>{{ text }}</textarea>
+            <div class="form-text">A file, when chosen, is used instead of the text. Limit 100 KB.</div>
+          </div>
+          <button type="submit" class="btn btn-primary">{% if rule %}Replace rule{% else %}Import rule{% endif %}</button>
+          <a class="btn btn-link" href="{% if rule %}{% url 'rules:detail' rule.pk %}{% else %}{% url 'rules:list' %}{% endif %}">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

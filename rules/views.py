@@ -14,7 +14,8 @@ from django.contrib.auth.views import redirect_to_login
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Max, Q
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
+from django.utils.text import slugify
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import DeleteView, ListView, TemplateView, View
@@ -31,6 +32,7 @@ from .forms import (
     WhenFormSet, check_graph, cross_check, live_links,
 )
 from .models import Alarm, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleState
+from .portable import MAX_IMPORT_BYTES, RuleImportError, eca_form_data, export_json, form_errors, parse
 
 EXECUTIONS_PAGE_SIZE = 25
 
@@ -159,20 +161,7 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.ECA)
 
     def build_forms(self, rule, data=None):
-        # Pilihan device mengikuti PEMILIK aturan (Admin yang mengedit aturan
-        # milik orang lain tetap terbatas pada device pemiliknya).
-        owner = rule.owner if rule else self.request.user
-        devices = visible_devices(owner).order_by("name")
-        spec = getattr(rule, "eca", None) if rule else None
-        spec_instance = spec or EcaSpec()
-        kwargs = {"form_kwargs": {"devices": devices}}
-        return {
-            "rule_form": RuleForm(data, instance=rule, prefix="rule"),
-            "spec_form": EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
-            "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
-            "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
-            "action_formset": ActionFormSet(data, instance=rule or Rule(), prefix="actions", **kwargs),
-        }
+        return build_eca_forms(rule, rule.owner if rule else self.request.user, data)
 
     def render_forms(self, rule, forms, cross_errors=()):
         return render(self.request, self.template_name, {
@@ -189,44 +178,84 @@ class EcaRuleFormView(LoginRequiredMixin, View):
     def post(self, request, pk=None):
         rule = self.get_rule()
         forms = self.build_forms(rule, request.POST)
-        # all() akan berhenti di form pertama yang gagal; daftar ini memastikan
-        # SEMUA form divalidasi supaya semua pesan error tampil sekaligus.
-        valid = [form.is_valid() for form in forms.values()]
-        if not all(valid):
-            return self.render_forms(rule, forms)
-        event = forms["spec_form"].cleaned_data["event"]
-        cross_errors = cross_check(event, forms["when_formset"], forms["clear_formset"])
-        if cross_errors:
+        valid, cross_errors = validate_eca_forms(forms)
+        if not valid:
             return self.render_forms(rule, forms, cross_errors)
 
-        # Semua bagian disimpan dalam satu transaksi: semuanya atau tidak sama sekali.
-        with transaction.atomic():
-            saved = forms["rule_form"].save(commit=False)
-            if rule is None:
-                saved.owner = request.user
-                saved.model = RuleModel.ECA
-            saved.save()
-            spec = forms["spec_form"].save(commit=False)
-            spec.rule = saved
-            spec.save()
-            if event == EcaSpec.Event.TELEMETRY:
-                save_conditions(forms["when_formset"], spec)
-                save_conditions(forms["clear_formset"], spec)
-            else:
-                spec.conditions.all().delete()  # event "device diam" tidak memakai kondisi
-            action_formset = forms["action_formset"]
-            action_formset.instance = saved
-            actions = action_formset.save(commit=False)
-            for removed in action_formset.deleted_objects:
-                removed.delete()
-            for order, action in enumerate(actions):
-                action.order = order
-                action.save()
-            # Kondisi mungkin berubah: mulai lagi dari IDLE.
-            reset_state(saved)
-
+        saved = save_eca_forms(forms, rule, request.user)
         messages.success(request, f"Rule \"{saved.name}\" saved.")
         return redirect("rules:detail", pk=saved.pk)
+
+
+def build_eca_forms(rule, owner, data=None, replace=False):
+    """Semua form halaman ECA. Dipakai form biasa dan impor JSON.
+
+    Pilihan device mengikuti PEMILIK aturan (Admin yang mengedit aturan milik
+    orang lain tetap terbatas pada device pemiliknya).
+
+    replace=True (impor ke aturan yang sudah ada): kumpulan kondisi dan aksi
+    dibuat KOSONG, tidak memuat baris lama. Baris lama dihapus saat menyimpan
+    dan diganti seluruhnya dengan isi JSON.
+    """
+    devices = visible_devices(owner).order_by("name")
+    spec = getattr(rule, "eca", None) if rule else None
+    spec_instance = EcaSpec() if replace or spec is None else spec
+    rule_instance = Rule() if replace or rule is None else rule
+    kwargs = {"form_kwargs": {"devices": devices}}
+    return {
+        "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+        "spec_form": EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
+        "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
+        "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
+        "action_formset": ActionFormSet(data, instance=rule_instance, prefix="actions", **kwargs),
+    }
+
+
+def validate_eca_forms(forms):
+    """Validasi semua bagian. Mengembalikan (lolos?, daftar error lintas-form)."""
+    # all() akan berhenti di form pertama yang gagal; daftar ini memastikan
+    # SEMUA form divalidasi supaya semua pesan error tampil sekaligus.
+    valid = [form.is_valid() for form in forms.values()]
+    if not all(valid):
+        return False, []
+    event = forms["spec_form"].cleaned_data["event"]
+    cross_errors = cross_check(event, forms["when_formset"], forms["clear_formset"])
+    return not cross_errors, cross_errors
+
+
+def save_eca_forms(forms, rule, owner, replace=False):
+    """Simpan form ECA yang sudah valid. rule=None membuat aturan baru milik `owner`."""
+    event = forms["spec_form"].cleaned_data["event"]
+    # Semua bagian disimpan dalam satu transaksi: semuanya atau tidak sama sekali.
+    with transaction.atomic():
+        saved = forms["rule_form"].save(commit=False)
+        if rule is None:
+            saved.owner = owner
+            saved.model = RuleModel.ECA
+        saved.save()
+        spec = forms["spec_form"].save(commit=False)
+        spec.rule = saved
+        spec.save()
+        if replace:
+            spec.conditions.all().delete()
+            saved.actions.all().delete()
+        if event == EcaSpec.Event.TELEMETRY:
+            save_conditions(forms["when_formset"], spec)
+            save_conditions(forms["clear_formset"], spec)
+        else:
+            spec.conditions.all().delete()  # event "device diam" tidak memakai kondisi
+        action_formset = forms["action_formset"]
+        action_formset.instance = saved
+        actions = action_formset.save(commit=False)
+        for removed in action_formset.deleted_objects:
+            removed.delete()
+        for order, action in enumerate(actions):
+            action.rule = saved
+            action.order = order
+            action.save()
+        # Kondisi mungkin berubah: mulai lagi dari IDLE.
+        reset_state(saved)
+    return saved
 
 
 def save_conditions(formset, spec):
@@ -499,6 +528,8 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
                 condition_variables.append(condition.variable)
         context.update(
             spec=spec,
+            # Definisi aturan sebagai JSON untuk kartu "JSON" (hanya ECA).
+            rule_json=export_json(rule) if rule.model == RuleModel.ECA and spec else None,
             condition_variables=condition_variables,
             rule=rule,
             state=getattr(rule, "state", None),
@@ -549,6 +580,79 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             **{k: v for k, v in flow_run_context(rule).items() if k not in ("rule", "state")},
             **self.live(rule),
         }
+
+
+# --- Ekspor & impor JSON (tahap 13) --------------------------------------------------
+
+class RuleJsonView(LoginRequiredMixin, View):
+    """GET /rules/<pk>/json/ -> definisi aturan ECA sebagai JSON (lihat rules/portable.py).
+
+    ?download=1 menambahkan header Content-Disposition sehingga browser
+    menyimpannya sebagai file, misalnya "rule-greenhouse-too-dry.json".
+    """
+
+    def get(self, request, pk):
+        rule = get_object_or_404(visible_rules(request.user), pk=pk, model=RuleModel.ECA)
+        response = HttpResponse(export_json(rule), content_type="application/json; charset=utf-8")
+        if request.GET.get("download"):
+            filename = f"rule-{slugify(rule.name) or rule.pk}.json"
+            response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class RuleImportView(LoginRequiredMixin, View):
+    """Impor aturan ECA dari JSON (file atau teks yang ditempel).
+
+        /rules/import/           membuat aturan BARU milik pengguna yang login
+        /rules/<pk>/import/      MENGGANTI isi aturan yang ada (nama, event,
+                                 kondisi, aksi); pemiliknya tetap
+
+    JSON diterjemahkan menjadi data form ECA lalu divalidasi oleh form yang sama
+    dengan halaman Edit, jadi impor tidak bisa melewati aturan apa pun.
+    """
+
+    template_name = "rules/rule_import.html"
+
+    def get_rule(self):
+        pk = self.kwargs.get("pk")
+        if pk is None:
+            return None
+        return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.ECA)
+
+    def render_page(self, rule, text="", errors=()):
+        return render(self.request, self.template_name, {"rule": rule, "text": text, "errors": errors})
+
+    def get(self, request, pk=None):
+        return self.render_page(self.get_rule())
+
+    def post(self, request, pk=None):
+        rule = self.get_rule()
+        upload = request.FILES.get("file")
+        if upload:
+            if upload.size > MAX_IMPORT_BYTES:
+                return self.render_page(rule, errors=[f"The file is too large (limit {MAX_IMPORT_BYTES // 1000} KB)."])
+            try:
+                text = upload.read().decode("utf-8")
+            except UnicodeDecodeError:
+                return self.render_page(rule, errors=["The file is not UTF-8 text."])
+        else:
+            text = request.POST.get("text", "")
+        if not text.strip():
+            return self.render_page(rule, errors=["Choose a JSON file or paste the JSON."])
+
+        owner = rule.owner if rule else request.user
+        try:
+            data = eca_form_data(parse(text), owner)
+        except RuleImportError as exc:
+            return self.render_page(rule, text, exc.errors)
+        forms = build_eca_forms(rule, owner, data, replace=rule is not None)
+        valid, cross_errors = validate_eca_forms(forms)
+        if not valid:
+            return self.render_page(rule, text, form_errors(forms, cross_errors))
+        saved = save_eca_forms(forms, rule, owner, replace=rule is not None)
+        verb = "replaced from JSON" if rule else "imported"
+        messages.success(request, f"Rule \"{saved.name}\" {verb}.")
+        return redirect("rules:detail", pk=saved.pk)
 
 
 class RuleToggleView(LoginRequiredMixin, View):

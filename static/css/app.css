@@ -802,3 +802,32 @@ a.user-chip.active {
 [data-bs-theme="dark"] .ota-step.is-failed { color: #ff6b6b; }
 .ota-progress { height: 1.1rem; }
 .ota-timeline li + li { margin-top: 0.45rem; }
+
+/* Kartu JSON di halaman aturan ECA (tahap 13). */
+.rule-json > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.rule-json > summary::-webkit-details-marker {
+  display: none;
+}
+
+.rule-json-title::before {
+  content: "▸";
+  margin-right: 0.35rem;
+}
+
+.rule-json[open] .rule-json-title::before {
+  content: "▾";
+}
+
+.rule-json-code {
+  max-height: 28rem;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  background: var(--app-surface-2);
+  font-size: 0.8rem;
+}

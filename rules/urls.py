@@ -14,6 +14,10 @@ urlpatterns = [
     path("new/", views.RuleModelPickerView.as_view(), name="new"),
     path("new/<slug:model>/", views.create_rule, name="new_model"),
     path("<int:pk>/", views.RuleDetailView.as_view(), name="detail"),
+    # Ekspor/impor JSON aturan ECA (tahap 13).
+    path("<int:pk>/json/", views.RuleJsonView.as_view(), name="json"),
+    path("<int:pk>/import/", views.RuleImportView.as_view(), name="import_into"),
+    path("import/", views.RuleImportView.as_view(), name="import"),
     path("<int:pk>/evaluation/", views.rule_evaluation, name="evaluation"),
     path("<int:pk>/edit/", views.edit_rule, name="edit"),
     path("<int:pk>/toggle/", views.RuleToggleView.as_view(), name="toggle"),
