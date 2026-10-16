@@ -15,7 +15,7 @@
     <option value="">All locations</option>
     {% for location in locations %}
     {# stringformat:"d" mengubah id (angka) menjadi teks, supaya bisa dibandingkan dengan nilai dari URL. #}
-    <option value="{{ location.pk }}" {% if selected_location == location.pk|stringformat:"d" %}selected{% endif %}>{{ location.name }}</option>
+    <option value="{{ location.pk }}" {% if selected_location == location.pk|stringformat:"d" %}selected{% endif %}>{{ location.name }}{% if user.is_admin %} ({{ location.owner.username }}){% endif %}</option>
     {% endfor %}
     <option value="{{ no_location }}" {% if selected_location == no_location %}selected{% endif %}>— No location —</option>
   </select>

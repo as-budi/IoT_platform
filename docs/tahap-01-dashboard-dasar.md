@@ -136,6 +136,11 @@ karena Django tidak bisa tahu mana yang sebenarnya satu alat.
 
 ### Lokasi
 
+> **Diubah di [tahap 12](tahap-12-lokasi-milik-pengguna.md):** lokasi kini punya pemilik.
+> Setiap pengguna mengelola lokasinya sendiri, nama lokasi unik per pemilik, dan
+> `Device.location` memakai `RESTRICT` (bukan `PROTECT`). Penjelasan di bawah adalah
+> rancangan awal tahap 1.
+
 - `Location` (nama unik, latitude, longitude, deskripsi) adalah tabel tersendiri;
   `Device.location` berupa `ForeignKey` ke tabel itu, bukan teks bebas. Akibatnya
   "Server room" dan "server room " tidak lagi menjadi dua lokasi berbeda.

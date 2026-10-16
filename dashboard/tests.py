@@ -22,12 +22,14 @@ class DashboardTestData(TestCase):
     def setUpTestData(cls):
         cls.budi = User.objects.create_user("budi", password="rahasia-12345")
         cls.siti = User.objects.create_user("siti", password="rahasia-12345")
-        cls.lab = Location.objects.create(name="Lab", latitude=-7.9, longitude=112.6)
-        cls.attic = Location.objects.create(name="Attic", latitude=-7.9, longitude=112.6)
+        cls.lab = Location.objects.create(owner=cls.budi, name="Lab", latitude=-7.9, longitude=112.6)
+        cls.attic = Location.objects.create(owner=cls.budi, name="Attic", latitude=-7.9, longitude=112.6)
+        # Siti punya lokasi bernama sama: nama lokasi unik per pemilik (tahap 12).
+        cls.siti_lab = Location.objects.create(owner=cls.siti, name="Lab", latitude=-7.9, longitude=112.6)
         cls.node = Device.objects.create(owner=cls.budi, name="Node", location=cls.lab)
         cls.roof = Device.objects.create(owner=cls.budi, name="Roof", location=cls.attic)
         cls.loose = Device.objects.create(owner=cls.budi, name="Loose")  # tanpa lokasi
-        cls.other = Device.objects.create(owner=cls.siti, name="Siti's node", location=cls.lab)
+        cls.other = Device.objects.create(owner=cls.siti, name="Siti's node", location=cls.siti_lab)
         cls.temp = Variable.objects.create(device=cls.node, key="temperature")
         cls.hum = Variable.objects.create(device=cls.node, key="humidity")
         cls.wind = Variable.objects.create(device=cls.roof, key="wind")

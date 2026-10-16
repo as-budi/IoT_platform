@@ -28,14 +28,36 @@ class DeviceForm(BootstrapFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Hanya Admin yang boleh menentukan pemilik device. Untuk pengguna
         # biasa, kolom ini dibuang dan pemilik diisi otomatis oleh view.
-        if user is None or not user.is_admin:
+        self.is_admin = user is not None and user.is_admin
+        if not self.is_admin:
             del self.fields["owner"]
+            # Device baru milik pengguna ini (diisi di sini, sebelum validasi,
+            # supaya clean() di bawah tahu siapa pemiliknya).
+            if self.instance.owner_id is None and user is not None:
+                self.instance.owner = user
 
         # Field `location` otomatis menjadi ModelChoiceField (dropdown) karena
-        # di model berupa ForeignKey. Dropdown hanya berisi lokasi yang ada di
-        # database, dan Django menolak nilai lain yang dikirim — jadi pengguna
-        # memang tidak bisa membuat lokasi baru dari form ini.
-        self.fields["location"].empty_label = "— No location —"
+        # di model berupa ForeignKey. Dropdown hanya berisi lokasi dari
+        # queryset di bawah, dan Django menolak nilai lain yang dikirim —
+        # termasuk id lokasi milik orang lain yang diketik manual.
+        location = self.fields["location"]
+        location.empty_label = "— No location —"
+        if self.is_admin:
+            # Admin melihat semua lokasi; nama pemilik ditampilkan karena nama
+            # lokasi bisa sama di antara pengguna.
+            location.queryset = Location.objects.select_related("owner")
+            location.label_from_instance = lambda loc: f"{loc.name} ({loc.owner.username})"
+        else:
+            location.queryset = Location.objects.filter(owner=user) if user else Location.objects.none()
+
+    def clean(self):
+        """Lokasi device harus milik pemilik device (penting saat Admin mengganti pemilik)."""
+        cleaned = super().clean()
+        owner = cleaned.get("owner") if self.is_admin else self.instance.owner if self.instance.owner_id else None
+        location = cleaned.get("location")
+        if owner and location and location.owner_id != owner.pk:
+            self.add_error("location", f"This location belongs to {location.owner.username}, not to {owner.username}.")
+        return cleaned
 
 
 class VariableForm(BootstrapFormMixin, forms.ModelForm):
@@ -153,15 +175,51 @@ class CommandForm(BootstrapFormMixin, forms.Form):
 
 
 class LocationForm(BootstrapFormMixin, forms.ModelForm):
+    """Tambah/ubah lokasi.
+
+    Pengguna biasa: lokasi selalu miliknya (kolom owner tidak ditampilkan).
+    Admin: boleh memilih pemilik, misalnya membuatkan lokasi untuk pengguna lain.
+    """
+
     class Meta:
         model = Location
-        fields = ("name", "latitude", "longitude", "description")
+        fields = ("name", "latitude", "longitude", "description", "owner")
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             # step="any": browser menerima angka desimal sebanyak apa pun.
             "latitude": forms.NumberInput(attrs={"step": "any"}),
             "longitude": forms.NumberInput(attrs={"step": "any"}),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_admin = user is not None and user.is_admin
+        if self.instance.owner_id is None and user is not None:
+            self.instance.owner = user
+            if self.is_admin:
+                self.fields["owner"].initial = user.pk
+        if not self.is_admin:
+            del self.fields["owner"]
+
+    def clean(self):
+        """Nama unik per pemilik, huruf besar/kecil dianggap sama.
+
+        Constraint database (owner, name) tidak diperiksa otomatis oleh form
+        bila kolom owner tidak ada di form, jadi diperiksa di sini. Hasilnya
+        pesan yang jelas, bukan IntegrityError (halaman error 500).
+        """
+        cleaned = super().clean()
+        owner = cleaned.get("owner") if self.is_admin else self.instance.owner
+        name = cleaned.get("name")
+        if owner and name:
+            same = Location.objects.filter(owner=owner, name__iexact=name).exclude(pk=self.instance.pk)
+            if same.exists():
+                self.add_error("name", f"{owner.username} already has a location called {name}.")
+        # Admin memindahkan lokasi ke pemilik lain: device di lokasi itu harus milik pemilik baru juga.
+        if self.is_admin and owner and self.instance.pk and self.instance.owner_id != owner.pk:
+            if self.instance.devices.exclude(owner=owner).exists():
+                self.add_error("owner", "Devices of another user use this location. Move them first.")
+        return cleaned
 
 
 # Format nilai <input type="datetime-local">, mis. "2026-10-07T14:30".

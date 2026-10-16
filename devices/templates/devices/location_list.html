@@ -6,9 +6,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h3 mb-0">Locations</h1>
-  {% if user.is_admin %}
   <a class="btn btn-primary" href="{% url 'devices:location_add' %}">Add location</a>
-  {% endif %}
 </div>
 
 {% if locations %}
@@ -24,15 +22,17 @@
       <thead class="table-light">
         <tr>
           <th>Name</th>
+          {% if user.is_admin %}<th>Owner</th>{% endif %}
           <th class="text-end">Latitude</th>
           <th class="text-end">Longitude</th>
-          <th class="text-end">{% if user.is_admin %}Devices{% else %}My devices{% endif %}</th>
+          <th class="text-end">Devices</th>
         </tr>
       </thead>
       <tbody>
         {% for location in locations %}
         <tr>
           <td><a href="{% url 'devices:location_detail' location.pk %}">{{ location.name }}</a></td>
+          {% if user.is_admin %}<td>{{ location.owner.username }}</td>{% endif %}
           <td class="text-end font-monospace">{{ location.latitude }}</td>
           <td class="text-end font-monospace">{{ location.longitude }}</td>
           <td class="text-end">
@@ -43,8 +43,8 @@
         </tr>
         {% empty %}
         <tr>
-          <td colspan="4" class="text-center text-muted py-4">
-            No locations yet.{% if not user.is_admin %} Ask an admin to add one.{% endif %}
+          <td colspan="5" class="text-center text-muted py-4">
+            No locations yet. Add one, then choose it when you add or edit a device.
           </td>
         </tr>
         {% endfor %}

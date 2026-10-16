@@ -16,13 +16,13 @@
     <h1 class="h3 mb-1">{{ location.name }}</h1>
     <div class="text-muted font-monospace">{{ location.latitude }}, {{ location.longitude }}</div>
     {% if location.description %}<p class="mt-2 mb-0">{{ location.description }}</p>{% endif %}
+    {% if user.is_admin and location.owner != user %}<p class="small text-muted mt-2 mb-0">Owner: {{ location.owner.username }}</p>{% endif %}
   </div>
-  {% if user.is_admin %}
+  {# Halaman ini hanya bisa dibuka pemilik lokasi dan Admin, jadi tombolnya selalu boleh tampil. #}
   <div class="text-nowrap">
     <a class="btn btn-outline-secondary" href="{% url 'devices:location_edit' location.pk %}">Edit</a>
     <a class="btn btn-outline-danger" href="{% url 'devices:location_delete' location.pk %}">Delete</a>
   </div>
-  {% endif %}
 </div>
 
 <div class="card shadow-sm mb-4">

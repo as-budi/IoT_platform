@@ -9,9 +9,9 @@ Struktur (mengikuti pola platform IoT pada umumnya, mis. ThingsBoard):
                   lengkap dengan satuan dan label tampilannya.
         Telemetry = deret waktu (waktu, nilai) untuk satu variabel.
 
-    Location    = tempat pemasangan (nama + koordinat). Daftar lokasi dikelola
-                  Admin; saat menambah device, pengguna hanya MEMILIH dari
-                  daftar itu.
+    Location    = tempat pemasangan (nama + koordinat). Sejak tahap 12 setiap
+                  lokasi punya PEMILIK: pengguna mengelola lokasinya sendiri
+                  dan saat menambah device hanya MEMILIH dari lokasi miliknya.
 
 Jadi satu device bisa punya banyak variabel, dan setiap variabel punya
 riwayat datanya sendiri.
@@ -47,9 +47,20 @@ def generate_access_token():
 
 
 class Location(models.Model):
-    """Tempat pemasangan device, lengkap dengan titik koordinatnya."""
+    """Tempat pemasangan device, lengkap dengan titik koordinatnya.
 
-    name = models.CharField("name", max_length=100, unique=True)
+    Lokasi milik satu pengguna (owner), sama seperti device. Nama lokasi unik
+    PER PEMILIK: budi dan siti boleh sama-sama punya "Server room", tetapi
+    budi tidak boleh punya dua "Server room".
+    """
+
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="owner",
+        on_delete=models.CASCADE,   # pengguna dihapus -> lokasinya ikut terhapus
+        related_name="locations",   # memungkinkan: user.locations.all()
+    )
+    name = models.CharField("name", max_length=100)
     description = models.TextField("description", blank=True)
     # DecimalField (bukan FloatField) supaya koordinat tersimpan persis seperti
     # yang diketik. 6 angka di belakang koma ≈ ketelitian 10 cm.
@@ -73,6 +84,10 @@ class Location(models.Model):
         ordering = ["name"]
         verbose_name = "location"
         verbose_name_plural = "locations"
+        constraints = [
+            # Dijaga database: kombinasi (pemilik, nama) tidak boleh kembar.
+            models.UniqueConstraint(fields=["owner", "name"], name="location_unique_name_per_owner"),
+        ]
 
     def __str__(self):
         return self.name
@@ -116,15 +131,19 @@ class Device(models.Model):
     )
     # Lokasi dipilih dari tabel Location (bukan diketik bebas), sehingga
     # "Server room", "server room", dan "Server Room " tidak menjadi tiga lokasi.
-    # PROTECT: lokasi yang masih dipakai device tidak bisa dihapus.
+    # RESTRICT: lokasi yang masih dipakai device tidak bisa dihapus. Bedanya
+    # dengan PROTECT (dipakai sampai tahap 11): bila PEMILIK dihapus, lokasi
+    # dan device-nya ikut terhapus bersama (CASCADE dari owner), dan RESTRICT
+    # mengizinkannya karena device itu juga sedang dihapus. PROTECT akan
+    # menolak penghapusan pengguna tersebut.
     location = models.ForeignKey(
         Location,
         verbose_name="location",
         null=True,
         blank=True,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="devices",   # memungkinkan: location.devices.all()
-        help_text="Choose from existing locations. New locations are added on the Locations page.",
+        help_text="Choose one of your locations. New locations are added on the Locations page.",
     )
     description = models.TextField("description", blank=True)
     is_active = models.BooleanField("active", default=True)

@@ -159,7 +159,9 @@ class DeviceAndVariablePageTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.budi = User.objects.create_user("budi", password="rahasia-12345")
-        cls.server_room = Location.objects.create(name="Server room", latitude=-7.95, longitude=112.61)
+        cls.server_room = Location.objects.create(
+            owner=cls.budi, name="Server room", latitude=-7.95, longitude=112.61
+        )
         cls.device = Device.objects.create(owner=cls.budi, name="Node Budi", location=cls.server_room)
         cls.temperature = Variable.objects.create(
             device=cls.device, key="temperature", label="Temperature", unit="°C"
@@ -261,6 +263,10 @@ class SeedDemoTests(TestCase):
         self.assertEqual(Telemetry.objects.count(), count)
         self.assertEqual(Device.objects.count(), 8)
         self.assertEqual(Variable.objects.count(), 24)
+        # Setiap lokasi milik pemilik device yang memakainya (tahap 12).
+        self.assertEqual(Location.objects.count(), 6)
+        for device in Device.objects.select_related("location"):
+            self.assertEqual(device.location.owner_id, device.owner_id, device.name)
         # Aktuator contoh dibuat dalam keadaan "In sync".
         for variable in Variable.objects.filter(kind=Variable.Kind.ACTUATOR):
             self.assertEqual(variable.sync_status, Variable.SyncStatus.SYNCED, variable.key)
@@ -502,81 +508,135 @@ class SimulatorTests(TestCase):
 
 
 class LocationTests(TestCase):
-    """Lokasi: dikelola Admin, dipilih (bukan diketik) saat menambah device."""
+    """Lokasi milik pengguna (tahap 12): dikelola sendiri, dipilih (bukan diketik) saat menambah device."""
 
     @classmethod
     def setUpTestData(cls):
         cls.admin = User.objects.create_user("admin1", password="rahasia-12345", role=User.Role.ADMIN)
         cls.budi = User.objects.create_user("budi", password="rahasia-12345")
         cls.siti = User.objects.create_user("siti", password="rahasia-12345")
-        cls.lab = Location.objects.create(name="Electronics lab", latitude=-7.9533, longitude=112.6141)
-        cls.greenhouse = Location.objects.create(name="Greenhouse A", latitude=-7.9465, longitude=112.6098)
+        cls.lab = Location.objects.create(owner=cls.budi, name="Electronics lab", latitude=-7.9533, longitude=112.6141)
+        cls.greenhouse = Location.objects.create(owner=cls.budi, name="Greenhouse A", latitude=-7.9465, longitude=112.6098)
+        cls.siti_lab = Location.objects.create(owner=cls.siti, name="Electronics lab", latitude=-7.95, longitude=112.61)
         cls.budi_lab = Device.objects.create(owner=cls.budi, name="Budi Lab Node", location=cls.lab)
         cls.budi_free = Device.objects.create(owner=cls.budi, name="Budi Loose Node")
-        cls.siti_lab = Device.objects.create(owner=cls.siti, name="Siti Lab Node", location=cls.lab)
+        cls.siti_node = Device.objects.create(owner=cls.siti, name="Siti Lab Node", location=cls.siti_lab)
 
     def location_data(self, **overrides):
         return {"name": "Rooftop", "latitude": "-7.95", "longitude": "112.61", "description": "", **overrides}
 
-    # --- pengelolaan lokasi ---
+    # --- mengelola lokasi sendiri ---
 
-    def test_admin_can_add_location(self):
-        self.client.force_login(self.admin)
-        response = self.client.post(reverse("devices:location_add"), self.location_data())
+    def test_user_adds_own_location(self):
+        self.client.force_login(self.budi)
+        response = self.client.post(reverse("devices:location_add"), self.location_data(owner=self.siti.pk))
         location = Location.objects.get(name="Rooftop")
         self.assertRedirects(response, reverse("devices:location_detail", args=[location.pk]))
+        self.assertEqual(location.owner, self.budi)   # field owner dari POST diabaikan
         self.assertEqual(float(location.latitude), -7.95)
 
-    def test_regular_user_cannot_add_edit_or_delete_location(self):
+    def test_user_edits_and_deletes_own_location(self):
         self.client.force_login(self.budi)
-        for url in (
-            reverse("devices:location_add"),
-            reverse("devices:location_edit", args=[self.lab.pk]),
-            reverse("devices:location_delete", args=[self.lab.pk]),
-        ):
-            self.assertEqual(self.client.get(url).status_code, 403, url)
-        self.client.post(reverse("devices:location_add"), self.location_data())
-        self.assertFalse(Location.objects.filter(name="Rooftop").exists())
+        self.client.post(reverse("devices:location_edit", args=[self.greenhouse.pk]), self.location_data(name="Greenhouse B"))
+        self.greenhouse.refresh_from_db()
+        self.assertEqual(self.greenhouse.name, "Greenhouse B")
+        response = self.client.post(reverse("devices:location_delete", args=[self.greenhouse.pk]))
+        self.assertRedirects(response, reverse("devices:location_list"))
+        self.assertFalse(Location.objects.filter(pk=self.greenhouse.pk).exists())
+
+    def test_other_users_locations_are_invisible(self):
+        self.client.force_login(self.budi)
+        for name in ("location_detail", "location_edit", "location_delete"):
+            url = reverse(f"devices:{name}", args=[self.siti_lab.pk])
+            self.assertEqual(self.client.get(url).status_code, 404, url)
+        self.client.post(reverse("devices:location_delete", args=[self.siti_lab.pk]))
+        self.assertTrue(Location.objects.filter(pk=self.siti_lab.pk).exists())
+        response = self.client.get(reverse("devices:location_list"))
+        self.assertEqual(list(response.context["locations"]), [self.lab, self.greenhouse])
+
+    def test_names_are_unique_per_owner_only(self):
+        self.client.force_login(self.budi)
+        response = self.client.post(reverse("devices:location_add"), self.location_data(name="greenhouse a"))
+        self.assertContains(response, "already has a location called")
+        self.assertEqual(Location.objects.filter(owner=self.budi, name__iexact="Greenhouse A").count(), 1)
+        # Nama yang sama dengan lokasi milik orang lain boleh.
+        self.client.force_login(self.siti)
+        self.client.post(reverse("devices:location_add"), self.location_data(name="Greenhouse A"))
+        self.assertTrue(Location.objects.filter(owner=self.siti, name="Greenhouse A").exists())
 
     def test_coordinates_out_of_range_are_rejected(self):
-        self.client.force_login(self.admin)
+        self.client.force_login(self.budi)
         self.client.post(reverse("devices:location_add"), self.location_data(latitude="95"))
         self.client.post(reverse("devices:location_add"), self.location_data(name="Far", longitude="-200"))
         self.assertFalse(Location.objects.filter(name__in=["Rooftop", "Far"]).exists())
 
-    def test_location_names_are_unique(self):
-        self.client.force_login(self.admin)
-        response = self.client.post(reverse("devices:location_add"), self.location_data(name="Greenhouse A"))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(Location.objects.filter(name="Greenhouse A").count(), 1)
-
     def test_location_in_use_cannot_be_deleted(self):
-        self.client.force_login(self.admin)
+        self.client.force_login(self.budi)
         response = self.client.post(reverse("devices:location_delete", args=[self.lab.pk]))
         self.assertRedirects(response, reverse("devices:location_detail", args=[self.lab.pk]))
         self.assertTrue(Location.objects.filter(pk=self.lab.pk).exists())
 
-    def test_unused_location_can_be_deleted(self):
+    def test_deleting_user_removes_their_devices_and_locations(self):
+        # Device.location = PROTECT, tetapi device ikut terhapus bersama pemiliknya.
+        self.siti.delete()
+        self.assertFalse(Location.objects.filter(pk=self.siti_lab.pk).exists())
+        self.assertFalse(Device.objects.filter(pk=self.siti_node.pk).exists())
+
+    # --- Admin ---
+
+    def test_admin_sees_all_locations_with_owner(self):
         self.client.force_login(self.admin)
-        response = self.client.post(reverse("devices:location_delete", args=[self.greenhouse.pk]))
-        self.assertRedirects(response, reverse("devices:location_list"))
-        self.assertFalse(Location.objects.filter(pk=self.greenhouse.pk).exists())
+        response = self.client.get(reverse("devices:location_list"))
+        counts = {(loc.owner.username, loc.name): loc.device_count for loc in response.context["locations"]}
+        self.assertEqual(counts, {
+            ("budi", "Electronics lab"): 1, ("budi", "Greenhouse A"): 0, ("siti", "Electronics lab"): 1,
+        })
+        self.assertContains(response, "<th>Owner</th>", html=True)
+
+    def test_admin_creates_location_for_another_user(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse("devices:location_add"), self.location_data(owner=self.siti.pk))
+        self.assertEqual(Location.objects.get(name="Rooftop").owner, self.siti)
+
+    def test_admin_cannot_move_location_away_from_its_devices(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("devices:location_edit", args=[self.lab.pk]),
+            self.location_data(name="Electronics lab", owner=self.siti.pk),
+        )
+        self.assertContains(response, "Move them first")
+        self.lab.refresh_from_db()
+        self.assertEqual(self.lab.owner, self.budi)
 
     # --- memilih lokasi di form device ---
 
     def device_data(self, **overrides):
         return {"name": "New Node", "device_type": "", "description": "", "is_active": "on", **overrides}
 
-    def test_device_form_offers_existing_locations(self):
+    def test_device_form_offers_only_own_locations(self):
         self.client.force_login(self.budi)
         response = self.client.get(reverse("devices:add"))
         choices = list(response.context["form"].fields["location"].queryset)
         self.assertEqual(choices, [self.lab, self.greenhouse])
+        self.assertNotContains(response, f'value="{self.siti_lab.pk}"')
 
-    def test_device_can_pick_existing_location(self):
+    def test_device_can_pick_own_location(self):
         self.client.force_login(self.budi)
         self.client.post(reverse("devices:add"), self.device_data(location=self.greenhouse.pk))
         self.assertEqual(Device.objects.get(name="New Node").location, self.greenhouse)
+
+    def test_device_form_rejects_other_users_location(self):
+        self.client.force_login(self.budi)
+        response = self.client.post(reverse("devices:add"), self.device_data(location=self.siti_lab.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Device.objects.filter(name="New Node").exists())
+        # Mengubah device yang ada juga ditolak.
+        self.client.post(
+            reverse("devices:edit", args=[self.budi_free.pk]),
+            self.device_data(name="Budi Loose Node", location=self.siti_lab.pk),
+        )
+        self.budi_free.refresh_from_db()
+        self.assertIsNone(self.budi_free.location)
 
     def test_device_form_cannot_create_new_location(self):
         self.client.force_login(self.budi)
@@ -585,11 +645,15 @@ class LocationTests(TestCase):
         self.assertFalse(Device.objects.filter(name="New Node").exists())
         self.assertFalse(Location.objects.filter(name="Rooftop").exists())
 
-    def test_device_form_rejects_unknown_location_id(self):
-        self.client.force_login(self.budi)
-        response = self.client.post(reverse("devices:add"), self.device_data(location="99999"))
-        self.assertEqual(response.status_code, 200)
+    def test_admin_device_location_must_match_owner(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse("devices:add"), self.device_data(owner=self.budi.pk, location=self.siti_lab.pk)
+        )
+        self.assertContains(response, "belongs to siti, not to budi")
         self.assertFalse(Device.objects.filter(name="New Node").exists())
+        self.client.post(reverse("devices:add"), self.device_data(owner=self.siti.pk, location=self.siti_lab.pk))
+        self.assertEqual(Device.objects.get(name="New Node").owner, self.siti)
 
     # --- tampilan berdasarkan lokasi ---
 
@@ -597,26 +661,17 @@ class LocationTests(TestCase):
         self.client.force_login(self.budi)
         response = self.client.get(reverse("devices:list"), {"location": self.lab.pk})
         self.assertEqual(list(response.context["devices"]), [self.budi_lab])
+        self.assertEqual(list(response.context["locations"]), [self.lab, self.greenhouse])
         response = self.client.get(reverse("devices:list"), {"location": "none"})
         self.assertEqual(list(response.context["devices"]), [self.budi_free])
         response = self.client.get(reverse("devices:list"))
         self.assertEqual(len(response.context["devices"]), 2)
 
-    def test_location_page_shows_only_visible_devices(self):
+    def test_location_page_shows_its_devices(self):
         self.client.force_login(self.budi)
         response = self.client.get(reverse("devices:location_detail", args=[self.lab.pk]))
         self.assertEqual(list(response.context["devices"]), [self.budi_lab])
         self.assertEqual(response.context["map_points"][0]["name"], "Electronics lab")
-
-    def test_location_list_counts_only_visible_devices(self):
-        self.client.force_login(self.budi)
-        response = self.client.get(reverse("devices:location_list"))
-        counts = {loc.name: loc.device_count for loc in response.context["locations"]}
-        self.assertEqual(counts, {"Electronics lab": 1, "Greenhouse A": 0})
-        self.client.force_login(self.admin)
-        response = self.client.get(reverse("devices:location_list"))
-        counts = {loc.name: loc.device_count for loc in response.context["locations"]}
-        self.assertEqual(counts["Electronics lab"], 2)
 
 
 class ChartPeriodTests(TestCase):

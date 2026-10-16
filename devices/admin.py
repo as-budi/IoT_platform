@@ -59,5 +59,6 @@ class CommandAdmin(admin.ModelAdmin):
 
 @admin.register(Location)
 class LocationAdmin(admin.ModelAdmin):
-    list_display = ("name", "latitude", "longitude")
-    search_fields = ("name",)
+    list_display = ("name", "owner", "latitude", "longitude")
+    list_filter = ("owner",)
+    search_fields = ("name", "owner__username")

@@ -65,6 +65,7 @@
     <h2 class="h5 mb-0" id="loc-{{ forloop.counter }}">
       {% if group.location %}
       <a class="text-reset text-decoration-none" href="{% url 'devices:location_detail' group.location.pk %}">{{ group.location.name }}</a>
+      {% if user.is_admin and group.location.owner_id != user.pk %}<span class="small text-muted fw-normal">({{ group.location.owner.username }})</span>{% endif %}
       {% else %}No location{% endif %}
     </h2>
     <span class="text-muted small">{{ group.devices|length }} device{{ group.devices|length|pluralize }}</span>

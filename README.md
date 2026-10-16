@@ -31,6 +31,7 @@ Penjelasan konsep:
 - [docs/rencana-ota.md](docs/rencana-ota.md) — rencana awal OTA (tahap 1 sudah dikerjakan; rollout & keamanan lanjutan masih rencana)
 - [docs/tahap-10-profil-dan-password.md](docs/tahap-10-profil-dan-password.md) — halaman profil milik sendiri dan ubah password (sesi lain ikut keluar)
 - [docs/tahap-11-verifikasi-email-dan-lupa-password.md](docs/tahap-11-verifikasi-email-dan-lupa-password.md) — aktivasi akun lewat email, konfirmasi email baru, lupa password, token bertanda tangan tanpa tabel
+- [docs/tahap-12-lokasi-milik-pengguna.md](docs/tahap-12-lokasi-milik-pengguna.md) — lokasi punya pemilik: dikelola sendiri, nama unik per pemilik, RESTRICT vs PROTECT, migrasi data lokasi bersama
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 - [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 

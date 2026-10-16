@@ -5,8 +5,8 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Q, Subquery, Sum
-from django.db.models.deletion import ProtectedError
+from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Subquery, Sum
+from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect
@@ -22,7 +22,6 @@ from django.views.generic import (
     View,
 )
 
-from accounts.mixins import AdminRequiredMixin
 from mqtt_bridge import topics as mqtt_topics
 from realtime import events
 from realtime.routing import device_ws_path
@@ -52,7 +51,18 @@ def visible_devices(user):
     Inilah SATU-SATUNYA tempat aturan kepemilikan ditulis. Semua view device
     maupun variabel mengambil datanya lewat fungsi ini.
     """
-    queryset = Device.objects.select_related("owner", "location")
+    queryset = Device.objects.select_related("owner", "location__owner")
+    if user.is_admin:
+        return queryset
+    return queryset.filter(owner=user)
+
+
+def visible_locations(user):
+    """Lokasi yang boleh dilihat `user`: Admin semua, User hanya miliknya (tahap 12).
+
+    Pasangan visible_devices() untuk lokasi; semua view lokasi memakai fungsi ini.
+    """
+    queryset = Location.objects.select_related("owner")
     if user.is_admin:
         return queryset
     return queryset.filter(owner=user)
@@ -172,7 +182,7 @@ class DeviceListView(OwnedDeviceMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["locations"] = Location.objects.all()
+        context["locations"] = visible_locations(self.request.user)
         context["selected_location"] = self.request.GET.get("location", "")
         context["no_location"] = self.NO_LOCATION
         return context
@@ -558,9 +568,9 @@ class CommandCreateView(LoginRequiredMixin, View):
 
 # --- Lokasi -------------------------------------------------------------------
 #
-# Semua pengguna yang login boleh MELIHAT lokasi (untuk memilihnya di form
-# device dan menyaring tampilan). Hanya Admin yang boleh menambah, mengubah,
-# dan menghapus lokasi, supaya daftar lokasi tetap rapi dan tidak kembar.
+# Sejak tahap 12 lokasi punya pemilik, sama seperti device. Setiap pengguna
+# menambah, mengubah, dan menghapus lokasinya sendiri; lokasi orang lain
+# "tidak ada" baginya (404). Admin melihat dan mengelola semua lokasi.
 
 def location_points(locations):
     """Ubah lokasi menjadi list dict sederhana untuk peta (dikirim lewat json_script)."""
@@ -575,17 +585,21 @@ def location_points(locations):
     ]
 
 
-class LocationListView(LoginRequiredMixin, ListView):
+class OwnedLocationMixin(LoginRequiredMixin):
+    """Membatasi view lokasi ke lokasi yang boleh dilihat (lihat visible_locations)."""
+
+    def get_queryset(self):
+        return visible_locations(self.request.user)
+
+
+class LocationListView(OwnedLocationMixin, ListView):
     template_name = "devices/location_list.html"
     context_object_name = "locations"
 
     def get_queryset(self):
-        user = self.request.user
-        # Count dengan filter: yang dihitung hanya device yang boleh dilihat
-        # pengguna ini, supaya jumlah device milik orang lain tidak bocor.
-        # Untuk Admin tanpa filter (None = hitung semua device).
-        visible = None if user.is_admin else Q(devices__owner=user)
-        return Location.objects.annotate(device_count=Count("devices", filter=visible))
+        # Device di sebuah lokasi selalu milik pemilik lokasi itu (dijaga
+        # DeviceForm), jadi jumlah device tidak perlu disaring lagi.
+        return super().get_queryset().annotate(device_count=Count("devices"))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -593,10 +607,9 @@ class LocationListView(LoginRequiredMixin, ListView):
         return context
 
 
-class LocationDetailView(LoginRequiredMixin, DetailView):
+class LocationDetailView(OwnedLocationMixin, DetailView):
     """Tampilan per lokasi: peta dan device (yang boleh dilihat) di lokasi itu."""
 
-    model = Location
     template_name = "devices/location_detail.html"
     context_object_name = "location"
 
@@ -609,10 +622,15 @@ class LocationDetailView(LoginRequiredMixin, DetailView):
         return context
 
 
-class LocationFormMixin(AdminRequiredMixin, SuccessMessageMixin):
-    model = Location
+class LocationFormMixin(OwnedLocationMixin, SuccessMessageMixin):
     form_class = LocationForm
     template_name = "devices/location_form.html"
+
+    def get_form_kwargs(self):
+        # Kirim pengguna yang login ke LocationForm: pemilik lokasi baru.
+        kwargs = super().get_form_kwargs()
+        kwargs["user"] = self.request.user
+        return kwargs
 
     def get_success_url(self):
         return reverse("devices:location_detail", args=[self.object.pk])
@@ -627,18 +645,17 @@ class LocationUpdateView(LocationFormMixin, UpdateView):
     success_message = "Location %(name)s was updated."
 
 
-class LocationDeleteView(AdminRequiredMixin, DeleteView):
-    model = Location
+class LocationDeleteView(OwnedLocationMixin, DeleteView):
     template_name = "devices/location_confirm_delete.html"
     context_object_name = "location"
     success_url = reverse_lazy("devices:location_list")
 
     def form_valid(self, form):
-        # on_delete=PROTECT membuat database menolak penghapusan lokasi yang
-        # masih dipakai device; Django menyampaikannya sebagai ProtectedError.
+        # on_delete=RESTRICT membuat Django menolak penghapusan lokasi yang
+        # masih dipakai device (RestrictedError; ProtectedError untuk PROTECT).
         try:
             response = super().form_valid(form)
-        except ProtectedError:
+        except (ProtectedError, RestrictedError):
             count = self.object.devices.count()
             messages.error(
                 self.request,

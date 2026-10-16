@@ -32,6 +32,8 @@ DEMO_USERS = {
 
 # Lokasi contoh: nama -> (latitude, longitude, deskripsi).
 # Koordinatnya hanya contoh; ubah lewat halaman Locations bila perlu.
+# Sejak tahap 12 lokasi punya pemilik: setiap lokasi dibuat untuk pemilik device
+# yang memakainya (lihat handle()).
 DEMO_LOCATIONS = {
     "Server room": (-7.952900, 112.614500, "Main server room, ground floor."),
     "Electronics lab": (-7.953300, 112.614100, "Teaching laboratory."),
@@ -130,10 +132,15 @@ class Command(BaseCommand):
                 self.stdout.write(f"User created: {username} / {DEMO_PASSWORD}")
             users[username] = user
 
+        # (pemilik, nama lokasi) -> Location. Satu lokasi per pemilik yang memakainya.
         locations = {}
-        for name, (lat, lng, description) in DEMO_LOCATIONS.items():
-            locations[name], _ = Location.objects.get_or_create(
-                name=name,
+        for owner_name, _name, _type, location, _vars in DEMO_DEVICES + DEMO_ACTUATORS:
+            if (owner_name, location) in locations:
+                continue
+            lat, lng, description = DEMO_LOCATIONS[location]
+            locations[owner_name, location], _ = Location.objects.get_or_create(
+                owner=users[owner_name],
+                name=location,
                 defaults={"latitude": lat, "longitude": lng, "description": description},
             )
 
@@ -144,7 +151,7 @@ class Command(BaseCommand):
             device, _ = Device.objects.get_or_create(
                 owner=users[owner_name],
                 name=name,
-                defaults={"device_type": device_type, "location": locations[location]},
+                defaults={"device_type": device_type, "location": locations[owner_name, location]},
             )
             for key, label, unit, center, spread in variables:
                 variable, _ = Variable.objects.get_or_create(
@@ -176,7 +183,7 @@ class Command(BaseCommand):
             device, _ = Device.objects.get_or_create(
                 owner=owner,
                 name=name,
-                defaults={"device_type": device_type, "location": locations[location]},
+                defaults={"device_type": device_type, "location": locations[owner_name, location]},
             )
             for key, label, unit, value_type, low, high, states in variables:
                 variable, _ = Variable.objects.get_or_create(
