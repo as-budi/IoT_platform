@@ -15,6 +15,9 @@ Setiap aturan menunjukkan satu pola (lihat docs/contoh-data-dan-aturan.md):
     Cold chain breach     aksi command ke device, alarm kritis, clear dengan AND
     Server room cooling   aturan lintas device: sensor di satu device, aktuator di device lain
     Weather station silent  event "device diam" (nonaktif bawaan; aktifkan untuk mencoba)
+    Morning watering      event "Schedule" (tahap 14): setiap hari 06:00, hanya bila tanah
+                          kering dan tidak hujan; pompa ON lalu OFF otomatis setelah 10 menit.
+                          Nonaktif bawaan: memakai pompa yang sama dengan "Smart irrigation".
 
 Kondisi ditulis sebagai daftar grup: [[(device, key, op, ambang), ...], ...]
   - kondisi di dalam satu grup digabung AND,
@@ -30,6 +33,9 @@ Contoh rule chain (lihat docs/flow-mekanisme.md):
     Greenhouse watering chain  enrichment (data stasiun cuaca), Failure bila data basi,
                              satu hasil ke dua cabang (salinan pesan). Nonaktif bawaan:
                              memakai pompa yang sama dengan "Smart irrigation".
+    Cold room daily report   Input "On a schedule" (tahap 14): Senin–Jumat 07:00, ambil data
+                             terakhir suhu & kelembapan lalu kirim email; alarm bila datanya
+                             tidak ada. Nonaktif bawaan (mengirim email).
 
 Node ditulis (nama, jenis, {field}); panah ditulis (asal, label, tujuan).
 """
@@ -39,7 +45,8 @@ from django.db import transaction
 
 from devices.models import Device, Variable
 from rules.models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleModel, RuleState,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleModel, RuleSchedule,
+    RuleState,
 )
 
 User = get_user_model()
@@ -164,6 +171,23 @@ DEMO_RULES = [
             ("ALARM", ACTIVATE, {"severity": "WARNING", "message": "{device} has sent no data for {value} s"}),
         ],
     },
+    {
+        "owner": "siti",
+        "name": "Morning watering",
+        "description": "Every day at 06:00, water for 10 minutes if the soil is dry and it is not raining. "
+                       "Disabled by default because Smart irrigation drives the same pump.",
+        "enabled": False,
+        "schedule": {"kind": "DAILY", "times": "06:00", "weekdays": "0123456", "active_for": 600},
+        "when": [
+            [("Greenhouse Node", "soil_moisture", "<", 40),
+             ("Greenhouse Weather Station", "rain", "<", 0.5)],
+        ],
+        "duration": 0, "cooldown": 0, "max_age": 3600,
+        "actions": [
+            ("SET_ACTUATOR", ACTIVATE, {"target": ("Greenhouse Node", "pump"), "value": 1}),
+            ("SET_ACTUATOR", CLEAR, {"target": ("Greenhouse Node", "pump"), "value": 0}),
+        ],
+    },
 ]
 
 DEMO_CHAINS = [
@@ -275,6 +299,32 @@ DEMO_CHAINS = [
             ("wet", "TRUE", "pump_off"),
         ],
     },
+    {
+        "owner": "rina",
+        "name": "Cold room daily report",
+        "description": "Weekdays at 07:00: email the latest cold-room temperature and humidity. "
+                       "Raises an alarm when there is no recent data. Disabled by default (it sends email).",
+        "device": "Cold Storage Unit",
+        "enabled": False,
+        "schedule": {"kind": "DAILY", "times": "07:00", "weekdays": "01234"},
+        "nodes": [
+            ("temp_now", "LATEST", {"variable": ("Cold Storage Unit", "temperature"), "key": "temperature",
+                                    "seconds": 3600}),
+            ("hum_now", "LATEST", {"variable": ("Cold Storage Unit", "humidity"), "key": "humidity",
+                                   "seconds": 3600}),
+            ("report", "EMAIL", {"message": "Cold room report {day}/{month} {hour}:00 — "
+                                            "temperature {temperature} °C, humidity {humidity} %."}),
+            ("no_data", "CREATE_ALARM", {"severity": "WARNING",
+                                         "message": "No recent cold-room data for the daily report"}),
+        ],
+        "links": [
+            ("Input", "SUCCESS", "temp_now"),
+            ("temp_now", "SUCCESS", "hum_now"),
+            ("temp_now", "FAILURE", "no_data"),
+            ("hum_now", "SUCCESS", "report"),
+            ("hum_now", "FAILURE", "no_data"),
+        ],
+    },
 ]
 
 
@@ -336,6 +386,7 @@ class Command(BaseCommand):
             eca = EcaSpec.objects.create(
                 rule=rule, duration_seconds=spec["duration"],
                 cooldown_seconds=spec["cooldown"], max_age_seconds=spec["max_age"],
+                event=EcaSpec.Event.SCHEDULE if "schedule" in spec else EcaSpec.Event.TELEMETRY,
             )
             for role, groups in ((EcaCondition.Role.WHEN, spec["when"]),
                                  (EcaCondition.Role.CLEAR, spec.get("clear", []))):
@@ -363,15 +414,32 @@ class Command(BaseCommand):
                 action.recipients = fields.get("recipients", "")
                 action.message = fields.get("message", "")
             action.save()
+        self.create_schedule(rule, spec)
         RuleState.objects.create(rule=rule)
         return rule
+
+    def create_schedule(self, rule, spec):
+        """Jadwal contoh (tahap 14); next_run_at dihitung dari sekarang."""
+        if "schedule" not in spec:
+            return
+        fields = spec["schedule"]
+        schedule = RuleSchedule(
+            rule=rule, kind=fields["kind"], times=fields.get("times", ""),
+            weekdays=fields.get("weekdays", "0123456"), interval_minutes=fields.get("interval"),
+            active_for_seconds=fields.get("active_for", 0),
+        )
+        schedule.reschedule(save=False)
+        schedule.save()
 
     def create_chain(self, owner, spec):
         rule = Rule.objects.create(
             owner=owner, name=spec["name"], description=spec.get("description", ""),
             model=RuleModel.FLOW, is_enabled=spec.get("enabled", True),
         )
-        FlowSpec.objects.create(rule=rule, device=self.device(owner, spec["device"]) if spec.get("device") else None)
+        FlowSpec.objects.create(
+            rule=rule, device=self.device(owner, spec["device"]) if spec.get("device") else None,
+            trigger=FlowSpec.Trigger.SCHEDULE if "schedule" in spec else FlowSpec.Trigger.TELEMETRY,
+        )
         nodes = {}
         for order, (name, kind, fields) in enumerate(spec["nodes"]):
             node = FlowNode(rule=rule, name=name, kind=kind, order=order)
@@ -394,5 +462,6 @@ class Command(BaseCommand):
                 rule=rule, source=None if source == "Input" else nodes[source],
                 label=label, target=nodes[target], order=order,
             )
+        self.create_schedule(rule, spec)
         RuleState.objects.create(rule=rule)
         return rule

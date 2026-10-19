@@ -7,7 +7,7 @@ Bentuk JSON (versi 1):
       "format": "iot-platform.rule", "version": 1, "model": "ECA",
       "name": "...", "description": "...", "enabled": true,
       "eca": {
-        "event": "TELEMETRY",              # atau "INACTIVITY"
+        "event": "TELEMETRY",              # atau "INACTIVITY" / "SCHEDULE"
         "device": null,                    # nama device, hanya untuk INACTIVITY
         "silence_seconds": null, "duration_seconds": 0,
         "cooldown_seconds": 0, "max_age_seconds": 300,
@@ -26,6 +26,17 @@ Rule chain memakai "model": "FLOW" dan bagian "flow" (tanpa "eca"/"actions"):
         "nodes": [{"name": "too_hot", "kind": "CHECK", "key": "temperature", "operator": ">", "threshold": 30}, ...],
         "links": [{"source": "Input", "label": "SUCCESS", "target": "too_hot"}, ...]
       }
+
+Jadwal (tahap 14): ECA dengan "event": "SCHEDULE" dan rule chain dengan
+"trigger": "SCHEDULE" punya bagian "schedule":
+
+      "schedule": {"kind": "DAILY", "times": ["06:00", "18:00"],
+                   "weekdays": ["mon", "tue", "wed", "thu", "fri"],
+                   "interval_minutes": null, "run_at": null,
+                   "active_for_seconds": 600}           # hanya ECA
+
+"run_at" (kind ONCE) ditulis sebagai jam lokal server, "2026-10-20T06:00".
+next_run_at/last_run_at tidak ikut: dihitung ulang saat aturan disimpan.
 
 Field sebuah node = field milik jenis node itu (NODE_TYPES[kind].fields di
 rules/engines/flow.py). Rujukan ke device/variabel ditulis seperti di ECA:
@@ -51,7 +62,8 @@ from django.utils import timezone
 from devices.views import visible_devices
 
 from .engines.flow import NODE_TYPES
-from .models import EcaCondition, EcaSpec, FlowNode, RuleAction, RuleModel
+from .models import EcaCondition, EcaSpec, FlowNode, FlowSpec, RuleAction, RuleModel, RuleSchedule
+from .schedules import DAY_NAMES
 
 FORMAT = "iot-platform.rule"
 VERSION = 1
@@ -131,14 +143,40 @@ def _node(node):
     return data
 
 
+def _schedule(rule, with_active_for):
+    """RuleSchedule -> dict, atau None bila aturan belum punya jadwal."""
+    schedule = RuleSchedule.objects.filter(rule=rule).first()
+    if schedule is None:
+        return None
+    try:
+        times = [t.strftime("%H:%M") for t in schedule.time_list()]
+    except ValueError:
+        times = []
+    data = {
+        "kind": schedule.kind,
+        "times": times,
+        "weekdays": [DAY_NAMES[d] for d in schedule.weekday_list()],
+        "interval_minutes": schedule.interval_minutes,
+        "run_at": timezone.localtime(schedule.run_at).strftime("%Y-%m-%dT%H:%M") if schedule.run_at else None,
+    }
+    if with_active_for:
+        data["active_for_seconds"] = schedule.active_for_seconds
+    return data
+
+
 def export_flow(rule):
     """Rule chain -> dict yang siap di-json.dumps()."""
     nodes = list(rule.nodes.select_related("variable__device", "target_variable__device", "target_device"))
     names = {node.pk: node.name for node in nodes}
     spec = getattr(rule, "flow", None)
+    trigger = spec.trigger if spec else FlowSpec.Trigger.TELEMETRY
+    head = {"trigger": trigger}
+    if trigger == FlowSpec.Trigger.SCHEDULE:
+        head["schedule"] = _schedule(rule, with_active_for=False)
     return {
         **_header(rule),
         "flow": {
+            **head,
             "device": spec.device.name if spec and spec.device_id else None,
             "nodes": [_node(node) for node in nodes],
             "links": [
@@ -154,10 +192,14 @@ def export_rule(rule):
     if rule.model == RuleModel.FLOW:
         return export_flow(rule)
     spec = rule.eca
+    extra = {}
+    if spec.event == EcaSpec.Event.SCHEDULE:
+        extra["schedule"] = _schedule(rule, with_active_for=True)
     return {
         **_header(rule),
         "eca": {
             "event": spec.event,
+            **extra,
             "device": spec.device.name if spec.device_id else None,
             "silence_seconds": spec.silence_seconds,
             "duration_seconds": spec.duration_seconds,
@@ -290,6 +332,34 @@ def _conditions(post, prefix, groups, resolve):
     _management(post, prefix, index)
 
 
+def _schedule_post(post, schedule, resolve, where):
+    """Bagian "schedule" JSON -> isian form jadwal (prefix "schedule")."""
+    if not isinstance(schedule, dict):
+        resolve.errors.append(f'{where}: "schedule" must be an object, e.g. {{"kind": "DAILY", "times": ["06:00"]}}.')
+        return
+    post["schedule-kind"] = _text(schedule.get("kind", RuleSchedule.Kind.DAILY))
+    times = schedule.get("times") or []
+    if isinstance(times, str):
+        times = [times]
+    post["schedule-times"] = ", ".join(str(t) for t in times)
+    days = schedule.get("weekdays")
+    if days is None:
+        days = DAY_NAMES
+    numbers = []
+    for day in days if isinstance(days, list) else []:
+        text = str(day).strip().lower()[:3]
+        if text in DAY_NAMES:
+            numbers.append(str(DAY_NAMES.index(text)))
+        elif text.isdigit() and int(text) < 7:
+            numbers.append(text)
+        else:
+            resolve.errors.append(f'{where}: unknown weekday "{day}"; use mon, tue, wed, thu, fri, sat, sun.')
+    post["schedule-weekdays"] = numbers
+    post["schedule-interval_minutes"] = _text(schedule.get("interval_minutes"))
+    post["schedule-run_at"] = _text(schedule.get("run_at"))
+    post["schedule-active_for_seconds"] = _text(schedule.get("active_for_seconds", 0))
+
+
 def eca_form_data(data, owner):
     """dict hasil parse() -> data POST untuk form ECA (lihat EcaRuleFormView.build_forms).
 
@@ -310,6 +380,8 @@ def eca_form_data(data, owner):
     }
     device = resolve.device(eca.get("device"), "Event") if eca.get("event") == EcaSpec.Event.INACTIVITY else None
     post["eca-device"] = _text(device.pk if device else "")
+    if eca.get("event") == EcaSpec.Event.SCHEDULE:
+        _schedule_post(post, eca.get("schedule"), resolve, "Schedule")
     _conditions(post, "when", eca.get("when"), resolve)
     _conditions(post, "clear", eca.get("clear"), resolve)
 
@@ -359,6 +431,9 @@ def flow_form_data(data, owner):
     }
     device = resolve.device(flow.get("device"), "Messages from")
     post["flow-device"] = _text(device.pk if device else "")
+    post["flow-trigger"] = _text(flow.get("trigger", FlowSpec.Trigger.TELEMETRY))
+    if flow.get("trigger") == FlowSpec.Trigger.SCHEDULE:
+        _schedule_post(post, flow.get("schedule"), resolve, "Schedule")
 
     nodes = flow["nodes"]
     for index, node in enumerate(nodes):
@@ -420,13 +495,15 @@ def form_errors(forms, cross_errors=()):
     sections = {
         "rule_form": "Rule", "spec_form": "Settings", "when_formset": "When",
         "clear_formset": "Clear", "action_formset": "Action",
-        "node_formset": "Node", "link_formset": "Link",
+        "node_formset": "Node", "link_formset": "Link", "schedule_form": "Schedule",
     }
     messages = []
     for key, label in sections.items():
         if key not in forms:
             continue
         form = forms[key]
+        if getattr(form, "in_use", True) is False:   # form jadwal aturan yang tidak berjadwal
+            continue
         if hasattr(form, "forms"):   # formset
             messages += [f"{label}: {error}" for error in form.non_form_errors()]
             for number, sub in enumerate(form.forms, start=1):
@@ -438,4 +515,3 @@ def form_errors(forms, cross_errors=()):
                 name = "" if field == "__all__" else f" {field}"
                 messages += [f"{label}{name}: {error}" for error in errors]
     return messages + list(cross_errors)
-

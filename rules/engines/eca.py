@@ -20,6 +20,11 @@ Setiap aturan punya keadaan (RuleState) dengan tiga status:
       └──── kondisi tidak terpenuhi ─┘                                       │
       └───────────────────────── kondisi clear terpenuhi ◄───────────────────┘
 
+Event "Schedule" (tahap 14, docs/tahap-14-penjadwalan.md): aturan dipicu oleh
+jam (RuleSchedule), bukan oleh data. Kondisi WHEN menjadi syarat tambahan
+("jam 06:00, TAPI hanya bila tanah kering"); tanpa kondisi, aturan selalu aktif
+pada jamnya. Clear terjadi otomatis setelah `active_for_seconds`.
+
 Aksi hanya dijalankan saat BERPINDAH ke ACTIVE (activate) atau dari ACTIVE ke
 IDLE (clear), bukan pada setiap pesan. Inilah yang mencegah:
 - pompa dinyalakan berulang-ulang setiap 10 detik selama tanah kering,
@@ -28,16 +33,18 @@ IDLE (clear), bukan pada setiap pesan. Inilah yang mencegah:
   ACTIVE, tidak ada aksi baru.
 """
 import logging
+from datetime import timedelta
 
 from django.db import transaction
+from django.utils import timezone
 from django.db.models import OuterRef, Subquery
 from django.utils.dateparse import parse_datetime
 
 from devices.models import Telemetry, Variable
 
-from .. import conditions
+from .. import conditions, schedules
 from ..events import rule_changed, rule_evaluated
-from ..models import EcaSpec, Rule, RuleExecution, RuleModel, RuleState
+from ..models import EcaSpec, Rule, RuleExecution, RuleModel, RuleSchedule, RuleState
 from .base import RuleEngine
 
 logger = logging.getLogger(__name__)
@@ -140,6 +147,84 @@ class EcaEngine(RuleEngine):
             silent_for = (now - last).total_seconds()
             silent = silent_for >= (rule.eca.silence_seconds or 0)
             executions += self.evaluate(rule, now, value=round(silent_for), condition=silent, clear=not silent)
+        # 3) Jadwal (tahap 14): clear otomatis dulu, baru jadwal yang jatuh tempo.
+        #    Urutan ini penting: aturan "nyala 10 menit setiap 10 menit" harus
+        #    pulih dulu sebelum boleh aktif lagi pada tick yang sama.
+        executions += self.clear_expired(now)
+        executions += self.run_schedules(now)
+        return executions
+
+    # --- jadwal (tahap 14) -----------------------------------------------------------
+
+    def schedule_rules(self):
+        return self.rules().filter(eca__event=EcaSpec.Event.SCHEDULE).select_related("schedule")
+
+    def clear_expired(self, now):
+        """Aturan jadwal yang sudah ACTIVE selama active_for_seconds -> CLEAR."""
+        executions = []
+        active = self.schedule_rules().filter(state__status=Status.ACTIVE, schedule__active_for_seconds__gt=0)
+        for rule in active:
+            state = rule.state
+            ends = state.last_activated_at + timedelta(seconds=rule.schedule.active_for_seconds)
+            if now >= ends:
+                snapshot = dict(state.snapshot or {}, at=now.isoformat())
+                executions += self.evaluate(rule, now, condition=False, clear=True, snapshot=snapshot)
+        return executions
+
+    def run_schedules(self, now):
+        """Jalankan setiap jadwal ECA yang jatuh tempo (lihat schedules.claim)."""
+        executions = []
+        for schedule in schedules.due(RuleModel.ECA, now):
+            claimed = schedules.claim(schedule, now)
+            if claimed is None:
+                continue   # sudah diambil proses lain
+            outcome, scheduled, late = claimed
+            rule = self.schedule_rules().filter(pk=schedule.rule_id).first()
+            if rule is None:   # event aturan sudah bukan "Schedule"
+                continue
+            if outcome == schedules.MISSED:
+                executions.append(schedules.log_skipped(rule, now, schedules.missed_detail(scheduled, late)))
+            else:
+                executions += self.fire_schedule(rule, now, scheduled)
+        return executions
+
+    def fire_schedule(self, rule, now, scheduled):
+        """Satu waktu jadwal tiba.
+
+            masih ACTIVE dari jadwal sebelumnya  -> Skipped
+            ada kondisi, dan tidak BENAR         -> Skipped (nilai dicatat di "Last evaluation")
+            selain itu                           -> ACTIVATE (aksi "on activate")
+                                                    lalu, bila active_for = 0, langsung IDLE lagi
+        """
+        spec = rule.eca
+        state, _ = RuleState.objects.get_or_create(rule=rule)
+        at = schedules.local_text(scheduled)
+        if state.status == Status.ACTIVE:
+            return [schedules.log_skipped(rule, now, f"{at} run skipped: still active from the previous run")]
+
+        schedule_info = {"scheduled": timezone.localtime(scheduled).isoformat(), "late": round((now - scheduled).total_seconds())}
+        if spec.when_groups:
+            condition, _clear, _trigger, snapshot = self.judge(rule, now, {})
+            snapshot["schedule"] = schedule_info
+            if not condition:
+                state.snapshot, state.last_evaluated_at = snapshot, now
+                state.save(update_fields=["snapshot", "last_evaluated_at"])
+                rule.state = state
+                rule_evaluated(rule)
+                verdict = "unknown (missing or old data)" if snapshot["when"]["result"] is None else "false"
+                values = ", ".join(f"{k} = {fmt(v)}" for k, v in snapshot["values"].items())
+                return [schedules.log_skipped(
+                    rule, now, f"{at} run skipped: condition is {verdict}" + (f" ({values})" if values else ""),
+                )]
+        else:
+            snapshot = {"at": now.isoformat(), "values": {}, "schedule": schedule_info}
+
+        executions = self.evaluate(rule, now, condition=True, clear=False, snapshot=snapshot, scheduled=scheduled)
+        if executions and not rule.schedule.active_for_seconds:
+            # Tanpa "keep active": aturan hanya "menembak" aksi activate, lalu siap lagi.
+            RuleState.objects.filter(rule=rule).update(status=Status.IDLE)
+            rule.state.status = Status.IDLE
+            rule_changed(rule, rule.state)
         return executions
 
     # --- inti ---------------------------------------------------------------------
@@ -181,14 +266,16 @@ class EcaEngine(RuleEngine):
         }
         return condition, clear, trigger, snapshot
 
-    def evaluate(self, rule, now, points=None, value=None, condition=None, clear=None):
+    def evaluate(self, rule, now, points=None, value=None, condition=None, clear=None, snapshot=None,
+                 scheduled=None):
         """Nilai satu aturan. Bila status berpindah, jalankan aksinya.
 
         `points`: nilai dari pesan yang sedang diproses {variable_id: point}.
-        `condition`/`clear` diisi langsung untuk event "device diam".
+        `condition`/`clear` diisi langsung untuk event "device diam" dan "Schedule"
+        (`snapshot` = apa yang dicatat di "Last evaluation", `scheduled` = waktu jadwal).
         """
         spec = rule.eca
-        snapshot, trigger = {}, None
+        snapshot, trigger = snapshot or {}, None
         if condition is None:
             condition, clear, trigger, snapshot = self.judge(rule, now, points or {})
             value = trigger[1] if trigger else None
@@ -217,7 +304,7 @@ class EcaEngine(RuleEngine):
         # aturan tetap tercatat ACTIVE dan tidak mengulang aksi yang lain.
         from ..actions import run_actions
 
-        context = self.context(rule, value, trigger, snapshot)
+        context = self.context(rule, value, trigger, snapshot, scheduled)
         results = run_actions(rule, transition, value, context=context)
         execution = RuleExecution.objects.create(
             rule=rule,
@@ -234,9 +321,26 @@ class EcaEngine(RuleEngine):
         rule_changed(rule, state, transition=transition, value=value)
         return [execution]
 
-    def context(self, rule, value, trigger, snapshot):
+    def context(self, rule, value, trigger, snapshot, scheduled=None):
         """Nilai untuk placeholder pesan alarm/email dan device asal (originator)."""
         spec = rule.eca
+        values = ", ".join(f"{label} = {fmt(v)}" for label, v in snapshot.get("values", {}).items())
+        if spec.event == EcaSpec.Event.SCHEDULE:
+            # Device asal: device kondisi pertama, atau device target aksi pertama.
+            # Bisa None (mis. aturan yang hanya mengirim email); aksi alarm lalu gagal
+            # dengan pesan yang jelas (lihat actions.raise_alarm).
+            device = schedule_device(rule)
+            when = scheduled or now_from(snapshot)
+            return {
+                "rule": rule.name,
+                "device": device.name if device else "—",
+                "variable": "schedule",
+                "value": value,
+                "threshold": None,
+                "values": values or "—",
+                "time": schedules.local_text(when),
+                "originator": device,
+            }
         if spec.event == EcaSpec.Event.TELEMETRY:
             primary = spec.primary_condition()
             device = primary.variable.device
@@ -246,7 +350,6 @@ class EcaEngine(RuleEngine):
             device = spec.device
             variable = "no data (s)"
             threshold = spec.silence_seconds
-        values = ", ".join(f"{label} = {fmt(v)}" for label, v in snapshot.get("values", {}).items())
         return {
             "rule": rule.name,
             "device": device.name,
@@ -259,6 +362,33 @@ class EcaEngine(RuleEngine):
 
     def describe(self, rule):
         return describe_eca(rule.eca)
+
+
+def schedule_device(rule):
+    """Device "asal" aturan ECA berjadwal: device kondisi pertama, kalau tidak ada
+    device target aksi pertama, kalau tidak ada None."""
+    primary = rule.eca.primary_condition()
+    if primary is not None:
+        return primary.variable.device
+    for action in rule.actions.select_related("target_variable__device", "target_device"):
+        if action.target_variable_id:
+            return action.target_variable.device
+        if action.target_device_id:
+            return action.target_device
+    return None
+
+
+def now_from(snapshot):
+    at = snapshot.get("at")
+    return parse_datetime(at) if isinstance(at, str) else None
+
+
+def schedule_of(rule):
+    """RuleSchedule aturan ini, atau None (tanpa melempar RelatedObjectDoesNotExist)."""
+    try:
+        return rule.schedule
+    except RuleSchedule.DoesNotExist:
+        return None
 
 
 def latest_values(variable_ids, points, now):
@@ -325,6 +455,13 @@ def expression_text(groups):
 
 def describe_eca(spec):
     """{"when": ..., "if": ..., "clear": ...} dalam kalimat pendek (bahasa Inggris, untuk UI)."""
+    if spec.event == EcaSpec.Event.SCHEDULE:
+        schedule = schedule_of(spec.rule)
+        when = schedule.describe() if schedule else "no schedule set"
+        condition = expression_text(spec.when_groups) if spec.when_groups else "always"
+        active_for = schedule.active_for_seconds if schedule else 0
+        clear = f"after {active_for} s" if active_for else "immediately (activate actions only)"
+        return {"when": when, "if": condition, "clear": clear}
     if spec.event == EcaSpec.Event.INACTIVITY:
         device = spec.device.name if spec.device_id else "?"
         when = f"{device} sends no data"

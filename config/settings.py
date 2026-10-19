@@ -266,6 +266,9 @@ if sys.argv[1:2] == ["test"]:
     RULE_ENGINE_MODE = "inline"
 # Seberapa sering (detik) worker memeriksa aturan berbasis waktu.
 RULE_ENGINE_TICK = float(os.getenv("RULE_ENGINE_TICK", "1"))
+# Penjadwalan (tahap 14): jadwal yang terlambat lebih dari ini (detik), mis. karena
+# worker mati saat jadwal tiba, TIDAK dijalankan lagi tetapi dicatat "Skipped".
+RULE_SCHEDULE_GRACE_SECONDS = int(os.getenv("RULE_SCHEDULE_GRACE_SECONDS", "300"))
 
 
 # --- Email (aksi "Send email" pada aturan, aktivasi akun, lupa password) ----------

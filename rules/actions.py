@@ -110,7 +110,10 @@ def send_command(action, rule, context):
 
 
 def raise_alarm(action, rule, context):
-    device = context["originator"]
+    device = context.get("originator")
+    if device is None:
+        # Aturan berjadwal tanpa kondisi dan tanpa aksi ke device (tahap 14).
+        raise ActionError("No device to attach the alarm to: add a condition or a device action.")
     existing = Alarm.objects.active().filter(rule=rule, device=device).first()
     if existing:
         return f"Alarm #{existing.pk} is still active"

@@ -7,6 +7,8 @@ Satu halaman berisi beberapa bagian yang disimpan bersamaan:
     WhenFormSet        kondisi aktif, dikelompokkan: OR antar-grup, AND di dalam grup
     ClearFormSet       kondisi clear (opsional, untuk histeresis), bentuk yang sama
     ActionFormSet      satu atau lebih aksi (formset = kumpulan form sejenis)
+    RuleScheduleForm   jadwal (tahap 14), hanya untuk event "Schedule" dan rule chain
+                       dengan Input "On a schedule"
 
 Semua pilihan device/variabel dibatasi ke device yang boleh dilihat pemilik
 aturan (visible_devices), sehingga pengguna tidak bisa memilih device orang lain
@@ -17,13 +19,16 @@ import re
 
 from django import forms
 from django.forms import inlineformset_factory
+from django.utils import timezone
 
 from accounts.forms import BootstrapFormMixin
 from devices.models import Variable
 
 from .models import (
     Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MathOp, Operator, Rule, RuleAction,
+    RuleSchedule,
 )
+from .schedules import DAY_LABELS, format_times, parse_times
 
 LOW = {Operator.LT, Operator.LTE}
 HIGH = {Operator.GT, Operator.GTE}
@@ -72,6 +77,13 @@ class EcaSpecForm(BootstrapFormMixin, forms.ModelForm):
             if not cleaned.get("silence_seconds"):
                 self.add_error("silence_seconds", "Enter how many seconds without data count as silent.")
             cleaned["duration_seconds"] = 0
+        elif cleaned.get("event") == EcaSpec.Event.SCHEDULE:
+            # Jadwal sudah menentukan KAPAN; "selama N detik" dan cooldown tidak
+            # bermakna (aturan dinilai sekali pada setiap waktu jadwal).
+            cleaned["device"] = None
+            cleaned["silence_seconds"] = None
+            cleaned["duration_seconds"] = 0
+            cleaned["cooldown_seconds"] = 0
         else:
             cleaned["device"] = None
             cleaned["silence_seconds"] = None
@@ -282,6 +294,119 @@ ActionFormSet = inlineformset_factory(
 )
 
 
+# --- Jadwal (tahap 14) -------------------------------------------------------------------
+
+class RuleScheduleForm(BootstrapFormMixin, forms.ModelForm):
+    """Kapan aturan berjalan. Dipakai form ECA (event "Schedule") dan form rule chain
+    (Input "On a schedule"); prefix-nya "schedule".
+
+        At set times     times = "06:00, 18:30" + hari
+        Every N minutes  interval_minutes = 15 + hari (dihitung dari 00:00)
+        Once             run_at = tanggal dan jam
+
+    with_active_for=False (rule chain): field "keep active for" tidak ada, karena
+    rule chain tidak punya keadaan ACTIVE.
+    """
+
+    weekdays = forms.MultipleChoiceField(
+        label="On", required=False,
+        choices=[(str(i), label) for i, label in enumerate(DAY_LABELS)],
+        widget=forms.CheckboxSelectMultiple,
+    )
+    run_at = forms.DateTimeField(
+        label="On (date and time)", required=False,
+        input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M:%S"],
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+    )
+
+    class Meta:
+        model = RuleSchedule
+        fields = ("kind", "times", "weekdays", "interval_minutes", "run_at", "active_for_seconds")
+        widgets = {
+            "kind": forms.RadioSelect,
+            "times": forms.TextInput(attrs={"placeholder": "06:00, 18:30"}),
+        }
+        help_texts = {
+            "times": "24-hour clock, separated by commas.",
+            "interval_minutes": "Counted from midnight: 15 → 00:00, 00:15, 00:30, …",
+            "active_for_seconds": "Run the “on clear” actions this long after activating "
+                                  "(e.g. pump ON, then OFF after 600 s). 0 = activate actions only.",
+        }
+
+    def __init__(self, *args, with_active_for=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["kind"].widget.attrs["class"] = "form-check-input"
+        self.fields["kind"].widget.attrs["data-schedule-kind"] = ""
+        self.fields["weekdays"].widget.attrs["class"] = "form-check-input"
+        self.fields["interval_minutes"].widget.attrs.update(min=1, max=1440)
+        self.fields["active_for_seconds"].widget.attrs["min"] = 0
+        if not with_active_for:
+            del self.fields["active_for_seconds"]
+        self.initial["weekdays"] = list(self.instance.weekdays or "0123456")
+        if self.instance.pk and self.instance.run_at:
+            self.initial["run_at"] = timezone.localtime(self.instance.run_at)
+
+    def clean_times(self):
+        try:
+            times = parse_times(self.cleaned_data.get("times"))
+        except ValueError as exc:
+            raise forms.ValidationError(str(exc))
+        if len(times) > 24:
+            raise forms.ValidationError("At most 24 times a day.")
+        return format_times(times)
+
+    def clean_weekdays(self):
+        return "".join(sorted(set(self.cleaned_data.get("weekdays") or [])))
+
+    def clean(self):
+        cleaned = super().clean()
+        kind = cleaned.get("kind")
+        Kind = RuleSchedule.Kind
+        if kind in (Kind.DAILY, Kind.INTERVAL) and "weekdays" in cleaned and not cleaned["weekdays"]:
+            self.add_error("weekdays", "Choose at least one day.")
+        if kind == Kind.DAILY:
+            if "times" in cleaned and not cleaned["times"]:
+                self.add_error("times", "Enter at least one time, e.g. 06:00.")
+            cleaned["interval_minutes"], cleaned["run_at"] = None, None
+        elif kind == Kind.INTERVAL:
+            minutes = cleaned.get("interval_minutes")
+            if not minutes:
+                self.add_error("interval_minutes", "Enter the number of minutes.")
+            elif minutes > 1440:
+                self.add_error("interval_minutes", "At most 1440 minutes (once a day).")
+            cleaned["times"], cleaned["run_at"] = "", None
+        elif kind == Kind.ONCE:
+            run_at = cleaned.get("run_at")
+            if run_at is None:
+                if "run_at" not in self.errors:
+                    self.add_error("run_at", "Choose the date and time.")
+            elif run_at <= timezone.now() and (
+                not self.instance.pk or {"run_at", "kind"} & set(self.changed_data)
+            ):
+                # Waktu lampau hanya ditolak bila baru diisi; jadwal "sekali" yang
+                # sudah lewat tetap bisa disimpan saat mengubah bagian lain aturan.
+                self.add_error("run_at", "Choose a time in the future.")
+            cleaned["times"], cleaned["interval_minutes"] = "", None
+            cleaned["weekdays"] = "0123456"
+        return cleaned
+
+
+def schedule_checks(event_is_schedule, schedule_form, action_formset):
+    """Pemeriksaan ECA berjadwal yang melibatkan beberapa form. Mengembalikan daftar error."""
+    if not event_is_schedule or "active_for_seconds" not in schedule_form.fields:
+        return []
+    active_for = schedule_form.cleaned_data.get("active_for_seconds") or 0
+    has_clear = any(
+        form.cleaned_data.get("run_on") == RuleAction.RunOn.CLEAR
+        for form in action_formset.forms
+        if form.cleaned_data and not form.cleaned_data.get("DELETE")
+    )
+    if has_clear and not active_for:
+        return ["“On clear” actions need “Keep active for” in the schedule: "
+                "a scheduled rule clears only after that time."]
+    return []
+
+
 # --- Rule chain (Flow) -------------------------------------------------------------------
 #
 # Form rule chain terdiri dari:
@@ -315,14 +440,28 @@ NODE_BLANKS = {
 
 
 class FlowSpecForm(BootstrapFormMixin, forms.ModelForm):
+    """Input rule chain: telemetri (dari satu device atau semua), atau jadwal (tahap 14)."""
+
     class Meta:
         model = FlowSpec
-        fields = ("device",)
+        fields = ("trigger", "device")
+        widgets = {"trigger": forms.RadioSelect}
 
     def __init__(self, *args, devices, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["device"].queryset = devices
         self.fields["device"].empty_label = "— Any of my devices —"
+        self.fields["trigger"].widget.attrs["class"] = "form-check-input"
+        self.fields["trigger"].widget.attrs["data-flow-trigger"] = ""
+        # Tidak wajib: form/JSON lama (sebelum tahap 14) tidak mengirim field ini.
+        self.fields["trigger"].required = False
+        self.fields["device"].help_text = (
+            "Telemetry: blank = every device you can see. "
+            "Schedule: optional; the device used by alarm nodes and {deviceName}."
+        )
+
+    def clean_trigger(self):
+        return self.cleaned_data.get("trigger") or FlowSpec.Trigger.TELEMETRY
 
 
 def kind_choices():

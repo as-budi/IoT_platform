@@ -712,8 +712,8 @@ class SampleRulesTests(TestCase):
         out = StringIO()
         call_command("seed_rules", stdout=out)
         self.assertIn("0 sample rule(s) created", out.getvalue())
-        self.assertEqual(Rule.objects.filter(model=RuleModel.ECA).count(), 6)
-        self.assertEqual(Rule.objects.filter(model=RuleModel.FLOW).count(), 4)
+        self.assertEqual(Rule.objects.filter(model=RuleModel.ECA).count(), 7)
+        self.assertEqual(Rule.objects.filter(model=RuleModel.FLOW).count(), 5)
         self.assertFalse(Rule.objects.get(name="Weather station silent").is_enabled)
         self.assertEqual(len(Rule.objects.get(name="Smart irrigation").eca.when_groups), 2)
         for username in ("andi", "rina"):

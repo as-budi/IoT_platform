@@ -21,6 +21,14 @@ cabang berikutnya (urutan panah = urutan di form). Setiap node yang dilewati
 dicatat sebagai satu baris JEJAK (trace) supaya jalannya pesan bisa dibaca di
 halaman aturan. Penjelasan lengkap dengan contoh: docs/flow-mekanisme.md.
 
+Input "On a schedule" (tahap 14, docs/tahap-14-penjadwalan.md): rule chain
+tidak menunggu telemetri, tetapi menerima SATU pesan buatan pada setiap waktu
+jadwal (RuleSchedule). Isi pesannya jam/menit/hari, sehingga node CHECK bisa
+memilih cabang menurut waktu, dan node LATEST mengambil data sensor yang
+dibutuhkan:
+
+    Input (06:00) ──► [soil ← latest soil_moisture] ──► [soil < 40?] ──True──► [pump ON]
+
 Bedanya dengan ECA (rules/engines/eca.py):
 - ECA punya KEADAAN (IDLE/PENDING/ACTIVE) dan menjalankan aksi hanya saat
   keadaan berpindah. Rule chain TIDAK punya keadaan aturan: setiap pesan
@@ -35,12 +43,16 @@ from dataclasses import dataclass, field
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from devices.models import Device, Telemetry
 
+from .. import schedules
 from ..events import rule_changed, rule_evaluated
-from ..models import Alarm, FlowLink, FlowNode, MathOp, Rule, RuleExecution, RuleModel, RuleState, compare
+from ..models import (
+    Alarm, FlowLink, FlowNode, FlowSpec, MathOp, Rule, RuleExecution, RuleModel, RuleState, compare,
+)
 from .base import RuleEngine
 
 logger = logging.getLogger(__name__)
@@ -127,13 +139,17 @@ class Run:
     """Semua yang dibutuhkan node selama satu pesan berjalan di satu aturan."""
 
     rule: Rule
-    device: Device          # device asal pesan (originator)
+    device: Device          # device asal pesan (originator); None = pesan jadwal tanpa device
     now: object
     results: list = field(default_factory=list)    # hasil node aksi, untuk RuleExecution
     changed: bool = False   # ada aksi yang benar-benar mengubah sesuatu (atau gagal)?
 
     def memory_key(self):
-        return str(self.device.pk)
+        return str(self.device.pk) if self.device else "schedule"
+
+    @property
+    def device_name(self):
+        return self.device.name if self.device else "Schedule"
 
 
 def new_message(message, device):
@@ -157,6 +173,29 @@ def new_message(message, device):
             "deviceName": device.name,
             "protocol": message.get("metadata", {}).get("protocol", ""),
             "ts": ts,
+        },
+    }
+
+
+def schedule_message(scheduled, device):
+    """Pesan buatan untuk rule chain berjadwal (tahap 14). Jam memakai zona waktu server.
+
+        {"data": {"hour": 6, "minute": 0, "weekday": 0, "day": 19, "month": 10},
+         "metadata": {"trigger": "schedule", "scheduledAt": "2026-10-19T06:00:00+07:00",
+                      "deviceId": 3, "deviceName": "Greenhouse Node", "ts": "..."}}
+
+    weekday: 0 = Senin ... 6 = Minggu (sama dengan pilihan hari di jadwal).
+    """
+    local = timezone.localtime(scheduled)
+    return {
+        "data": {"hour": local.hour, "minute": local.minute, "weekday": local.weekday(),
+                 "day": local.day, "month": local.month},
+        "metadata": {
+            "trigger": "schedule",
+            "scheduledAt": local.isoformat(),
+            "deviceId": device.pk if device else "",
+            "deviceName": device.name if device else "",
+            "ts": scheduled.isoformat(),
         },
     }
 
@@ -295,7 +334,7 @@ def action_context(run, msg, node):
     value = msg["data"].get(node.key) if node.key else None
     context.update(
         rule=run.rule.name,
-        device=run.device.name,
+        device=run.device.name if run.device else "—",
         variable=node.key or "",
         value=value,
         threshold=None,
@@ -324,6 +363,9 @@ def node_action(node, msg, run):
             changed = not detail.endswith(actions.ALREADY_REQUESTED)
         elif node.kind == Kind.SEND_COMMAND:
             detail = actions.send_command(node, run.rule, context)
+        elif node.kind in (Kind.CREATE_ALARM, Kind.CLEAR_ALARM) and run.device is None:
+            # Alarm selalu menempel pada device (tahap 14: pesan jadwal tanpa device).
+            raise actions.ActionError("Alarms need a device: choose one under Input → Device.")
         elif node.kind == Kind.CREATE_ALARM:
             changed = not Alarm.objects.active().filter(rule=run.rule, device=run.device).exists()
             detail = actions.raise_alarm(node, run.rule, context)
@@ -448,7 +490,8 @@ class FlowEngine(RuleEngine):
         )
 
     def on_message(self, message, now):
-        """Masukkan pesan ke setiap rule chain yang mendengarkan device asalnya."""
+        """Masukkan pesan ke setiap rule chain yang mendengarkan device asalnya.
+        Rule chain berjadwal (Input "On a schedule") tidak menerima telemetri."""
         if message.get("type") != "TELEMETRY" or not message.get("data"):
             return []
         from devices.views import visible_devices
@@ -458,7 +501,9 @@ class FlowEngine(RuleEngine):
         if device is None:
             return []
         executions = []
-        candidates = self.rules().filter(Q(flow__device_id=device_id) | Q(flow__device__isnull=True))
+        candidates = self.rules().filter(flow__trigger=FlowSpec.Trigger.TELEMETRY).filter(
+            Q(flow__device_id=device_id) | Q(flow__device__isnull=True)
+        )
         for rule in candidates:
             # "Semua device": hanya device yang boleh dilihat pemilik aturan.
             if not visible_devices(rule.owner).filter(pk=device_id).exists():
@@ -469,12 +514,34 @@ class FlowEngine(RuleEngine):
         return executions
 
     def tick(self, now):
-        # Rule chain hanya digerakkan pesan; tidak ada pemeriksaan berkala.
-        return []
+        """Rule chain telemetri hanya digerakkan pesan. Tick hanya menjalankan
+        rule chain berjadwal yang jatuh tempo (tahap 14)."""
+        executions = []
+        for schedule in schedules.due(RuleModel.FLOW, now):
+            claimed = schedules.claim(schedule, now)
+            if claimed is None:
+                continue
+            outcome, scheduled, late = claimed
+            rule = self.rules().filter(pk=schedule.rule_id, flow__trigger=FlowSpec.Trigger.SCHEDULE).first()
+            if rule is None:
+                continue
+            if outcome == schedules.MISSED:
+                executions.append(schedules.log_skipped(rule, now, schedules.missed_detail(scheduled, late)))
+                continue
+            execution = self.run_schedule(rule, scheduled, now)
+            if execution:
+                executions.append(execution)
+        return executions
 
-    def run(self, rule, message, device, now):
-        """Satu pesan melewati satu rule chain. Mengembalikan RuleExecution atau None."""
-        msg = new_message(message, device)
+    def run_schedule(self, rule, scheduled, now):
+        """Satu waktu jadwal: kirim satu pesan jadwal ke Input rule chain."""
+        device = rule.flow.device
+        return self.run(rule, None, device, now, msg=schedule_message(scheduled, device))
+
+    def run(self, rule, message, device, now, msg=None):
+        """Satu pesan melewati satu rule chain. Mengembalikan RuleExecution atau None.
+        `msg` sudah jadi (pesan jadwal) atau dibuat dari `message` antrean."""
+        msg = msg or new_message(message, device)
         run = Run(rule=rule, device=device, now=now)
         trace = walk(rule, msg, run)
 
@@ -482,8 +549,9 @@ class FlowEngine(RuleEngine):
         state.last_evaluated_at = now
         state.snapshot = {
             "at": now.isoformat(),
-            "device": device.pk,
-            "device_name": device.name,
+            "device": device.pk if device else None,
+            "device_name": run.device_name,
+            "trigger": msg["metadata"].get("trigger", "telemetry"),
             "input": msg["data"],
             "trace": trace,
         }
@@ -496,8 +564,9 @@ class FlowEngine(RuleEngine):
         # gagal). Pesan yang hanya menemukan "pompa sudah ON" tidak dicatat,
         # supaya log tidak bertambah setiap 10 detik. Jejak terakhirnya tetap
         # terlihat di kotak "Last run" (RuleState.snapshot).
+        device_id = device.pk if device else None
         if not run.changed:
-            rule_evaluated(rule, device_id=device.pk)
+            rule_evaluated(rule, device_id=device_id)
             return None
         execution = RuleExecution.objects.create(
             rule=rule,
@@ -505,21 +574,26 @@ class FlowEngine(RuleEngine):
             value=None,
             results=run.results,
             ok=all(r["ok"] for r in run.results),
-            snapshot={f"{device.name} · {key}": value for key, value in msg["data"].items()},
+            snapshot={f"{run.device_name} · {key}": value for key, value in msg["data"].items()},
             trace=trace,
             created_at=now,
         )
         logger.info("Rule chain %s ran %s action(s)", rule.pk, len(run.results))
-        rule_changed(rule, state, transition=RuleExecution.Transition.RUN, device_id=device.pk)
+        rule_changed(rule, state, transition=RuleExecution.Transition.RUN, device_id=device_id)
         return execution
 
     def describe(self, rule):
         spec = getattr(rule, "flow", None)
-        source = spec.device.name if spec and spec.device_id else "any of the owner's devices"
         nodes = list(rule.nodes.all())
         actions = sum(1 for node in nodes if node.kind in ACTION_KINDS)
+        if spec and spec.trigger == FlowSpec.Trigger.SCHEDULE:
+            schedule = getattr(rule, "schedule", None) if hasattr(rule, "schedule") else None
+            when = "schedule: " + (schedule.describe() if schedule else "not set")
+        else:
+            source = spec.device.name if spec and spec.device_id else "any of the owner's devices"
+            when = f"new data from {source}"
         return {
-            "when": f"new data from {source}",
+            "when": when,
             "if": f"rule chain of {len(nodes)} node{'s' if len(nodes) != 1 else ''} "
                   f"({actions} action{'s' if actions != 1 else ''})",
             "clear": "—",

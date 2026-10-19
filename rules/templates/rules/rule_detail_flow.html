@@ -45,8 +45,13 @@
     <div class="card shadow-sm h-100">
       <div class="card-body">
         <h2 class="h6 text-muted text-uppercase">Nodes</h2>
+        {% if spec.trigger == "SCHEDULE" %}
+        <p class="small mb-2"><strong>Input</strong> 🕑 receives one message at every scheduled time ({{ schedule_text|default:"no schedule set" }})
+          with <code>hour</code>, <code>minute</code>, <code>weekday</code>, <code>day</code>, <code>month</code>{% if spec.device %}, as device <a class="var-link" href="{% url 'devices:detail' spec.device_id %}">{{ spec.device.name }}</a>{% endif %},
+        {% else %}
         <p class="small mb-2"><strong>Input</strong> receives every telemetry message from
           {% if spec.device %}<a class="var-link" href="{% url 'devices:detail' spec.device_id %}">{{ spec.device.name }}</a>{% else %}any of the owner's devices{% endif %}
+        {% endif %}
           and passes it to {% for link in start_links %}<strong>{{ link.target.name }}</strong>{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-danger">nothing</span>{% endfor %}.</p>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0 small">
@@ -87,6 +92,7 @@
         <p class="small text-muted mt-3 mb-0">A rule chain has no Idle/Active state: every message walks the graph from Input.
           Repeats are held back by the <em>Value changed</em> and <em>Rate limit</em> nodes, which remember a little per device.
           Saving the rule clears that memory.</p>
+        {% if schedule %}{% include "rules/includes/schedule_summary.html" %}{% endif %}
       </div>
     </div>
   </div>
@@ -112,10 +118,10 @@
         {% for execution in executions %}
         <tr>
           <td class="text-nowrap align-top">{{ execution.created_at|date:"d M Y H:i:s" }}</td>
-          <td class="small align-top">{% for label, value, url in execution.value_rows %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
+          <td class="small align-top">{% if execution.transition == "SKIPPED" %}<span class="badge rule-state rule-state-skipped">Skipped</span>{% endif %}{% for label, value, url in execution.value_rows %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</td>
           <td class="small align-top">
             {% for result in execution.results %}
-            <div class="{% if not result.ok %}text-danger{% endif %}">{% if result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
+            <div class="{% if not result.ok %}text-danger{% elif execution.transition == "SKIPPED" %}text-muted{% endif %}">{% if execution.transition == "SKIPPED" %}⏭{% elif result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
             {% endfor %}
             {% if execution.trace %}
             <details class="mt-1"><summary class="text-muted">Path through the chain ({{ execution.trace|length }} step{{ execution.trace|length|pluralize }})</summary>

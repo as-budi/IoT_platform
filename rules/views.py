@@ -8,6 +8,7 @@ visible_devices(pemilik aturan).
 import copy
 import hashlib
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.views import redirect_to_login
@@ -15,6 +16,7 @@ from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.http import Http404, HttpResponse, JsonResponse
+from django.utils import timezone
 from django.utils.text import slugify
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -23,15 +25,19 @@ from django.views.generic import DeleteView, ListView, TemplateView, View
 from devices.views import redirect_back, visible_devices
 from realtime.routing import DASHBOARD_WS_PATH, device_ws_path
 
+from . import schedules
 from .engines import ENGINES
 from .events import originator_device_id
 from .engines.flow import NODE_TYPES, node_summary
 from .flow_diagram import layout as flow_layout
 from .forms import (
     INPUT, ActionFormSet, ClearFormSet, EcaSpecForm, FlowSpecForm, LinkFormSet, NodeFormSet, RuleForm,
-    WhenFormSet, check_graph, cross_check, live_links,
+    RuleScheduleForm, WhenFormSet, check_graph, cross_check, live_links, schedule_checks,
 )
-from .models import Alarm, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleState
+from .models import (
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleSchedule,
+    RuleState,
+)
 from .portable import (
     MAX_IMPORT_BYTES, PORTABLE_MODELS, RuleImportError, export_json, form_data, form_errors, parse,
 )
@@ -41,7 +47,7 @@ EXECUTIONS_PAGE_SIZE = 25
 
 def visible_rules(user):
     queryset = Rule.objects.select_related(
-        "owner", "state", "eca", "eca__device", "flow", "flow__device"
+        "owner", "state", "eca", "eca__device", "flow", "flow__device", "schedule"
     ).prefetch_related(
         "eca__conditions__variable__device",
         "nodes__variable__device", "nodes__target_variable__device", "nodes__target_device", "links",
@@ -62,6 +68,55 @@ def reset_state(rule):
     RuleState.objects.update_or_create(
         rule=rule, defaults={"status": RuleState.Status.IDLE, "pending_since": None}
     )
+
+
+# --- Jadwal (tahap 14) ------------------------------------------------------------------
+
+def schedule_of(rule):
+    """RuleSchedule milik aturan, atau None."""
+    if rule is None or rule.pk is None:
+        return None
+    return RuleSchedule.objects.filter(rule=rule).first()
+
+
+def build_schedule_form(rule, data, with_active_for):
+    return RuleScheduleForm(
+        data, instance=schedule_of(rule) or RuleSchedule(), prefix="schedule", with_active_for=with_active_for,
+    )
+
+
+def validate_schedule_form(forms, in_use):
+    """Form jadwal hanya divalidasi bila aturan memang berjadwal. `in_use` dicatat
+    supaya halaman impor tidak melaporkan error form yang tidak dipakai."""
+    form = forms["schedule_form"]
+    form.in_use = in_use
+    return form.is_valid() if in_use else True
+
+
+def save_schedule(form, rule, in_use):
+    """Simpan jadwal (dan hitung next_run_at), atau hapus bila aturan tidak berjadwal lagi."""
+    if not in_use:
+        RuleSchedule.objects.filter(rule=rule).delete()
+        return None
+    schedule = form.save(commit=False)
+    schedule.rule = rule
+    schedule.weekdays = form.cleaned_data.get("weekdays") or "0123456"
+    schedule.last_run_at = None if form.has_changed() else schedule.last_run_at
+    schedule.reschedule(timezone.now(), save=False)
+    schedule.save()
+    return schedule
+
+
+def schedule_context(rule):
+    """Ringkasan jadwal untuk halaman detail: kalimat, waktu berikutnya, terakhir."""
+    schedule = schedule_of(rule)
+    if schedule is None:
+        return {"schedule": None}
+    return {
+        "schedule": schedule,
+        "schedule_text": schedule.describe(),
+        "schedule_upcoming": schedule.upcoming(3) if rule.is_enabled else [],
+    }
 
 
 # --- Pembaruan langsung ---------------------------------------------------------------
@@ -171,6 +226,7 @@ class EcaRuleFormView(LoginRequiredMixin, View):
             **forms,
             "cross_errors": cross_errors,
             "engine": ENGINES[RuleModel.ECA],
+            "time_zone": settings.TIME_ZONE,
         })
 
     def get(self, request, pk=None):
@@ -210,6 +266,7 @@ def build_eca_forms(rule, owner, data=None, replace=False):
         "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
         "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
         "action_formset": ActionFormSet(data, instance=rule_instance, prefix="actions", **kwargs),
+        "schedule_form": build_schedule_form(rule, data, with_active_for=True),
     }
 
 
@@ -217,11 +274,15 @@ def validate_eca_forms(forms):
     """Validasi semua bagian. Mengembalikan (lolos?, daftar error lintas-form)."""
     # all() akan berhenti di form pertama yang gagal; daftar ini memastikan
     # SEMUA form divalidasi supaya semua pesan error tampil sekaligus.
-    valid = [form.is_valid() for form in forms.values()]
+    valid = [form.is_valid() for key, form in forms.items() if key != "schedule_form"]
+    # Event yang DIKIRIM (belum tentu valid): form jadwal ikut divalidasi bila "Schedule".
+    scheduled = forms["spec_form"]["event"].value() == EcaSpec.Event.SCHEDULE
+    valid.append(validate_schedule_form(forms, scheduled))
     if not all(valid):
         return False, []
     event = forms["spec_form"].cleaned_data["event"]
     cross_errors = cross_check(event, forms["when_formset"], forms["clear_formset"])
+    cross_errors += schedule_checks(scheduled, forms["schedule_form"], forms["action_formset"])
     return not cross_errors, cross_errors
 
 
@@ -244,6 +305,11 @@ def save_eca_forms(forms, rule, owner, replace=False):
         if event == EcaSpec.Event.TELEMETRY:
             save_conditions(forms["when_formset"], spec)
             save_conditions(forms["clear_formset"], spec)
+        elif event == EcaSpec.Event.SCHEDULE:
+            # Kondisi WHEN = syarat tambahan saat jadwal tiba. Kondisi clear tidak
+            # dipakai: aturan berjadwal pulih setelah "keep active for".
+            save_conditions(forms["when_formset"], spec)
+            spec.conditions.filter(role=EcaCondition.Role.CLEAR).delete()
         else:
             spec.conditions.all().delete()  # event "device diam" tidak memakai kondisi
         action_formset = forms["action_formset"]
@@ -255,6 +321,7 @@ def save_eca_forms(forms, rule, owner, replace=False):
             action.rule = saved
             action.order = order
             action.save()
+        save_schedule(forms["schedule_form"], saved, event == EcaSpec.Event.SCHEDULE)
         # Kondisi mungkin berubah: mulai lagi dari IDLE.
         reset_state(saved)
     return saved
@@ -323,6 +390,7 @@ class FlowRuleFormView(LoginRequiredMixin, View):
             ],
             "node_outputs": {kind: list(info.outputs) for kind, info in NODE_TYPES.items()},
             "engine": ENGINES[RuleModel.FLOW],
+            "time_zone": settings.TIME_ZONE,
             "diagram": flow_layout(rule) if rule else None,
         })
 
@@ -364,12 +432,15 @@ def build_flow_forms(rule, owner, data=None, replace=False):
             data, instance=node_instance, prefix="nodes", form_kwargs={"devices": devices}
         ),
         "link_formset": LinkFormSet(data, initial=initial_links, prefix="links"),
+        "schedule_form": build_schedule_form(rule, data, with_active_for=False),
     }
 
 
 def validate_flow_forms(forms):
     """Validasi semua bagian + graf. Mengembalikan (lolos?, daftar error graf)."""
-    valid = [form.is_valid() for form in forms.values()]
+    valid = [form.is_valid() for key, form in forms.items() if key != "schedule_form"]
+    scheduled = forms["spec_form"]["trigger"].value() == FlowSpec.Trigger.SCHEDULE
+    valid.append(validate_schedule_form(forms, scheduled))
     if not all(valid):
         return False, []
     graph_errors = check_graph(forms["node_formset"].node_kinds(), live_links(forms["link_formset"]))
@@ -390,6 +461,7 @@ def save_flow_forms(forms, rule, owner, replace=False):
         if replace:
             saved.nodes.all().delete()   # panahnya ikut terhapus (CASCADE)
         save_flow_graph(saved, forms["node_formset"], live_links(forms["link_formset"]))
+        save_schedule(forms["schedule_form"], saved, spec.trigger == FlowSpec.Trigger.SCHEDULE)
         reset_state(saved)
     return saved
 
@@ -559,6 +631,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             executions=executions,
             alarms=rule.alarms.select_related("device")[:10],
             **{k: v for k, v in evaluation_context(rule).items() if k not in ("rule", "state")},
+            **schedule_context(rule),
         )
         context.update(self.live(rule))
         return context
@@ -600,6 +673,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             "executions": executions,
             "alarms": rule.alarms.select_related("device")[:10],
             **{k: v for k, v in flow_run_context(rule).items() if k not in ("rule", "state")},
+            **schedule_context(rule),
             **self.live(rule),
         }
 
@@ -700,6 +774,9 @@ class RuleToggleView(LoginRequiredMixin, View):
         rule.is_enabled = not rule.is_enabled
         rule.save(update_fields=["is_enabled", "updated_at"])
         reset_state(rule)
+        if rule.is_enabled:
+            # Hitung dari SEKARANG: jadwal yang lewat selama aturan mati tidak dikejar.
+            schedules.reschedule(rule)
         messages.success(request, f"Rule \"{rule.name}\" {'enabled' if rule.is_enabled else 'disabled'}.")
         return redirect_back(request, reverse("rules:detail", args=[rule.pk]))
 
@@ -756,5 +833,3 @@ class AlarmActionView(LoginRequiredMixin, View):
         if done:
             messages.success(request, f"Alarm \"{alarm.message}\" {text}.")
         return redirect_back(request, reverse("rules:alarms"))
-
-

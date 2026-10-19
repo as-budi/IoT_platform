@@ -36,7 +36,9 @@
 </div>
 {% endif %}
 {% endfor %}
-{% if not has_clear_groups %}
+{% if snap.schedule %}
+<div class="small text-muted">Scheduled run at {{ snap.schedule.scheduled|slice:"11:16" }}{% if snap.schedule.late %} (checked {{ snap.schedule.late }} s later){% endif %}: the actions run only when the condition is true.</div>
+{% elif not has_clear_groups %}
 <div class="small text-muted">Clear: when the condition is false → {% include "rules/includes/truth.html" with result=snap.clear.result %}</div>
 {% endif %}
 <p class="small text-muted mt-2 mb-0">
@@ -45,6 +47,6 @@
 </p>
 {% else %}
 <h2 class="h6 text-muted text-uppercase">Last evaluation</h2>
-<p class="small text-muted mb-0">{% if rule.eca.event == "INACTIVITY" %}This rule checks every second whether the device has sent data.{% else %}Not evaluated yet. It is evaluated when a variable in its conditions sends data.{% endif %}</p>
+<p class="small text-muted mb-0">{% if rule.eca.event == "INACTIVITY" %}This rule checks every second whether the device has sent data.{% elif rule.eca.event == "SCHEDULE" %}{% if snap.schedule %}Last scheduled run at {{ snap.schedule.scheduled|slice:"11:16" }}: no conditions, the actions ran.{% else %}Not run yet. It runs at the scheduled times (see Schedule above).{% endif %}{% else %}Not evaluated yet. It is evaluated when a variable in its conditions sends data.{% endif %}</p>
 {% endif %}
 {% endwith %}

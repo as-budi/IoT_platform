@@ -23,7 +23,7 @@
       Each node ends with a result — <strong>True/False</strong> for filters, <strong>Success/Failure</strong> for the others —
       and the message follows the links with that label. A branch without a matching link simply ends.</p>
 
-    {% if rule_form.errors or spec_form.errors or node_formset.total_error_count or link_formset.total_error_count or graph_errors %}
+    {% if rule_form.errors or spec_form.errors or node_formset.total_error_count or link_formset.total_error_count or graph_errors or schedule_form.in_use and schedule_form.errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>
     {% endif %}
 
@@ -53,11 +53,26 @@
       {# ---------- 1. Input ---------- #}
       <div class="card shadow-sm mb-3"><div class="card-body">
         <h2 class="h6 eca-heading"><span class="eca-step">1</span> Input</h2>
+        <div class="d-flex flex-wrap gap-4 mb-3">
+          {% for radio in spec_form.trigger %}
+          <div class="form-check">
+            {{ radio.tag }}
+            <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+        {% for error in spec_form.trigger.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
         <div class="row g-3">
           <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
         </div>
-        <p class="small text-muted mb-0">The chain runs once for <strong>every telemetry message</strong> from this device.
+        <p class="small text-muted mb-0" data-trigger="TELEMETRY">The chain runs once for <strong>every telemetry message</strong> from this device.
           The message carries the keys the device sent, e.g. <code>temperature</code>, <code>humidity</code>.</p>
+        <div data-trigger="SCHEDULE">
+          <p class="small text-muted">The chain runs <strong>once at every scheduled time</strong>; telemetry does not start it.
+            The message carries the time: <code>hour</code>, <code>minute</code>, <code>weekday</code> (0 = Mon),
+            <code>day</code>, <code>month</code>. Use <em>Add latest value</em> nodes to bring in sensor data.</p>
+          {% include "rules/includes/schedule_fields.html" with form=schedule_form %}
+        </div>
       </div></div>
 
       {# ---------- 2. Nodes ---------- #}
@@ -107,6 +122,7 @@
 <script>
 /*
  * Form rule chain:
+ * - menampilkan field Input sesuai pemicu (telemetri / jadwal),
  * - menampilkan field sesuai jenis node, beserta penjelasan dan label keluarannya,
  * - menambah/menghapus node dan link (Django formset: hapus = centang DELETE),
  * - menyusun ulang pilihan asal/tujuan link dari NAMA node yang sedang diketik,
@@ -116,6 +132,15 @@
 (function () {
   "use strict";
   const form = document.getElementById("rule-form");
+
+  // Input: telemetri atau jadwal (tahap 14). Tampilkan penjelasan dan field jadwal yang sesuai.
+  function showTrigger() {
+    const checked = form.querySelector("input[name='flow-trigger']:checked");
+    const trigger = checked ? checked.value : "TELEMETRY";
+    form.querySelectorAll("[data-trigger]").forEach((el) => { el.hidden = el.dataset.trigger !== trigger; });
+  }
+  form.querySelectorAll("input[name='flow-trigger']").forEach((radio) => radio.addEventListener("change", showTrigger));
+  showTrigger();
   const INPUT = "{{ input_name }}";
   const TYPES = Object.fromEntries(JSON.parse(document.getElementById("node-types").textContent).map((t) => [t.kind, t]));
   const OUTPUTS = JSON.parse(document.getElementById("node-outputs").textContent);

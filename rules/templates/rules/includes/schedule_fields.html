@@ -1,0 +1,71 @@
+{% comment %}
+Field jadwal (tahap 14). Butuh `form` (RuleScheduleForm, prefix "schedule").
+Dipakai form ECA (event "Schedule") dan form rule chain (Input "On a schedule").
+Field yang tampil mengikuti pilihan "Repeat"; field lain tetap terkirim dan
+dikosongkan server (RuleScheduleForm.clean).
+{% endcomment %}
+<div class="schedule-box" data-schedule>
+  <div class="mb-2">
+    <span class="form-label d-block">{{ form.kind.label|capfirst }}</span>
+    <div class="d-flex flex-wrap gap-4">
+      {% for radio in form.kind %}
+      <div class="form-check">
+        {{ radio.tag }}
+        <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+      </div>
+      {% endfor %}
+    </div>
+    {% for error in form.kind.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  </div>
+
+  <div class="row g-3">
+    <div class="col-md-4" data-kind="DAILY">{% include "rules/includes/field.html" with field=form.times %}</div>
+    <div class="col-md-4" data-kind="INTERVAL">{% include "rules/includes/field.html" with field=form.interval_minutes %}</div>
+    <div class="col-md-5" data-kind="ONCE">{% include "rules/includes/field.html" with field=form.run_at %}</div>
+    <div class="col-md-8" data-kind="DAILY INTERVAL">
+      <span class="form-label d-block">{{ form.weekdays.label }}</span>
+      <div class="d-flex flex-wrap column-gap-3 mb-1">
+        {% for box in form.weekdays %}
+        <div class="form-check">
+          {{ box.tag }}
+          <label class="form-check-label" for="{{ box.id_for_label }}">{{ box.choice_label }}</label>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="small">
+        <button type="button" class="btn btn-link btn-sm p-0" data-days="0123456">Every day</button> ·
+        <button type="button" class="btn btn-link btn-sm p-0" data-days="01234">Mon–Fri</button> ·
+        <button type="button" class="btn btn-link btn-sm p-0" data-days="56">Sat–Sun</button>
+      </div>
+      {% for error in form.weekdays.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+    </div>
+    {% if form.active_for_seconds %}
+    <div class="col-md-6">{% include "rules/includes/field.html" with field=form.active_for_seconds %}</div>
+    {% endif %}
+  </div>
+  {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+  <p class="small text-muted mb-0">Times use the server's time zone ({{ time_zone }}).
+    The rule engine worker (<code>manage.py rule_engine</code>) must be running.</p>
+</div>
+
+<script>
+/* Tampilkan field sesuai pilihan "Repeat", dan tombol pintas pilihan hari. */
+(function () {
+  "use strict";
+  const box = document.currentScript.previousElementSibling;
+  function show() {
+    const checked = box.querySelector("[data-schedule-kind]:checked");
+    const kind = checked ? checked.value : "DAILY";
+    box.querySelectorAll("[data-kind]").forEach((el) => {
+      el.hidden = !el.dataset.kind.split(" ").includes(kind);
+    });
+  }
+  box.querySelectorAll("[data-schedule-kind]").forEach((radio) => radio.addEventListener("change", show));
+  box.querySelectorAll("[data-days]").forEach((button) => button.addEventListener("click", () => {
+    box.querySelectorAll("input[name$='-weekdays']").forEach((input) => {
+      input.checked = button.dataset.days.includes(input.value);
+    });
+  }));
+  show();
+})();
+</script>

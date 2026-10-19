@@ -21,7 +21,7 @@
     <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">ECA</span></h1>
     <p class="text-muted mb-4"><strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run the actions. When the condition recovers, the rule <strong>clears</strong> and can run other actions.</p>
 
-    {% if rule_form.errors or spec_form.errors or action_formset.total_error_count or when_formset.total_error_count or clear_formset.total_error_count or cross_errors %}
+    {% if rule_form.errors or spec_form.errors or action_formset.total_error_count or when_formset.total_error_count or clear_formset.total_error_count or cross_errors or schedule_form.in_use and schedule_form.errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>
     {% endif %}
 
@@ -63,20 +63,33 @@
           <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
           <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.silence_seconds %}</div>
         </div>
+        <div data-event="SCHEDULE">
+          <p class="small text-muted">
+            The rule is checked <strong>at the scheduled times</strong>, not when data arrives. It activates
+            (runs the “on activate” actions) when the condition below holds — or every time, if there is no condition.
+          </p>
+          {% include "rules/includes/schedule_fields.html" with form=schedule_form %}
+        </div>
       </div></div>
 
       {# ---------- 2. Condition ---------- #}
-      <div class="card shadow-sm mb-3" data-event="TELEMETRY"><div class="card-body">
+      <div class="card shadow-sm mb-3" data-event="TELEMETRY SCHEDULE"><div class="card-body">
         <h2 class="h6 eca-heading"><span class="eca-step">2</span> If — condition</h2>
         {% for error in cross_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
         <p class="small text-muted">
           Every condition inside a box must be true (<strong>AND</strong>). The rule activates when
           <strong>any</strong> box is true (<strong>OR</strong>).
         </p>
+        <p class="small text-muted" data-event="SCHEDULE">
+          <strong>Optional</strong> for a schedule: e.g. water at 06:00 <em>only if</em> the soil is dry.
+          Leave it empty to run the actions at every scheduled time. Values come from the latest stored readings.
+        </p>
         {% include "rules/includes/condition_editor.html" with formset=when_formset empty_text="" add_label="Add OR group" %}
 
+        <div data-event="TELEMETRY">
         <h3 class="h6 mt-4">Clear when <span class="text-muted fw-normal small">(optional, for hysteresis)</span></h3>
         {% include "rules/includes/condition_editor.html" with formset=clear_formset empty_text="No clear conditions: the rule clears as soon as the condition above is false." add_label="Add clear group" %}
+        </div>
       </div></div>
 
       {# ---------- Waktu & pengaman ---------- #}
@@ -84,8 +97,8 @@
         <h2 class="h6 mb-3">Timing &amp; safeguards</h2>
         <div class="row g-3">
           <div class="col-md-4" data-event="TELEMETRY">{% include "rules/includes/field.html" with field=spec_form.duration_seconds %}</div>
-          <div class="col-md-4">{% include "rules/includes/field.html" with field=spec_form.cooldown_seconds %}</div>
-          <div class="col-md-4" data-event="TELEMETRY">{% include "rules/includes/field.html" with field=spec_form.max_age_seconds %}</div>
+          <div class="col-md-4" data-event="TELEMETRY INACTIVITY">{% include "rules/includes/field.html" with field=spec_form.cooldown_seconds %}</div>
+          <div class="col-md-4" data-event="TELEMETRY SCHEDULE">{% include "rules/includes/field.html" with field=spec_form.max_age_seconds %}</div>
         </div>
       </div></div>
 
@@ -117,7 +130,7 @@
 <script>
 /*
  * Form ECA:
- * - menampilkan field sesuai event (telemetri / device diam),
+ * - menampilkan field sesuai event (telemetri / device diam / jadwal),
  * - menampilkan field sesuai jenis aksi,
  * - menambah dan menghapus aksi (Django formset).
  * Field yang disembunyikan tetap terkirim; server mengabaikan field yang
@@ -130,8 +143,9 @@
   function showEventFields() {
     const checked = form.querySelector("input[name='eca-event']:checked");
     const event = checked ? checked.value : "TELEMETRY";
+    // data-event boleh berisi beberapa event, dipisah spasi ("TELEMETRY SCHEDULE").
     form.querySelectorAll("[data-event]").forEach((el) => {
-      el.hidden = el.dataset.event !== event;
+      el.hidden = !el.dataset.event.split(" ").includes(event);
     });
     // Tanpa langkah "If" (event device diam), aksi menjadi langkah ke-2.
     form.querySelector("[data-step-actions]").textContent = event === "INACTIVITY" ? "2" : "3";

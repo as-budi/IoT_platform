@@ -28,6 +28,11 @@ def originator_device_id(rule):
         return None
     if spec.event == spec.Event.INACTIVITY:
         return spec.device_id
+    if spec.event == spec.Event.SCHEDULE:
+        from .engines.eca import schedule_device
+
+        device = schedule_device(rule)
+        return device.pk if device else None
     primary = spec.primary_condition()
     return primary.variable.device_id if primary else None
 

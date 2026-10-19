@@ -1,0 +1,18 @@
+{% comment %}
+Ringkasan jadwal aturan (tahap 14) untuk halaman detail ECA dan rule chain.
+Butuh `schedule`, `schedule_text`, `schedule_upcoming` (views.schedule_context).
+{% endcomment %}
+<div class="schedule-summary small mt-3 pt-3 border-top">
+  <div class="fw-semibold mb-1">Schedule <span class="fw-normal text-muted">· {{ schedule_text }}</span></div>
+  {% if not rule.is_enabled %}
+  <div class="text-muted">The rule is disabled, so it does not run. Enabling it plans the next run from that moment.</div>
+  {% elif schedule_upcoming %}
+  <div><span class="text-muted">Next:</span>
+    {% for moment in schedule_upcoming %}<span class="badge text-bg-light border">{{ moment|date:"D d M H:i" }}</span>{% if not forloop.last %} {% endif %}{% endfor %}
+  </div>
+  {% else %}
+  <div class="text-muted">No more runs planned{% if schedule.kind == "ONCE" %} (the one-time run is in the past){% endif %}.</div>
+  {% endif %}
+  {% if schedule.last_run_at %}<div class="text-muted mt-1">Last scheduled time: {{ schedule.last_run_at|date:"D d M H:i" }}</div>{% endif %}
+  {% if rule.model == "ECA" and schedule.active_for_seconds %}<div class="text-muted mt-1">Stays active for {{ schedule.active_for_seconds }} s, then clears.</div>{% endif %}
+</div>

@@ -1,13 +1,20 @@
 from django.contrib import admin
 
 from .models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleExecution, RuleState,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleExecution, RuleSchedule,
+    RuleState,
 )
 
 
 class EcaSpecInline(admin.StackedInline):
     model = EcaSpec
     can_delete = False
+
+
+class RuleScheduleInline(admin.StackedInline):
+    model = RuleSchedule
+    can_delete = False
+    readonly_fields = ("next_run_at", "last_run_at")
 
 
 class RuleActionInline(admin.TabularInline):
@@ -37,7 +44,7 @@ class RuleAdmin(admin.ModelAdmin):
     list_display = ("name", "owner", "model", "is_enabled", "updated_at")
     list_filter = ("model", "is_enabled")
     search_fields = ("name",)
-    inlines = [EcaSpecInline, RuleActionInline, FlowSpecInline, FlowNodeInline, FlowLinkInline]
+    inlines = [EcaSpecInline, RuleScheduleInline, RuleActionInline, FlowSpecInline, FlowNodeInline, FlowLinkInline]
 
 
 @admin.register(RuleState)

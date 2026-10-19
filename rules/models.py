@@ -12,6 +12,8 @@ Tahap 7 mengimplementasikan ECA (Event–Condition–Action), tahap 8 rule chain
 Struktur tabel:
 
     Rule            aturan milik seorang pengguna: nama, model, aktif/tidak
+      RuleSchedule  (1-1, opsional) jadwal pemicu aturan (tahap 14): ECA dengan
+                    event "Schedule", atau rule chain dengan Input "On a schedule"
       EcaSpec       (1-1) isi aturan ECA: event, durasi, cooldown, batas umur data
         EcaCondition (1-banyak) kondisi "variabel op ambang", dikelompokkan OR-berisi-AND
       FlowSpec      (1-1) isi rule chain: dari device mana pesan diterima
@@ -115,6 +117,80 @@ def compare(value, operator, threshold):
     raise ValueError(f"Unknown operator {operator!r}")
 
 
+class RuleSchedule(models.Model):
+    """Jadwal yang memicu sebuah aturan (tahap 14, docs/tahap-14-penjadwalan.md).
+
+    Tiga bentuk jadwal:
+
+        DAILY     pada jam-jam tertentu ("06:00,18:30") di hari-hari tertentu
+        INTERVAL  setiap N menit, dihitung dari pukul 00:00 (N = 15 -> 00:00, 00:15, ...)
+                  di hari-hari tertentu
+        ONCE      sekali, pada tanggal dan jam tertentu
+
+    Semua jam memakai zona waktu server (TIME_ZONE di config/settings.py).
+
+    Worker tidak menghitung jadwal setiap detik. Waktu berikutnya disimpan di
+    `next_run_at` (diindeks), sehingga tick cukup bertanya ke database:
+    "jadwal mana yang next_run_at <= sekarang?". Setelah dijalankan,
+    `next_run_at` dimajukan ke waktu berikutnya (ONCE: dikosongkan).
+    """
+
+    class Kind(models.TextChoices):
+        DAILY = "DAILY", "At set times"
+        INTERVAL = "INTERVAL", "Every N minutes"
+        ONCE = "ONCE", "Once"
+
+    rule = models.OneToOneField(Rule, on_delete=models.CASCADE, related_name="schedule", primary_key=True)
+    kind = models.CharField("repeat", max_length=10, choices=Kind.choices, default=Kind.DAILY)
+    # DAILY: jam-jam dalam sehari, "HH:MM" dipisah koma, urut.
+    times = models.CharField("at", max_length=200, blank=True)
+    # DAILY dan INTERVAL: hari yang berlaku, angka 0-6 (0 = Senin, seperti datetime.weekday()).
+    weekdays = models.CharField("on", max_length=7, default="0123456")
+    interval_minutes = models.PositiveIntegerField("every (minutes)", null=True, blank=True)
+    run_at = models.DateTimeField("on (date and time)", null=True, blank=True)
+    # Khusus ECA: lama aturan tetap ACTIVE sebelum clear otomatis (aksi CLEAR berjalan).
+    # 0 = hanya aksi ACTIVATE, aturan langsung kembali ke IDLE.
+    active_for_seconds = models.PositiveIntegerField("keep active for (seconds)", default=0)
+    next_run_at = models.DateTimeField("next run", null=True, blank=True, db_index=True)
+    last_run_at = models.DateTimeField("last run", null=True, blank=True)
+
+    class Meta:
+        verbose_name = "rule schedule"
+        verbose_name_plural = "rule schedules"
+
+    def __str__(self):
+        return f"Schedule of {self.rule}: {self.describe()}"
+
+    def time_list(self):
+        from .schedules import parse_times
+
+        return parse_times(self.times)
+
+    def weekday_list(self):
+        return sorted({int(d) for d in self.weekdays if d.isdigit() and int(d) < 7})
+
+    def next_after(self, moment):
+        from .schedules import next_run
+
+        return next_run(self, moment)
+
+    def reschedule(self, now=None, save=True):
+        """Hitung ulang next_run_at dari `now` (dipanggil saat aturan disimpan/diaktifkan)."""
+        self.next_run_at = self.next_after(now or timezone.now())
+        if save:
+            self.save(update_fields=["next_run_at"])
+
+    def upcoming(self, count=3, now=None):
+        from .schedules import upcoming
+
+        return upcoming(self, count, now or timezone.now())
+
+    def describe(self):
+        from .schedules import describe
+
+        return describe(self)
+
+
 class EcaSpec(models.Model):
     """Isi aturan ECA.
 
@@ -132,6 +208,7 @@ class EcaSpec(models.Model):
     class Event(models.TextChoices):
         TELEMETRY = "TELEMETRY", "New data for a variable in the conditions"
         INACTIVITY = "INACTIVITY", "Device sends no data"
+        SCHEDULE = "SCHEDULE", "On a schedule"      # tahap 14: lihat RuleSchedule
 
     rule = models.OneToOneField(Rule, on_delete=models.CASCADE, related_name="eca", primary_key=True)
     event = models.CharField("event", max_length=12, choices=Event.choices, default=Event.TELEMETRY)
@@ -268,9 +345,19 @@ class EcaCondition(models.Model):
 
 
 class FlowSpec(models.Model):
-    """Pengaturan rule chain: pesan dari device mana yang masuk ke Input."""
+    """Pengaturan rule chain: apa yang masuk ke Input.
+
+    trigger TELEMETRY  setiap pesan telemetri dari `device` (kosong = semua device pemilik)
+    trigger SCHEDULE   satu pesan buatan pada setiap waktu jadwal (RuleSchedule, tahap 14),
+                       berisi jam/menit/hari; `device` (opsional) menjadi device pesan itu
+    """
+
+    class Trigger(models.TextChoices):
+        TELEMETRY = "TELEMETRY", "Telemetry messages"
+        SCHEDULE = "SCHEDULE", "On a schedule"
 
     rule = models.OneToOneField(Rule, on_delete=models.CASCADE, related_name="flow", primary_key=True)
+    trigger = models.CharField("input", max_length=10, choices=Trigger.choices, default=Trigger.TELEMETRY)
     device = models.ForeignKey(
         Device,
         verbose_name="messages from",
@@ -514,6 +601,7 @@ class RuleExecution(models.Model):
         ACTIVATE = "ACTIVATE", "Activated"
         CLEAR = "CLEAR", "Cleared"
         RUN = "RUN", "Ran actions"     # rule chain: satu pesan menjalankan node aksi
+        SKIPPED = "SKIPPED", "Skipped"  # jadwal tiba tetapi tidak dijalankan (tahap 14)
 
     rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="executions")
     transition = models.CharField("transition", max_length=10, choices=Transition.choices)
