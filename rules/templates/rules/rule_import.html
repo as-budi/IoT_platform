@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}Import rule · IoT Platform{% endblock %}
 
@@ -40,13 +41,19 @@
           {% csrf_token %}
           <div class="mb-3">
             <label class="form-label" for="import-file">JSON file</label>
-            <input class="form-control" type="file" id="import-file" name="file" accept=".json,application/json">
+            <input class="form-control" type="file" id="import-file" name="file" accept=".json,application/json" data-json-file>
           </div>
           <div class="mb-3">
             <label class="form-label" for="import-text">…or paste the JSON</label>
-            <textarea class="form-control font-monospace small" id="import-text" name="text" rows="16"
-                      spellcheck="false" placeholder='{"format": "iot-platform.rule", "version": 1, "model": "ECA" or "FLOW", ...}'>{{ text }}</textarea>
-            <div class="form-text">A file, when chosen, is used instead of the text. Limit 100 KB.</div>
+            {# data-json-editor: static/js/json_editor.js menambahkan nomor baris, warna, pemeriksaan, dan Preview. #}
+            <textarea class="form-control font-monospace small" id="import-text" name="text" rows="16" data-json-editor
+                      spellcheck="false" autocomplete="off" autocapitalize="off"
+                      placeholder='{"format": "iot-platform.rule", "version": 1, "model": "ECA" or "FLOW", ...}'>{{ text }}</textarea>
+            <div class="form-text">
+              A chosen file is loaded into the editor so you can check and change it; you can also drop a file on the editor. Limit 100 KB.
+              <strong>Format</strong> re-indents valid JSON (2 spaces per level) without changing its content, handy after pasting JSON that is all on one line.
+              Files from <strong>Export</strong> are already formatted.
+            </div>
           </div>
           <button type="submit" class="btn btn-primary">{% if rule %}Replace rule{% else %}Import rule{% endif %}</button>
           <a class="btn btn-link" href="{% if rule %}{% url 'rules:detail' rule.pk %}{% else %}{% url 'rules:list' %}{% endif %}">Cancel</a>
@@ -55,4 +62,9 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/json_viewer.js' %}"></script>
+<script src="{% static 'js/json_editor.js' %}"></script>
 {% endblock %}

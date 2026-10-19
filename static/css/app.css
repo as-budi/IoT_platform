@@ -831,3 +831,248 @@ a.user-chip.active {
   background: var(--app-surface-2);
   font-size: 0.8rem;
 }
+
+/* ---------- Penampil JSON (static/js/json_viewer.js) ---------- */
+:root,
+[data-bs-theme="light"] {
+  --jv-key: #8b1e1e;
+  --jv-string: #1d4f91;
+  --jv-number: #23784a;
+  --jv-literal: #1e3a8a;
+  --jv-guide: #d0d5dd;
+}
+
+[data-bs-theme="dark"] {
+  --jv-key: #f2a7a0;
+  --jv-string: #8ab4f8;
+  --jv-number: #81c995;
+  --jv-literal: #a5b4fc;
+  --jv-guide: #3a404b;
+}
+
+.jv-toolbar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.35rem;
+}
+
+/* Kotak bergulir: tinggi maksimal, gulir vertikal di dalam kotak. */
+.jv-view {
+  max-height: 32rem;
+  overflow: auto;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  background: var(--app-surface);
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* Satu baris: nomor | tombol lipat | garis kedalaman | isi.
+   Isi yang panjang dibungkus di kolomnya sendiri, rata dengan awal isi. */
+.jv-line {
+  display: flex;
+  align-items: stretch;
+}
+
+.jv-line:hover {
+  background: var(--app-surface-2);
+}
+
+.jv-num {
+  flex: 0 0 3.25rem;
+  padding-right: 0.75rem;
+  text-align: right;
+  color: var(--app-muted);
+  user-select: none;
+}
+
+.jv-fold {
+  flex: 0 0 1.1rem;
+  user-select: none;
+}
+
+.jv-guides {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+/* Garis tegak per tingkat kedalaman, seperti di editor kode. */
+.jv-guide {
+  width: 1.75ch;
+  margin-left: 0.25ch;
+  border-left: 1px solid var(--jv-guide);
+}
+
+.jv-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.jv-key { color: var(--jv-key); }
+.jv-string { color: var(--jv-string); }
+.jv-number { color: var(--jv-number); }
+.jv-literal { color: var(--jv-literal); font-weight: 700; }
+
+.jv-toggle {
+  width: 1.1rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--app-muted);
+  line-height: inherit;
+  cursor: pointer;
+}
+
+.jv-toggle::before { content: "▾"; }
+.jv-collapsed > .jv-line .jv-toggle::before { content: "▸"; }
+.jv-toggle:hover { color: var(--bs-body-color); }
+
+/* Terlipat: anak-anak dan baris penutup disembunyikan, ringkasan "…} 5 keys" tampil. */
+.jv-summary { display: none; }
+.jv-collapsed > .jv-line .jv-summary { display: inline; }
+.jv-collapsed > .jv-children,
+.jv-collapsed > .jv-close { display: none; }
+
+.jv-count {
+  padding: 0 0.35rem;
+  border-radius: 0.5rem;
+  background: var(--app-surface-2);
+  color: var(--app-muted);
+  font-family: var(--bs-body-font-family);
+  font-size: 0.72rem;
+}
+
+/* ---------- Editor JSON di halaman impor (static/js/json_editor.js) ---------- */
+.je-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.je-status {
+  margin-left: auto;
+}
+
+/* Kotak editor: gutter nomor baris + area teks, tinggi tetap, gulir di dalam textarea. */
+.je-edit {
+  display: flex;
+  height: 28rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  background: var(--app-surface);
+  /* clip (bukan hidden): kotak ini tidak boleh ikut tergulir saat browser
+     mengejar posisi kursor; yang menggulir hanya textarea. */
+  overflow: clip;
+}
+
+.je-edit[hidden] {
+  display: none;
+}
+
+.je-edit:focus-within {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb, 13, 110, 253), 0.15);
+}
+
+.je-edit.je-drop {
+  border-style: dashed;
+  border-color: var(--bs-primary);
+}
+
+/* Font, ukuran, tinggi baris, dan padding HARUS sama untuk gutter, <pre>, dan
+   textarea, supaya teks berwarna tepat berada di bawah teks textarea. */
+.je-gutter,
+.je-highlight,
+.je-input {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 0.82rem;
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.je-gutter {
+  flex: 0 0 auto;
+  min-width: 3.25rem;
+  overflow: hidden;
+  border-right: 1px solid var(--app-border);
+  background: var(--app-surface-2);
+  color: var(--app-muted);
+  text-align: right;
+  user-select: none;
+}
+
+.je-error-line {
+  color: var(--bs-danger);
+  font-weight: 700;
+}
+
+.je-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: clip;
+}
+
+.je-highlight,
+.je-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  white-space: pre;
+  overflow: auto;
+  border: 0;
+}
+
+.je-highlight {
+  overflow: hidden;
+  color: var(--bs-body-color);
+  pointer-events: none;
+}
+
+/* Teks textarea transparan; yang terlihat adalah <pre> berwarna di belakangnya. */
+.je-input {
+  resize: none;
+  outline: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--bs-body-color);
+}
+
+.je-input::placeholder {
+  color: var(--app-muted);
+}
+
+.je-input::selection {
+  background: rgba(var(--bs-primary-rgb, 13, 110, 253), 0.25);
+  color: transparent;
+}
+
+.je-preview-empty {
+  padding: 1rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+}
+
+/* Tombol Format di editor JSON: ikon { } + teks, keterangan singkat di sampingnya. */
+.je-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.je-format:disabled {
+  cursor: not-allowed;
+}
+
+.je-hint {
+  transition: color 0.2s;
+}

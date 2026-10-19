@@ -1,3 +1,4 @@
+{% load static %}
 {# Definisi aturan dalam JSON: bentuk yang sama dengan file Export dan yang diterima Import (tahap 13). #}
 <details class="card shadow-sm mb-4 rule-json">
   <summary class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
@@ -10,9 +11,11 @@
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}" target="_blank" rel="noopener">Open raw</a>
       <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Download</a>
     </div>
-    <pre class="rule-json-code mb-0" id="rule-json">{{ rule_json }}</pre>
+    {# Teks asli (untuk Copy). static/js/json_viewer.js menggantinya dengan tampilan bernomor baris. #}
+    <pre class="rule-json-code mb-0" id="rule-json" data-json-viewer>{{ rule_json }}</pre>
   </div>
 </details>
+<script src="{% static 'js/json_viewer.js' %}"></script>
 <script>
   // Tombol Copy di kartu JSON.
   (function () {
