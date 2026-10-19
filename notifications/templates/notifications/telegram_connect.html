@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}Connect Telegram · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'accounts:profile' %}">My profile</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Connect Telegram</li>
+  </ol>
+</nav>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <h1 class="h3 mb-3">Connect Telegram</h1>
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <ol class="mb-4">
+          <li class="mb-2">Open the bot in Telegram (phone or desktop):<br>
+            <a class="btn btn-primary mt-2" href="{{ telegram_url }}" target="_blank" rel="noopener">Open Telegram</a>
+          </li>
+          <li class="mb-2">Press <strong>START</strong> at the bottom of the chat.</li>
+          <li>Come back here and press the button below.</li>
+        </ol>
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-success">I pressed Start</button>
+          <a class="btn btn-link" href="{% url 'accounts:profile' %}">Cancel</a>
+        </form>
+        <p class="form-text mt-3 mb-0">The link works for {{ minutes }} minutes and only for your account.
+          Do not share it: whoever presses Start with it receives your notifications.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

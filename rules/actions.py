@@ -147,11 +147,44 @@ def send_email(action, rule, context):
     return "Email to " + ", ".join(recipients)
 
 
+def telegram_chats(action, rule):
+    """Id chat tujuan: isian "recipients", atau chat yang disambungkan pemilik aturan."""
+    chats = [r.strip() for r in action.recipients.split(",") if r.strip()]
+    if chats:
+        return chats
+    from notifications.models import TelegramLink
+
+    link = TelegramLink.objects.filter(user=rule.owner).first()
+    if link is None:
+        raise ActionError("The rule owner has not connected Telegram (My profile → Telegram).")
+    return [link.chat_id]
+
+
+def send_telegram(action, rule, context):
+    """Kirim pesan Telegram (tahap 17, notifications/telegram.py)."""
+    from notifications import telegram
+
+    if not telegram.enabled():
+        raise ActionError("Telegram is not configured on this server (TELEGRAM_BOT_TOKEN).")
+    text = render_message(action.message or "Rule \"{rule}\" {transition}.\nValues: {values}.", context)
+    sent, failed = [], []
+    for chat in telegram_chats(action, rule):
+        try:
+            telegram.send_message(chat, text)
+            sent.append(chat)
+        except telegram.TelegramError as exc:
+            failed.append(f"{chat}: {exc}")
+    if failed:
+        raise ActionError("; ".join(failed) + (f" (sent to {', '.join(sent)})" if sent else ""))
+    return "Telegram to " + ("the owner" if not action.recipients.strip() else ", ".join(sent))
+
+
 HANDLERS = {
     RuleAction.Kind.SET_ACTUATOR: set_actuator,
     RuleAction.Kind.SEND_COMMAND: send_command,
     RuleAction.Kind.ALARM: raise_alarm,
     RuleAction.Kind.EMAIL: send_email,
+    RuleAction.Kind.TELEGRAM: send_telegram,
 }
 
 

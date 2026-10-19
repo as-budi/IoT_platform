@@ -30,6 +30,20 @@ from .models import (
 )
 from .schedules import DAY_LABELS, format_times, parse_times
 
+# Id chat Telegram: angka (negatif untuk grup) atau @nama_channel (tahap 17).
+TELEGRAM_CHAT = re.compile(r"^(-?\d{1,20}|@[A-Za-z][A-Za-z0-9_]{4,31})$")
+
+
+def clean_telegram_chats(form, cleaned):
+    """Periksa isian "recipients" untuk Telegram: daftar id chat dipisah koma."""
+    chats = [c.strip() for c in (cleaned.get("recipients") or "").split(",") if c.strip()]
+    wrong = [c for c in chats if not TELEGRAM_CHAT.match(c)]
+    if wrong:
+        form.add_error("recipients", f"Not a Telegram chat id: {', '.join(wrong)}. Use numbers like "
+                                     "123456789 (or -100… for groups), or leave blank for yourself.")
+    cleaned["recipients"] = ", ".join(chats)
+
+
 LOW = {Operator.LT, Operator.LTE}
 HIGH = {Operator.GT, Operator.GTE}
 
@@ -261,6 +275,8 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
                     self.add_error("value", f"Must be at most {variable.max_value:g}.")
         elif kind == Kind.SEND_COMMAND:
             require("target_device", "method")
+        elif kind == Kind.TELEGRAM:
+            clean_telegram_chats(self, cleaned)
         elif kind == Kind.ALARM:
             require("severity")
             # Alarm dibuat saat aktif dan di-clear otomatis saat aturan pulih.
@@ -272,6 +288,7 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
             Kind.SEND_COMMAND: {"target_device", "method", "params", "ttl_seconds"},
             Kind.ALARM: {"severity", "message"},
             Kind.EMAIL: {"message", "recipients"},
+            Kind.TELEGRAM: {"message", "recipients"},
         }.get(kind, set())
         blanks = {
             "target_variable": None, "value": None, "target_device": None, "method": "",
@@ -431,6 +448,7 @@ NODE_REQUIRED = {
     FlowNode.Kind.CREATE_ALARM: ("severity",),
     FlowNode.Kind.CLEAR_ALARM: (),
     FlowNode.Kind.EMAIL: (),
+    FlowNode.Kind.TELEGRAM: (),
 }
 NODE_BLANKS = {
     "key": "", "operator": "", "threshold": None, "operand_a": "", "math_op": "", "operand_b": "",
@@ -552,6 +570,8 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
                 except ValueError:
                     if not re.match(r"^[A-Za-z_][A-Za-z0-9_\-]*$", text):
                         self.add_error(name, "Enter a message key or a number.")
+        if kind == FlowNode.Kind.TELEGRAM:
+            clean_telegram_chats(self, cleaned)
         if kind == FlowNode.Kind.SET_ACTUATOR:
             variable, value = cleaned.get("target_variable"), cleaned.get("value")
             if variable and value is not None:

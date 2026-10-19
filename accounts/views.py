@@ -235,6 +235,12 @@ class ProfileView(LoginRequiredMixin, UpdateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["device_count"] = self.request.user.devices.count()
+        # Kartu Telegram (tahap 17, app notifications).
+        from notifications import telegram
+        from notifications.models import TelegramLink
+
+        context["telegram_enabled"] = telegram.enabled()
+        context["telegram_link"] = TelegramLink.objects.filter(user=self.request.user).first()
         return context
 
 

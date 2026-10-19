@@ -414,6 +414,7 @@ class FlowNode(models.Model):
         CREATE_ALARM = "CREATE_ALARM", "Create alarm"
         CLEAR_ALARM = "CLEAR_ALARM", "Clear alarm"
         EMAIL = "EMAIL", "Send email"
+        TELEGRAM = "TELEGRAM", "Send Telegram message"   # tahap 17
 
     rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="nodes")
     name = models.CharField(
@@ -455,7 +456,8 @@ class FlowNode(models.Model):
     severity = models.CharField("severity", max_length=10, blank=True)
     message = models.CharField("message", max_length=255, blank=True)
     recipients = models.CharField(
-        "recipients", max_length=255, blank=True, help_text="Comma-separated. Blank = the rule owner."
+        "recipients", max_length=255, blank=True,
+        help_text="Comma-separated. Email: addresses. Telegram: chat ids. Blank = the rule owner.",
     )
 
     # Ingatan node (opsional): CHANGED menyimpan nilai terakhir, THROTTLE waktu
@@ -510,6 +512,7 @@ class RuleAction(models.Model):
         SEND_COMMAND = "SEND_COMMAND", "Send command"
         ALARM = "ALARM", "Raise alarm"
         EMAIL = "EMAIL", "Send email"
+        TELEGRAM = "TELEGRAM", "Send Telegram message"   # tahap 17, app notifications
 
     class RunOn(models.TextChoices):
         ACTIVATE = "ACTIVATE", "When the rule activates"
@@ -546,12 +549,13 @@ class RuleAction(models.Model):
 
     # ALARM
     severity = models.CharField("severity", max_length=10, blank=True)  # Alarm.Severity
-    # ALARM dan EMAIL: teks dengan placeholder {rule}, {device}, {variable}, {value}, {threshold}
+    # ALARM, EMAIL, dan TELEGRAM: teks dengan placeholder {rule}, {device}, {variable}, {value}, {threshold}
     message = models.CharField("message", max_length=255, blank=True)
 
-    # EMAIL
+    # EMAIL dan TELEGRAM (alamat email / id chat Telegram)
     recipients = models.CharField(
-        "recipients", max_length=255, blank=True, help_text="Comma-separated. Blank = the rule owner."
+        "recipients", max_length=255, blank=True,
+        help_text="Comma-separated. Email: addresses. Telegram: chat ids. Blank = the rule owner.",
     )
 
     class Meta:

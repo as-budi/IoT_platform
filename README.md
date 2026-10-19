@@ -36,6 +36,7 @@ Penjelasan konsep:
 - [docs/tahap-14-penjadwalan.md](docs/tahap-14-penjadwalan.md) — penjadwalan aturan: ECA event "On a schedule" dan rule chain Input terjadwal, next_run_at + klaim atomik, jadwal terlewat, clear otomatis
 - [docs/tahap-15-cache-busting-file-statis.md](docs/tahap-15-cache-busting-file-statis.md) — nama file statis ber-hash (ManifestStaticFilesStorage) supaya browser tidak memakai CSS/JS lama setelah update, cache Nginx setahun untuk file ber-hash
 - [docs/tahap-16-ringkasan-dan-status-device.md](docs/tahap-16-ringkasan-dan-status-device.md) — worker `housekeeping`: tabel ringkasan telemetri per menit/jam untuk chart periode panjang, status online/offline device (batas waktu tanpa data + MQTT Last Will), riwayat koneksi
+- [docs/tahap-17-notifikasi-telegram.md](docs/tahap-17-notifikasi-telegram.md) — notifikasi Telegram: satu bot platform, menyambungkan akun lewat deep link + getUpdates, aksi ECA dan node rule chain "Send Telegram message"
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 - [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 

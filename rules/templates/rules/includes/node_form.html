@@ -55,8 +55,8 @@
     </div>
     <div class="row g-3">
       <div class="col-sm-4" data-for="CREATE_ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
-      <div class="col-sm-4" data-for="EMAIL">{% include "rules/includes/field.html" with field=form.recipients %}</div>
-      <div class="col-sm-8" data-for="CREATE_ALARM EMAIL">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-sm-4" data-for="EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      <div class="col-sm-8" data-for="CREATE_ALARM EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.message %}</div>
     </div>
   </div>
 </div>

@@ -26,6 +26,8 @@ urlpatterns = [
     path("firmware/", include("ota.urls")),
     # /api/...       -> API untuk device sungguhan (mis. ESP32), lihat api/urls.py
     path("api/", include("api.urls")),
+    # Menyambungkan akun dengan Telegram (tahap 17).
+    path("notifications/", include("notifications.urls")),
     # Halaman depan langsung diarahkan ke dashboard.
     path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]

@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "rules",        # rule engine & alarm (perintah: manage.py rule_engine)
     "launcher",     # perintah manage.py runall: menjalankan semua layanan sekaligus
     "ota",          # pembaruan firmware over-the-air (tahap 9)
+    "notifications",  # notifikasi Telegram untuk aksi aturan (tahap 17)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -291,6 +292,13 @@ DEVICE_OFFLINE_SECONDS = int(os.getenv("DEVICE_OFFLINE_SECONDS", "300"))
 # Ringkasan per menit dihitung ulang mundur sejauh ini (detik), supaya data yang
 # datang terlambat (device menyimpan data saat offline) ikut terhitung.
 TELEMETRY_ROLLUP_LATE_SECONDS = int(os.getenv("TELEMETRY_ROLLUP_LATE_SECONDS", "600"))
+
+# --- Telegram (tahap 17, docs/tahap-17-notifikasi-telegram.md) ----------------------
+# Token dari @BotFather. Kosong = aksi "Send Telegram message" tidak tersedia.
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+# Opsional: nama bot tanpa @ (bila kosong ditanyakan ke Telegram lewat getMe).
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
+TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org")
 
 
 # --- Email (aksi "Send email" pada aturan, aktivasi akun, lupa password) ----------

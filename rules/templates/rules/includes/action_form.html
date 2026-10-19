@@ -9,7 +9,7 @@
     {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
     <div class="row g-3 align-items-end">
       <div class="col-sm-5">{% include "rules/includes/field.html" with field=form.kind %}</div>
-      <div class="col-sm-5" data-for="SET_ACTUATOR SEND_COMMAND EMAIL">{% include "rules/includes/field.html" with field=form.run_on %}</div>
+      <div class="col-sm-5" data-for="SET_ACTUATOR SEND_COMMAND EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.run_on %}</div>
       <div class="col-sm-2 text-sm-end mb-3">
         <button type="button" class="btn btn-sm btn-outline-danger" data-remove-action>Remove</button>
       </div>
@@ -26,9 +26,10 @@
     </div>
     <div class="row g-3">
       <div class="col-sm-4" data-for="ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
-      <div class="col-sm-4" data-for="EMAIL">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      <div class="col-sm-4" data-for="EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.recipients %}</div>
       {# Satu field `message` untuk alarm dan email (nama input tidak boleh kembar). #}
-      <div class="col-sm-8" data-for="ALARM EMAIL">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-sm-8" data-for="ALARM EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="TELEGRAM">Blank recipients = the Telegram chat connected on the rule owner's profile.</div>
       <div class="col-12 small text-muted mt-0 mb-2" data-for="ALARM">The alarm is raised when the rule activates and cleared automatically when it clears.</div>
     </div>
   </div>

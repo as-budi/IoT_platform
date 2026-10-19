@@ -78,6 +78,7 @@ ACTION_FIELDS = {
     RuleAction.Kind.SEND_COMMAND: ("device", "method", "params", "ttl_seconds"),
     RuleAction.Kind.ALARM: ("severity", "message"),
     RuleAction.Kind.EMAIL: ("message", "recipients"),
+    RuleAction.Kind.TELEGRAM: ("message", "recipients"),
 }
 
 

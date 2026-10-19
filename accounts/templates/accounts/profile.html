@@ -48,6 +48,35 @@
       </div>
     </div>
 
+    {# Telegram (tahap 17): tujuan aksi "Send Telegram message" bila penerima dikosongkan. #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h2 class="h5 mb-1">Telegram</h2>
+          {% if not telegram_enabled %}
+          <p class="small text-muted mb-0">Not available: the server has no Telegram bot configured.</p>
+          {% elif telegram_link %}
+          <p class="small mb-0">Connected to <strong>{{ telegram_link.chat_name|default:telegram_link.chat_id }}</strong>
+            since {{ telegram_link.linked_at|date:"j M Y" }}. Rules send their Telegram messages here.</p>
+          {% else %}
+          <p class="small text-muted mb-0">Receive rule notifications in Telegram.</p>
+          {% endif %}
+        </div>
+        {% if telegram_enabled %}
+        <div class="d-flex gap-2">
+          {% if telegram_link %}
+          <form method="post" action="{% url 'notifications:telegram_test' %}">{% csrf_token %}
+            <button type="submit" class="btn btn-outline-primary">Send test</button></form>
+          <form method="post" action="{% url 'notifications:telegram_disconnect' %}">{% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger">Disconnect</button></form>
+          {% else %}
+          <a class="btn btn-outline-primary" href="{% url 'notifications:telegram_connect' %}">Connect Telegram</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>

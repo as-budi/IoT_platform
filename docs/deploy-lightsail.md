@@ -667,6 +667,27 @@ Bila email uji sampai (periksa juga folder spam), coba alur lengkapnya di browse
 **Forgot your password?** di halaman login, dan bila `DJANGO_ALLOW_SIGNUP=True`, Sign up
 dengan alamat email lain. Kegagalan kirim tercatat di `journalctl -u iot-web`.
 
+### 10.2 Telegram (opsional, tahap 17)
+
+1. Di Telegram, buka **@BotFather** → `/newbot` → beri nama, mis. *IoT Reslab* dan username
+   yang berakhiran `bot`, mis. `iot_reslab_bot`. BotFather memberi token
+   `123456789:AA...`.
+2. Tambahkan ke `/srv/iot/app/.env`:
+
+   ```ini
+   TELEGRAM_BOT_TOKEN=123456789:AA...
+   TELEGRAM_BOT_USERNAME=iot_reslab_bot
+   ```
+
+3. `sudo systemctl restart iot.target` (web untuk halaman profil, rules untuk aksi).
+4. Di web: **My profile → Telegram → Connect Telegram**, buka bot, tekan **START**, lalu
+   **I pressed Start**, dan **Send test**.
+
+Server hanya membutuhkan koneksi **keluar** HTTPS ke `api.telegram.org`. Tidak ada port
+masuk atau webhook yang perlu dibuka. Token bot sama rahasianya dengan password: bila bocor,
+cabut dan buat token baru lewat BotFather (`/revoke`). Penjelasan lengkap:
+`docs/tahap-17-notifikasi-telegram.md`.
+
 ---
 
 ## 11. Menghubungkan device

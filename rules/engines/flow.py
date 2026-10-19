@@ -118,6 +118,11 @@ NODE_TYPES = {
         "Action", (SUCCESS, FAILURE), ("recipients", "message"),
         "Sends an email. Put a Rate limit node in front of it to avoid an email for every message.",
     ),
+    Kind.TELEGRAM: NodeType(
+        "Action", (SUCCESS, FAILURE), ("recipients", "message"),
+        "Sends a Telegram message (to the owner's connected chat, or to the chat ids given). "
+        "Put a Rate limit node in front of it.",
+    ),
 }
 assert set(NODE_TYPES) == set(Kind.values), "Every FlowNode kind needs a NODE_TYPES entry"
 
@@ -376,6 +381,8 @@ def node_action(node, msg, run):
                 cleared.append(f"#{alarm.pk}")
             changed = bool(cleared)
             detail = ("Cleared alarm " + ", ".join(cleared)) if cleared else "No active alarm"
+        elif node.kind == Kind.TELEGRAM:
+            detail = actions.send_telegram(node, run.rule, context)
         else:  # EMAIL
             detail = actions.send_email(node, run.rule, context)
     except Exception as exc:
@@ -629,4 +636,6 @@ def node_summary(node):
         return "clear this rule's alarm"
     if node.kind == Kind.EMAIL:
         return f"email {node.recipients or 'the owner'}"
+    if node.kind == Kind.TELEGRAM:
+        return f"Telegram {node.recipients or 'the owner'}"
     return ""
