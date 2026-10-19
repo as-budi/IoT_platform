@@ -1,5 +1,5 @@
 """
-Ekspor dan impor aturan ECA sebagai JSON (tahap 13).
+Ekspor dan impor aturan ECA dan rule chain (FLOW) sebagai JSON (tahap 13).
 
 Bentuk JSON (versi 1):
 
@@ -19,6 +19,20 @@ Bentuk JSON (versi 1):
     kondisi = {"device": "Greenhouse Node", "variable": "soil_moisture", "operator": "<", "threshold": 30}
     aksi    = {"kind": "SET_ACTUATOR", "run_on": "ACTIVATE", "device": "...", "variable": "pump", "value": 1}
 
+Rule chain memakai "model": "FLOW" dan bagian "flow" (tanpa "eca"/"actions"):
+
+      "flow": {
+        "device": null,                    # pesan dari device ini saja; null = semua device
+        "nodes": [{"name": "too_hot", "kind": "CHECK", "key": "temperature", "operator": ">", "threshold": 30}, ...],
+        "links": [{"source": "Input", "label": "SUCCESS", "target": "too_hot"}, ...]
+      }
+
+Field sebuah node = field milik jenis node itu (NODE_TYPES[kind].fields di
+rules/engines/flow.py). Rujukan ke device/variabel ditulis seperti di ECA:
+LATEST dan SET_ACTUATOR memakai "device" + "variable" (key variabel),
+SEND_COMMAND memakai "device". Panah menyebut node lewat NAMA, "Input" = awal.
+Ingatan node (memory: nilai terakhir CHANGED, waktu terakhir THROTTLE) tidak ikut.
+
 Device dan variabel disebut lewat NAMA device dan KEY variabel, bukan id
 database. Id hanya bermakna di satu database; nama bisa dibaca manusia dan
 tetap cocok di server lain atau untuk pengguna lain yang punya device bernama sama.
@@ -36,11 +50,14 @@ from django.utils import timezone
 
 from devices.views import visible_devices
 
-from .models import EcaCondition, EcaSpec, RuleAction, RuleModel
+from .engines.flow import NODE_TYPES
+from .models import EcaCondition, EcaSpec, FlowNode, RuleAction, RuleModel
 
 FORMAT = "iot-platform.rule"
 VERSION = 1
-# Batas ukuran file/teks yang diimpor. Aturan ECA biasa hanya beberapa KB.
+# Model yang bisa diekspor/diimpor.
+PORTABLE_MODELS = (RuleModel.ECA, RuleModel.FLOW)
+# Batas ukuran file/teks yang diimpor. Aturan biasa hanya beberapa KB.
 MAX_IMPORT_BYTES = 100_000
 
 # Field JSON per jenis aksi, selain "kind" dan "run_on".
@@ -87,17 +104,58 @@ def _action(action):
     return data
 
 
-def export_rule(rule):
-    """Aturan ECA -> dict yang siap di-json.dumps()."""
-    spec = rule.eca
+def _header(rule):
     return {
         "format": FORMAT,
         "version": VERSION,
-        "model": RuleModel.ECA,
+        "model": rule.model,
         "exported_at": timezone.now().isoformat(timespec="seconds"),
         "name": rule.name,
         "description": rule.description,
         "enabled": rule.is_enabled,
+    }
+
+
+def _node(node):
+    """Satu FlowNode -> dict. Hanya field milik jenis node itu."""
+    data = {"name": node.name, "kind": node.kind}
+    for name in NODE_TYPES[node.kind].fields:
+        if name in ("variable", "target_variable"):
+            variable = getattr(node, name)
+            data["device"] = variable.device.name if variable else None
+            data["variable"] = variable.key if variable else None
+        elif name == "target_device":
+            data["device"] = node.target_device.name if node.target_device_id else None
+        else:
+            data[name] = getattr(node, name)
+    return data
+
+
+def export_flow(rule):
+    """Rule chain -> dict yang siap di-json.dumps()."""
+    nodes = list(rule.nodes.select_related("variable__device", "target_variable__device", "target_device"))
+    names = {node.pk: node.name for node in nodes}
+    spec = getattr(rule, "flow", None)
+    return {
+        **_header(rule),
+        "flow": {
+            "device": spec.device.name if spec and spec.device_id else None,
+            "nodes": [_node(node) for node in nodes],
+            "links": [
+                {"source": names.get(link.source_id, "Input"), "label": link.label, "target": names[link.target_id]}
+                for link in rule.links.order_by("order", "pk")
+            ],
+        },
+    }
+
+
+def export_rule(rule):
+    """Aturan ECA atau FLOW -> dict yang siap di-json.dumps()."""
+    if rule.model == RuleModel.FLOW:
+        return export_flow(rule)
+    spec = rule.eca
+    return {
+        **_header(rule),
         "eca": {
             "event": spec.event,
             "device": spec.device.name if spec.device_id else None,
@@ -136,12 +194,23 @@ def parse(text):
         errors.append(f'"format" must be "{FORMAT}".')
     if data.get("version") != VERSION:
         errors.append(f'"version" must be {VERSION}.')
-    if data.get("model") != RuleModel.ECA:
-        errors.append('Only ECA rules can be imported ("model": "ECA").')
-    if not isinstance(data.get("eca"), dict):
-        errors.append('"eca" must be an object.')
-    if not isinstance(data.get("actions"), list):
-        errors.append('"actions" must be a list.')
+    model = data.get("model")
+    if model == RuleModel.ECA:
+        if not isinstance(data.get("eca"), dict):
+            errors.append('"eca" must be an object.')
+        if not isinstance(data.get("actions"), list):
+            errors.append('"actions" must be a list.')
+    elif model == RuleModel.FLOW:
+        flow = data.get("flow")
+        if not isinstance(flow, dict):
+            errors.append('"flow" must be an object.')
+        else:
+            if not isinstance(flow.get("nodes"), list):
+                errors.append('"flow.nodes" must be a list.')
+            if not isinstance(flow.get("links"), list):
+                errors.append('"flow.links" must be a list.')
+    else:
+        errors.append('"model" must be "ECA" or "FLOW".')
     if errors:
         raise RuleImportError(errors)
     return data
@@ -274,14 +343,89 @@ def eca_form_data(data, owner):
     return post
 
 
+def flow_form_data(data, owner):
+    """dict hasil parse() (model FLOW) -> data POST untuk form rule chain.
+
+    Panah tetap memakai nama node, persis seperti form rule chain (LinkFormSet),
+    jadi validasi graf (check_graph: nama harus ada, label harus keluaran node
+    asal, tanpa siklus) berjalan tanpa terjemahan tambahan.
+    """
+    resolve = _Resolver(owner)
+    flow = data["flow"]
+    post = {
+        "rule-name": _text(data.get("name")),
+        "rule-description": _text(data.get("description")),
+        "rule-is_enabled": _text(bool(data.get("enabled", True))),
+    }
+    device = resolve.device(flow.get("device"), "Messages from")
+    post["flow-device"] = _text(device.pk if device else "")
+
+    nodes = flow["nodes"]
+    for index, node in enumerate(nodes):
+        where = f"Node {index + 1}"
+        if not isinstance(node, dict):
+            resolve.errors.append(f"{where}: each node must be an object.")
+            continue
+        if node.get("name"):
+            where = f'Node "{node["name"]}"'
+        prefix = f"nodes-{index}"
+        kind = node.get("kind")
+        post[f"{prefix}-name"] = _text(node.get("name"))
+        post[f"{prefix}-kind"] = _text(kind)
+        fields = NODE_TYPES[kind].fields if kind in NODE_TYPES else ()
+        for name in fields:
+            if name in ("variable", "target_variable"):
+                variable = resolve.variable(node.get("device"), node.get("variable"), where)
+                post[f"{prefix}-{name}"] = _text(variable.pk if variable else "")
+            elif name == "target_device":
+                target = resolve.device(node.get("device"), where)
+                post[f"{prefix}-{name}"] = _text(target.pk if target else "")
+            elif name == "params":
+                params = node.get("params")
+                post[f"{prefix}-params"] = json.dumps(params) if params else ""
+            elif name in node:
+                post[f"{prefix}-{name}"] = _text(node[name])
+        # Field wajib di model walaupun tidak dipakai jenis node ini.
+        post.setdefault(f"{prefix}-ttl_seconds", "300")
+    _management(post, "nodes", len(nodes))
+    post["nodes-MIN_NUM_FORMS"] = "1"
+
+    links = flow["links"]
+    for index, link in enumerate(links):
+        if not isinstance(link, dict):
+            resolve.errors.append(f"Link {index + 1}: each link must be an object.")
+            continue
+        for name in ("source", "label", "target"):
+            post[f"links-{index}-{name}"] = _text(link.get(name))
+    _management(post, "links", len(links))
+
+    unknown = [n.get("kind") for n in nodes if isinstance(n, dict) and n.get("kind") not in NODE_TYPES]
+    if unknown:
+        kinds = ", ".join(FlowNode.Kind.values)
+        resolve.errors.append(f"Unknown node kind {', '.join(map(str, unknown))}. Use one of: {kinds}.")
+    if resolve.errors:
+        raise RuleImportError(resolve.errors)
+    return post
+
+
+def form_data(data, owner):
+    """Pilih penerjemah sesuai model."""
+    if data["model"] == RuleModel.FLOW:
+        return flow_form_data(data, owner)
+    return eca_form_data(data, owner)
+
+
 def form_errors(forms, cross_errors=()):
-    """Error dari form ECA -> daftar kalimat (untuk halaman impor)."""
+    """Error dari form ECA atau rule chain -> daftar kalimat (untuk halaman impor)."""
     sections = {
-        "rule_form": "Rule", "spec_form": "Event", "when_formset": "When",
+        "rule_form": "Rule", "spec_form": "Settings", "when_formset": "When",
         "clear_formset": "Clear", "action_formset": "Action",
+        "node_formset": "Node", "link_formset": "Link",
     }
     messages = []
     for key, label in sections.items():
+        if key not in forms:
+            continue
         form = forms[key]
         if hasattr(form, "forms"):   # formset
             messages += [f"{label}: {error}" for error in form.non_form_errors()]

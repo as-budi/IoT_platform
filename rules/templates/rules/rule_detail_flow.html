@@ -27,6 +27,7 @@
       <button class="btn btn-outline-secondary">{% if rule.is_enabled %}Disable{% else %}Enable{% endif %}</button>
     </form>
     <a class="btn btn-outline-secondary" href="{% url 'rules:edit' rule.pk %}">Edit</a>
+    {% if rule_json %}{% include "rules/includes/json_buttons.html" %}{% endif %}
     <a class="btn btn-outline-danger" href="{% url 'rules:delete' rule.pk %}">Delete</a>
   </div>
 </div>
@@ -90,6 +91,8 @@
     </div>
   </div>
 </div>
+
+{% if rule_json %}{% include "rules/includes/json_card.html" %}{% endif %}
 
 {% if alarms %}
 <h2 class="h5 mb-3">Alarms from this rule</h2>

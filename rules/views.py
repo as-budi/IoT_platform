@@ -32,7 +32,9 @@ from .forms import (
     WhenFormSet, check_graph, cross_check, live_links,
 )
 from .models import Alarm, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleState
-from .portable import MAX_IMPORT_BYTES, RuleImportError, eca_form_data, export_json, form_errors, parse
+from .portable import (
+    MAX_IMPORT_BYTES, PORTABLE_MODELS, RuleImportError, export_json, form_data, form_errors, parse,
+)
 
 EXECUTIONS_PAGE_SIZE = 25
 
@@ -298,24 +300,7 @@ class FlowRuleFormView(LoginRequiredMixin, View):
         return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.FLOW)
 
     def build_forms(self, rule, data=None):
-        owner = rule.owner if rule else self.request.user
-        devices = visible_devices(owner).order_by("name")
-        spec = getattr(rule, "flow", None) if rule else None
-        initial_links = []
-        if rule and data is None:
-            names = {node.pk: node.name for node in rule.nodes.all()}
-            initial_links = [
-                {"source": names.get(link.source_id, INPUT), "label": link.label, "target": names[link.target_id]}
-                for link in rule.links.all()
-            ]
-        return {
-            "rule_form": RuleForm(data, instance=rule, prefix="rule"),
-            "spec_form": FlowSpecForm(data, instance=spec, devices=devices, prefix="flow"),
-            "node_formset": NodeFormSet(
-                data, instance=rule or Rule(), prefix="nodes", form_kwargs={"devices": devices}
-            ),
-            "link_formset": LinkFormSet(data, initial=initial_links, prefix="links"),
-        }
+        return build_flow_forms(rule, rule.owner if rule else self.request.user, data)
 
     def render_forms(self, rule, forms, graph_errors=()):
         # Nama node yang sudah diketik, untuk pilihan asal/tujuan panah.
@@ -348,29 +333,65 @@ class FlowRuleFormView(LoginRequiredMixin, View):
     def post(self, request, pk=None):
         rule = self.get_rule()
         forms = self.build_forms(rule, request.POST)
-        valid = [form.is_valid() for form in forms.values()]
-        if not all(valid):
-            return self.render_forms(rule, forms)
-        node_kinds = forms["node_formset"].node_kinds()
-        links = live_links(forms["link_formset"])
-        graph_errors = check_graph(node_kinds, links)
-        if graph_errors:
+        valid, graph_errors = validate_flow_forms(forms)
+        if not valid:
             return self.render_forms(rule, forms, graph_errors)
-
-        with transaction.atomic():
-            saved = forms["rule_form"].save(commit=False)
-            if rule is None:
-                saved.owner = request.user
-                saved.model = RuleModel.FLOW
-            saved.save()
-            spec = forms["spec_form"].save(commit=False)
-            spec.rule = saved
-            spec.save()
-            save_flow_graph(saved, forms["node_formset"], links)
-            reset_state(saved)
-
+        saved = save_flow_forms(forms, rule, request.user)
         messages.success(request, f"Rule \"{saved.name}\" saved.")
         return redirect("rules:detail", pk=saved.pk)
+
+
+def build_flow_forms(rule, owner, data=None, replace=False):
+    """Semua form halaman rule chain. Dipakai form biasa dan impor JSON.
+
+    replace=True (impor ke aturan yang sudah ada): kumpulan node dibuat KOSONG;
+    node dan panah lama dihapus saat menyimpan dan diganti isi JSON.
+    """
+    devices = visible_devices(owner).order_by("name")
+    spec = getattr(rule, "flow", None) if rule else None
+    initial_links = []
+    if rule and data is None:
+        names = {node.pk: node.name for node in rule.nodes.all()}
+        initial_links = [
+            {"source": names.get(link.source_id, INPUT), "label": link.label, "target": names[link.target_id]}
+            for link in rule.links.all()
+        ]
+    node_instance = Rule() if replace or rule is None else rule
+    return {
+        "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+        "spec_form": FlowSpecForm(data, instance=spec, devices=devices, prefix="flow"),
+        "node_formset": NodeFormSet(
+            data, instance=node_instance, prefix="nodes", form_kwargs={"devices": devices}
+        ),
+        "link_formset": LinkFormSet(data, initial=initial_links, prefix="links"),
+    }
+
+
+def validate_flow_forms(forms):
+    """Validasi semua bagian + graf. Mengembalikan (lolos?, daftar error graf)."""
+    valid = [form.is_valid() for form in forms.values()]
+    if not all(valid):
+        return False, []
+    graph_errors = check_graph(forms["node_formset"].node_kinds(), live_links(forms["link_formset"]))
+    return not graph_errors, graph_errors
+
+
+def save_flow_forms(forms, rule, owner, replace=False):
+    """Simpan form rule chain yang sudah valid. rule=None membuat aturan baru milik `owner`."""
+    with transaction.atomic():
+        saved = forms["rule_form"].save(commit=False)
+        if rule is None:
+            saved.owner = owner
+            saved.model = RuleModel.FLOW
+        saved.save()
+        spec = forms["spec_form"].save(commit=False)
+        spec.rule = saved
+        spec.save()
+        if replace:
+            saved.nodes.all().delete()   # panahnya ikut terhapus (CASCADE)
+        save_flow_graph(saved, forms["node_formset"], live_links(forms["link_formset"]))
+        reset_state(saved)
+    return saved
 
 
 def save_flow_graph(rule, node_formset, links):
@@ -573,6 +594,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             "spec": getattr(rule, "flow", None),
             "state": getattr(rule, "state", None),
             "summary": rule.engine.describe(rule),
+            "rule_json": export_json(rule),
             "flow_nodes": nodes,
             "start_links": start,
             "executions": executions,
@@ -585,14 +607,14 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
 # --- Ekspor & impor JSON (tahap 13) --------------------------------------------------
 
 class RuleJsonView(LoginRequiredMixin, View):
-    """GET /rules/<pk>/json/ -> definisi aturan ECA sebagai JSON (lihat rules/portable.py).
+    """GET /rules/<pk>/json/ -> definisi aturan ECA/FLOW sebagai JSON (lihat rules/portable.py).
 
     ?download=1 menambahkan header Content-Disposition sehingga browser
     menyimpannya sebagai file, misalnya "rule-greenhouse-too-dry.json".
     """
 
     def get(self, request, pk):
-        rule = get_object_or_404(visible_rules(request.user), pk=pk, model=RuleModel.ECA)
+        rule = get_object_or_404(visible_rules(request.user), pk=pk, model__in=PORTABLE_MODELS)
         response = HttpResponse(export_json(rule), content_type="application/json; charset=utf-8")
         if request.GET.get("download"):
             filename = f"rule-{slugify(rule.name) or rule.pk}.json"
@@ -601,15 +623,23 @@ class RuleJsonView(LoginRequiredMixin, View):
 
 
 class RuleImportView(LoginRequiredMixin, View):
-    """Impor aturan ECA dari JSON (file atau teks yang ditempel).
+    """Impor aturan ECA atau rule chain dari JSON (file atau teks yang ditempel).
 
-        /rules/import/           membuat aturan BARU milik pengguna yang login
-        /rules/<pk>/import/      MENGGANTI isi aturan yang ada (nama, event,
-                                 kondisi, aksi); pemiliknya tetap
+        /rules/import/           membuat aturan BARU milik pengguna yang login;
+                                 jenisnya mengikuti "model" di JSON
+        /rules/<pk>/import/      MENGGANTI isi aturan yang ada (ECA: nama, event,
+                                 kondisi, aksi; FLOW: nama, node, panah);
+                                 pemilik dan model aturan tetap
 
-    JSON diterjemahkan menjadi data form ECA lalu divalidasi oleh form yang sama
+    JSON diterjemahkan menjadi data form lalu divalidasi oleh form yang sama
     dengan halaman Edit, jadi impor tidak bisa melewati aturan apa pun.
     """
+
+    # model -> (bangun form, validasi, simpan)
+    HANDLERS = {
+        RuleModel.ECA: (build_eca_forms, validate_eca_forms, save_eca_forms),
+        RuleModel.FLOW: (build_flow_forms, validate_flow_forms, save_flow_forms),
+    }
 
     template_name = "rules/rule_import.html"
 
@@ -617,7 +647,7 @@ class RuleImportView(LoginRequiredMixin, View):
         pk = self.kwargs.get("pk")
         if pk is None:
             return None
-        return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.ECA)
+        return get_object_or_404(visible_rules(self.request.user), pk=pk, model__in=PORTABLE_MODELS)
 
     def render_page(self, rule, text="", errors=()):
         return render(self.request, self.template_name, {"rule": rule, "text": text, "errors": errors})
@@ -642,14 +672,21 @@ class RuleImportView(LoginRequiredMixin, View):
 
         owner = rule.owner if rule else request.user
         try:
-            data = eca_form_data(parse(text), owner)
+            parsed = parse(text)
+            if rule and parsed["model"] != rule.model:
+                raise RuleImportError([
+                    f'This is a {rule.model} rule, but the JSON is a {parsed["model"]} rule. '
+                    "Import it from the Rules page to create a new rule instead."
+                ])
+            data = form_data(parsed, owner)
         except RuleImportError as exc:
             return self.render_page(rule, text, exc.errors)
-        forms = build_eca_forms(rule, owner, data, replace=rule is not None)
-        valid, cross_errors = validate_eca_forms(forms)
+        build, validate, save = self.HANDLERS[parsed["model"]]
+        forms = build(rule, owner, data, replace=rule is not None)
+        valid, extra_errors = validate(forms)
         if not valid:
-            return self.render_page(rule, text, form_errors(forms, cross_errors))
-        saved = save_eca_forms(forms, rule, owner, replace=rule is not None)
+            return self.render_page(rule, text, form_errors(forms, extra_errors))
+        saved = save(forms, rule, owner, replace=rule is not None)
         verb = "replaced from JSON" if rule else "imported"
         messages.success(request, f"Rule \"{saved.name}\" {verb}.")
         return redirect("rules:detail", pk=saved.pk)

@@ -1,4 +1,4 @@
-"""Tes tahap 13: ekspor dan impor aturan ECA sebagai JSON."""
+"""Tes tahap 13: ekspor dan impor aturan ECA dan rule chain (FLOW) sebagai JSON."""
 import json
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -6,9 +6,10 @@ from django.urls import reverse
 
 from devices.models import Variable
 
-from .models import EcaCondition, Rule, RuleAction, RuleExecution, RuleModel
+from .models import EcaCondition, FlowLink, FlowNode, Rule, RuleAction, RuleExecution, RuleModel
 from .portable import export_rule
 from .tests import MultiVariableData
+from .tests_flow import FlowData
 
 
 def without_timestamp(data):
@@ -80,12 +81,12 @@ class PortableRuleTests(MultiVariableData):
         self.assertContains(response, f'{reverse("rules:json", args=[self.rule.pk])}?download=1')
         self.assertContains(response, "&quot;soil_moisture&quot;")   # isi JSON di kartu, di-escape HTML
 
-    def test_other_users_and_flow_rules_cannot_be_exported(self):
+    def test_other_users_and_planned_models_cannot_be_exported(self):
         self.client.force_login(self.budi)
         self.assertEqual(self.client.get(reverse("rules:json", args=[self.rule.pk])).status_code, 404)
         self.assertEqual(self.client.get(reverse("rules:import_into", args=[self.rule.pk])).status_code, 404)
-        flow = Rule.objects.create(owner=self.budi, name="Chain", model=RuleModel.FLOW)
-        self.assertEqual(self.client.get(reverse("rules:json", args=[flow.pk])).status_code, 404)
+        planned = Rule.objects.create(owner=self.budi, name="Streaming", model=RuleModel.SQL)
+        self.assertEqual(self.client.get(reverse("rules:json", args=[planned.pk])).status_code, 404)
 
     # --- impor ---
 
@@ -125,7 +126,8 @@ class PortableRuleTests(MultiVariableData):
         cases = {
             "not json": "Not valid JSON",
             json.dumps({"format": "x"}): "&quot;format&quot; must be",
-            json.dumps({**export_rule(self.rule), "model": "FLOW"}): "Only ECA rules",
+            json.dumps({**export_rule(self.rule), "model": "SQL"}): "must be &quot;ECA&quot; or &quot;FLOW&quot;",
+            json.dumps({**export_rule(self.rule), "model": "FLOW"}): "&quot;flow&quot; must be an object",
         }
         for text, message in cases.items():
             self.assertContains(self.post_import(text), message)
@@ -153,4 +155,98 @@ class PortableRuleTests(MultiVariableData):
         data = export_rule(self.rule)
         data["actions"][0]["variable"] = "soil_moisture"
         self.assertContains(self.post_import(data), "Action 1 target_variable")
+        self.assertEqual(Rule.objects.count(), 1)
+
+
+class FlowPortableTests(FlowData):
+    """Rule chain: node dan panah lewat nama, impor lewat form rule chain."""
+
+    def setUp(self):
+        self.client.force_login(self.siti)
+        # Input -> hot (CHECK) -TRUE-> fan_on (SET_ACTUATOR), -FALSE-> outside (LATEST) -SUCCESS-> mail (EMAIL)
+        self.rule = self.chain(
+            [
+                ("hot", "CHECK", {"key": "temperature", "operator": ">", "threshold": 30}),
+                ("fan_on", "SET_ACTUATOR", {"target_variable": self.fan, "value": 1}),
+                ("outside", "LATEST", {"variable": self.rain, "key": "rain", "seconds": 600}),
+                ("limit", "THROTTLE", {"seconds": 300}),
+                ("mail", "EMAIL", {"message": "Rain {rain}"}),
+            ],
+            [
+                ("Input", "SUCCESS", "hot"),
+                ("hot", "TRUE", "fan_on"),
+                ("hot", "FALSE", "outside"),
+                ("outside", "SUCCESS", "limit"),
+                ("limit", "TRUE", "mail"),
+            ],
+        )
+        FlowNode.objects.filter(rule=self.rule, name="limit").update(memory={"1": {"last": 123}})
+
+    def post_import(self, payload, url=None):
+        return self.client.post(url or reverse("rules:import"), {"text": json.dumps(payload)})
+
+    def test_export_nodes_and_links(self):
+        data = export_rule(self.rule)
+        self.assertEqual(data["model"], "FLOW")
+        self.assertNotIn("eca", data)
+        self.assertEqual(data["flow"]["device"], "Greenhouse Node")
+        nodes = {node["name"]: node for node in data["flow"]["nodes"]}
+        self.assertEqual(nodes["hot"], {"name": "hot", "kind": "CHECK", "key": "temperature", "operator": ">", "threshold": 30})
+        self.assertEqual(nodes["fan_on"], {"name": "fan_on", "kind": "SET_ACTUATOR", "device": "Greenhouse Node",
+                                           "variable": "fan", "value": 1})
+        self.assertEqual(nodes["outside"], {"name": "outside", "kind": "LATEST", "device": "Weather Station",
+                                            "variable": "rain", "key": "rain", "seconds": 600})
+        self.assertNotIn("memory", nodes["limit"])
+        self.assertEqual(data["flow"]["links"][0], {"source": "Input", "label": "SUCCESS", "target": "hot"})
+        self.assertEqual(len(data["flow"]["links"]), 5)
+
+    def test_detail_page_shows_json_card_and_buttons(self):
+        response = self.client.get(reverse("rules:detail", args=[self.rule.pk]))
+        self.assertContains(response, reverse("rules:import_into", args=[self.rule.pk]))
+        self.assertContains(response, "&quot;SET_ACTUATOR&quot;")
+
+    def test_round_trip_creates_identical_chain(self):
+        exported = export_rule(self.rule)
+        response = self.post_import(exported)
+        new = Rule.objects.exclude(pk=self.rule.pk).get()
+        self.assertRedirects(response, reverse("rules:detail", args=[new.pk]))
+        self.assertEqual((new.model, new.owner), (RuleModel.FLOW, self.siti))
+        self.assertEqual(without_timestamp(export_rule(new)), without_timestamp(exported))
+        self.assertEqual(new.links.count(), 5)
+
+    def test_replace_existing_chain(self):
+        data = export_rule(self.rule)
+        data["flow"]["nodes"] = [{"name": "cold", "kind": "CHECK", "key": "temperature", "operator": "<", "threshold": 5},
+                                 {"name": "fan_off", "kind": "SET_ACTUATOR", "device": "Greenhouse Node",
+                                  "variable": "fan", "value": 0}]
+        data["flow"]["links"] = [{"source": "Input", "label": "SUCCESS", "target": "cold"},
+                                 {"source": "cold", "label": "TRUE", "target": "fan_off"}]
+        response = self.post_import(data, reverse("rules:import_into", args=[self.rule.pk]))
+        self.assertRedirects(response, reverse("rules:detail", args=[self.rule.pk]))
+        self.assertEqual(list(self.rule.nodes.values_list("name", flat=True)), ["cold", "fan_off"])
+        self.assertEqual(FlowLink.objects.filter(rule=self.rule).count(), 2)
+        self.assertEqual(Rule.objects.count(), 1)
+
+    def test_model_must_match_when_replacing(self):
+        eca = {"format": "iot-platform.rule", "version": 1, "model": "ECA", "name": "x",
+               "eca": {}, "actions": []}
+        response = self.post_import(eca, reverse("rules:import_into", args=[self.rule.pk]))
+        self.assertContains(response, "This is a FLOW rule, but the JSON is a ECA rule")
+
+    def test_graph_and_node_validation_still_apply(self):
+        data = export_rule(self.rule)
+        data["flow"]["links"].append({"source": "mail", "label": "SUCCESS", "target": "hot"})      # siklus
+        self.assertContains(self.post_import(data), "loop")
+        data = export_rule(self.rule)
+        data["flow"]["links"].append({"source": "hot", "label": "TRUE", "target": "nowhere"})
+        self.assertContains(self.post_import(data), "there is no node called")
+        data = export_rule(self.rule)
+        data["flow"]["nodes"][1]["value"] = 5                                                      # aktuator on/off
+        self.assertContains(self.post_import(data), "accept 1 (ON) or 0 (OFF)")
+        data = export_rule(self.rule)
+        data["flow"]["nodes"][0]["kind"] = "TELEPORT"
+        self.assertContains(self.post_import(data), "Unknown node kind TELEPORT")
+        data = export_rule(self.rule)
+        data["flow"]["nodes"][2]["device"] = "Budi's node"   # milik orang lain
+        self.assertContains(self.post_import(data), "no device called")
         self.assertEqual(Rule.objects.count(), 1)

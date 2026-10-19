@@ -1,0 +1,29 @@
+{# Definisi aturan dalam JSON: bentuk yang sama dengan file Export dan yang diterima Import (tahap 13). #}
+<details class="card shadow-sm mb-4 rule-json">
+  <summary class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
+    <span class="h6 text-muted text-uppercase mb-0 rule-json-title">JSON</span>
+    <span class="small text-muted">Device and variable names, not database ids</span>
+  </summary>
+  <div class="card-body pt-0">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-json>Copy</button>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}" target="_blank" rel="noopener">Open raw</a>
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Download</a>
+    </div>
+    <pre class="rule-json-code mb-0" id="rule-json">{{ rule_json }}</pre>
+  </div>
+</details>
+<script>
+  // Tombol Copy di kartu JSON.
+  (function () {
+    const button = document.querySelector("[data-copy-json]");
+    if (!button) return;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById("rule-json").textContent);
+        button.textContent = "Copied";
+        setTimeout(() => { button.textContent = "Copy"; }, 1500);
+      } catch (err) { /* clipboard ditolak browser: pengguna bisa memilih teksnya manual */ }
+    });
+  })();
+</script>

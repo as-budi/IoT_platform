@@ -1,20 +1,21 @@
-# Tahap 13: Ekspor dan impor aturan ECA sebagai JSON
+# Tahap 13: Ekspor dan impor aturan sebagai JSON
 
-Aturan ECA kini bisa dilihat, diunduh, dan dimuat ulang sebagai JSON. Kegunaannya:
+Aturan ECA dan rule chain (FLOW) kini bisa dilihat, diunduh, dan dimuat ulang sebagai JSON.
+Kegunaannya:
 
 - menyimpan aturan di luar database (cadangan, Git, lampiran tugas);
 - menyalin aturan ke pengguna lain atau ke server lain;
 - mengubah aturan yang panjang dengan editor teks, lalu memuatnya kembali;
-- bahan ajar: struktur aturan ECA terlihat utuh dalam satu objek.
+- bahan ajar: struktur aturan (kondisi ECA, atau graf rule chain) terlihat utuh dalam satu objek.
 
 ## Di mana tombolnya
 
 | Tempat | Tombol | Hasil |
 |---|---|---|
-| Halaman detail aturan ECA | **Export** | mengunduh `rule-<nama>.json` |
-| | **Import** | mengganti isi aturan ini dari JSON (nama, event, kondisi, aksi) |
+| Halaman detail aturan ECA atau rule chain | **Export** | mengunduh `rule-<nama>.json` |
+| | **Import** | mengganti isi aturan ini dari JSON (ECA: nama, event, kondisi, aksi; FLOW: nama, node, panah) |
 | | kartu **JSON** (klik untuk membuka) | JSON aturan, tombol *Copy*, *Open raw*, *Download* |
-| Halaman daftar aturan | **Import** | membuat aturan BARU dari JSON |
+| Halaman daftar aturan | **Import** | membuat aturan BARU dari JSON; jenisnya mengikuti `"model"` |
 
 | URL | Nama url | Fungsi |
 |---|---|---|
@@ -22,9 +23,11 @@ Aturan ECA kini bisa dilihat, diunduh, dan dimuat ulang sebagai JSON. Kegunaanny
 | `/rules/<pk>/import/` | `rules:import_into` | ganti isi aturan dari JSON |
 | `/rules/import/` | `rules:import` | aturan baru dari JSON |
 
-Rule chain (Flow) belum didukung; ketiga URL menjawab 404 untuk aturan non-ECA.
+Model lain (SQL, CEP, dan seterusnya) belum diimplementasikan, jadi ketiga URL menjawab 404
+untuk aturan seperti itu. Import di halaman detail hanya menerima JSON dengan model yang
+sama: rule chain tidak bisa diganti dengan aturan ECA, dan sebaliknya.
 
-## Bentuk JSON (versi 1)
+## Bentuk JSON ECA (versi 1)
 
 ```json
 {
@@ -83,6 +86,56 @@ jadi tidak ada terjemahan logika yang bisa salah.
 | `actions[].kind` | `SET_ACTUATOR` (device, variable, value), `SEND_COMMAND` (device, method, params, ttl_seconds), `ALARM` (severity, message), `EMAIL` (message, recipients) |
 | `actions[].run_on` | `ACTIVATE` atau `CLEAR` |
 
+## Bentuk JSON rule chain (versi 1)
+
+Bagian kepala (`format`, `version`, `name`, `description`, `enabled`) sama, tetapi
+`"model": "FLOW"` dan isinya bagian `flow`, bukan `eca`/`actions`:
+
+```json
+{
+  "format": "iot-platform.rule",
+  "version": 1,
+  "model": "FLOW",
+  "name": "Greenhouse climate",
+  "description": "",
+  "enabled": true,
+  "flow": {
+    "device": "Greenhouse Node",
+    "nodes": [
+      {"name": "hot", "kind": "CHECK", "key": "temperature", "operator": ">", "threshold": 30.0},
+      {"name": "fan_on", "kind": "SET_ACTUATOR", "device": "Greenhouse Node", "variable": "fan", "value": 1.0},
+      {"name": "outside", "kind": "LATEST", "device": "Weather Station", "variable": "rain", "key": "rain", "seconds": 600},
+      {"name": "limit", "kind": "THROTTLE", "seconds": 300},
+      {"name": "mail", "kind": "EMAIL", "recipients": "", "message": "Rain {rain}"}
+    ],
+    "links": [
+      {"source": "Input", "label": "SUCCESS", "target": "hot"},
+      {"source": "hot", "label": "TRUE", "target": "fan_on"},
+      {"source": "hot", "label": "FALSE", "target": "outside"},
+      {"source": "outside", "label": "SUCCESS", "target": "limit"},
+      {"source": "limit", "label": "TRUE", "target": "mail"}
+    ]
+  }
+}
+```
+
+| Field | Isi |
+|---|---|
+| `flow.device` | pesan dari device ini saja; `null` = semua device pemilik |
+| `nodes[].name` | nama unik dalam chain; dipakai `links` |
+| `nodes[].kind` | `CHECK`, `CHANGED`, `THROTTLE`, `LATEST`, `CALCULATE`, `SET_ACTUATOR`, `SEND_COMMAND`, `CREATE_ALARM`, `CLEAR_ALARM`, `EMAIL` |
+| field lain node | hanya field milik jenis itu (daftar `NODE_TYPES[kind].fields` di `rules/engines/flow.py`); `LATEST` dan `SET_ACTUATOR` memakai `device` + `variable`, `SEND_COMMAND` memakai `device` |
+| `links[]` | `source` (nama node atau `"Input"`), `label` (`TRUE`, `FALSE`, `SUCCESS`, `FAILURE`), `target` |
+
+Yang tidak diekspor: **ingatan node** (`memory`: nilai terakhir yang diingat node CHANGED dan
+waktu terakhir node THROTTLE meloloskan pesan). Ingatan itu memang dikosongkan setiap kali
+rule chain disimpan, jadi aturan hasil impor mulai dari awal.
+
+Form rule chain sendiri sudah menyebut node lewat nama, termasuk di panah (node baru belum
+punya id saat form diisi). Karena itu bagian `links` di JSON diteruskan apa adanya ke
+`LinkFormSet`, dan `check_graph()` memeriksanya seperti biasa: nama harus ada, label harus
+salah satu keluaran node asal, tidak ada panah kembar, dan tidak ada siklus.
+
 ## Konsep 1: nama, bukan id
 
 Di database, kondisi menyimpan `variable_id = 17`. Angka itu hanya bermakna di satu
@@ -120,7 +173,8 @@ JSON  ──eca_form_data()──►  {"rule-name": "...", "when-0-variable": "1
 ```
 
 Ketiga fungsi itu dipindahkan dari `EcaRuleFormView` di `rules/views.py` supaya dipakai
-bersama oleh form biasa dan impor. Setiap aturan baru di form otomatis berlaku juga untuk
+bersama oleh form biasa dan impor. Rule chain punya pasangannya: `flow_form_data()`,
+`build_flow_forms()`, `validate_flow_forms()`, dan `save_flow_forms()`. Setiap aturan baru di form otomatis berlaku juga untuk
 impor. Tes `test_form_validation_still_applies` membuktikannya: nilai 150 untuk aktuator
 0–100, histeresis yang salah, dan sensor sebagai target aksi semuanya ditolak, dengan pesan
 yang sama seperti di form.
@@ -135,6 +189,10 @@ Teknisnya, `build_eca_forms(..., replace=True)` membuat kumpulan kondisi dan aks
 kosong (tidak memuat baris lama), lalu `save_eca_forms(..., replace=True)` menghapus baris
 lama dan menyimpan yang baru. Semuanya dalam satu `transaction.atomic()`: bila satu bagian
 gagal, aturan lama tetap utuh.
+
+Untuk rule chain, `build_flow_forms(..., replace=True)` membuat kumpulan node kosong, dan
+`save_flow_forms(..., replace=True)` menghapus semua node lama (panahnya ikut terhapus
+karena `CASCADE`) sebelum menyimpan node dan panah dari JSON.
 
 Bila impor ditolak, **tidak ada yang disimpan**, dan teks JSON tetap ada di kotak supaya bisa
 diperbaiki.
@@ -153,6 +211,11 @@ diperbaiki.
 3. Di aturan baru itu, klik **Import**, ubah `threshold` di JSON, lalu **Replace rule**.
 4. Coba ubah nama device menjadi nama yang tidak ada: impor ditolak dan pesannya menyebut
    grup kondisi yang salah.
+5. Ulangi dengan rule chain contoh (mis. *Lab power monitor*). Coba tambahkan panah yang
+   kembali ke node awal: impor ditolak karena membentuk siklus.
+
+Semua 10 aturan contoh dari `seed_rules` (6 ECA, 4 rule chain) sudah diuji bolak-balik:
+ekspor → impor sebagai aturan baru → ekspor lagi menghasilkan JSON yang sama.
 
 ```bash
 python manage.py test rules.tests_portable

@@ -14,15 +14,17 @@
 
 <div class="row justify-content-center">
   <div class="col-lg-9">
-    <h1 class="h3 mb-2">{% if rule %}Replace {{ rule.name }} from JSON{% else %}Import an ECA rule{% endif %}</h1>
+    <h1 class="h3 mb-2">{% if rule %}Replace {{ rule.name }} from JSON{% else %}Import a rule{% endif %}</h1>
     {% if rule %}
     <div class="alert alert-warning small">
-      The name, event, conditions, and actions of <strong>{{ rule.name }}</strong> are replaced by the JSON.
-      Its history and alarms are kept, and the rule restarts from Idle.
+      {% if rule.model == "FLOW" %}The name, nodes, and links{% else %}The name, event, conditions, and actions{% endif %}
+      of <strong>{{ rule.name }}</strong> are replaced by the JSON ({{ rule.model }} only).
+      Its history and alarms are kept, and the rule starts fresh{% if rule.model == "FLOW" %} (node memory is cleared){% else %} from Idle{% endif %}.
       <a href="{% url 'rules:json' rule.pk %}?download=1">Export the current version</a> first if you may need it again.
     </div>
     {% else %}
-    <p class="text-muted">The rule is created for you. Device and variable names in the JSON must match your devices.</p>
+    <p class="text-muted">The rule is created for you: an ECA rule or a rule chain, following <code>"model"</code> in the JSON.
+      Device and variable names in the JSON must match your devices.</p>
     {% endif %}
 
     {% if errors %}
@@ -43,7 +45,7 @@
           <div class="mb-3">
             <label class="form-label" for="import-text">…or paste the JSON</label>
             <textarea class="form-control font-monospace small" id="import-text" name="text" rows="16"
-                      spellcheck="false" placeholder='{"format": "iot-platform.rule", "version": 1, "model": "ECA", ...}'>{{ text }}</textarea>
+                      spellcheck="false" placeholder='{"format": "iot-platform.rule", "version": 1, "model": "ECA" or "FLOW", ...}'>{{ text }}</textarea>
             <div class="form-text">A file, when chosen, is used instead of the text. Limit 100 KB.</div>
           </div>
           <button type="submit" class="btn btn-primary">{% if rule %}Replace rule{% else %}Import rule{% endif %}</button>
