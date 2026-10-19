@@ -62,6 +62,7 @@ INSTALLED_APPS = [
     "launcher",     # perintah manage.py runall: menjalankan semua layanan sekaligus
     "ota",          # pembaruan firmware over-the-air (tahap 9)
     "notifications",  # notifikasi Telegram untuk aksi aturan (tahap 17)
+    "activity",       # log aktivitas seluruh platform (tahap 18)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -72,6 +73,8 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Mencatat siapa pelaku setiap kejadian di log aktivitas (tahap 18).
+    "activity.middleware.ActorMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -299,6 +302,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # Opsional: nama bot tanpa @ (bila kosong ditanyakan ke Telegram lewat getMe).
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
 TELEGRAM_API_URL = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org")
+
+# --- Log aktivitas (tahap 18) -------------------------------------------------------
+# Baris yang lebih tua dari ini (hari) dihapus worker housekeeping. 0 = simpan selamanya.
+ACTIVITY_LOG_DAYS = int(os.getenv("ACTIVITY_LOG_DAYS", "180"))
 
 
 # --- Email (aksi "Send email" pada aturan, aktivasi akun, lupa password) ----------

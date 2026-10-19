@@ -177,15 +177,74 @@ def live_context(ws_path, updates_url, version):
 
 # --- Aturan --------------------------------------------------------------------------
 
+# Kolom yang diperiksa pencarian aturan (tahap 18). Satu kata cocok bila muncul di
+# SALAH SATU kolom ini; beberapa kata harus cocok semua (AND).
+RULE_SEARCH_FIELDS = (
+    "name", "description",
+    # ECA: device/variabel di kondisi, device "diam", aksi
+    "eca__conditions__variable__key", "eca__conditions__variable__label",
+    "eca__conditions__variable__device__name", "eca__device__name",
+    "actions__kind", "actions__message", "actions__method", "actions__recipients",
+    "actions__target_variable__key", "actions__target_variable__label", "actions__target_device__name",
+    # Rule chain: device input, nama & isi node
+    "flow__device__name", "nodes__name", "nodes__kind", "nodes__key", "nodes__message", "nodes__method",
+    "nodes__variable__key", "nodes__variable__device__name",
+    "nodes__target_variable__key", "nodes__target_variable__label", "nodes__target_device__name",
+)
+
+
+def search_rules(rules, text, user):
+    """Aturan yang memuat semua kata di `text` (nama, deskripsi, device, variabel, aksi, node).
+
+    Banyak kolom berasal dari tabel "banyak" (kondisi, aksi, node), sehingga JOIN-nya
+    bisa menghasilkan satu aturan berkali-kali. Karena itu pencarian dijalankan
+    sebagai subquery id (pk__in), lalu daftar aturan diambil sekali seperti biasa.
+    """
+    fields = RULE_SEARCH_FIELDS + (("owner__username",) if user.is_admin else ())
+    matches = Rule.objects.all()
+    for word in text.split()[:8]:
+        condition = Q()
+        for field in fields:
+            condition |= Q(**{f"{field}__icontains": word})
+        model = next((key for key, label in RuleModel.choices if word.lower() in (key.lower(), label.lower())), None)
+        if model:
+            condition |= Q(model=model)
+        matches = matches.filter(condition)
+    return rules.filter(pk__in=matches.values("pk"))
+
+
 class RuleListView(LoginRequiredMixin, ListView):
     template_name = "rules/rule_list.html"
     context_object_name = "rules"
 
+    STATES = {
+        "enabled": Q(is_enabled=True), "disabled": Q(is_enabled=False),
+        "active": Q(is_enabled=True, state__status=RuleState.Status.ACTIVE),
+        "scheduled": Q(schedule__isnull=False),
+    }
+
     def get_queryset(self):
-        return visible_rules(self.request.user).order_by("name")
+        rules = visible_rules(self.request.user)
+        params = self.request.GET
+        self.search = params.get("q", "").strip()[:100]
+        self.model_filter = params.get("model", "") if params.get("model", "") in RuleModel.values else ""
+        self.state_filter = params.get("state", "") if params.get("state", "") in self.STATES else ""
+        if self.search:
+            rules = search_rules(rules, self.search, self.request.user)
+        if self.model_filter:
+            rules = rules.filter(model=self.model_filter)
+        if self.state_filter:
+            rules = rules.filter(self.STATES[self.state_filter])
+        return rules.order_by("name")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context.update(
+            search=self.search, model_filter=self.model_filter, state_filter=self.state_filter,
+            filtering=bool(self.search or self.model_filter or self.state_filter),
+            rule_models=[(e.key, e.label) for e in ENGINES.values() if e.implemented],
+            total_rules=visible_rules(self.request.user).count(),
+        )
         for rule in context["rules"]:
             rule.summary = rule.engine.describe(rule) if rule.engine.implemented else None
         context["engines"] = ENGINES

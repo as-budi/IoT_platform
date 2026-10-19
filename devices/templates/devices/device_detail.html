@@ -332,7 +332,10 @@
 </div>
 
 {# ---------- Riwayat koneksi (tahap 16) ---------- #}
-<h2 class="h5 mt-4 mb-3" id="connection">Connection history</h2>
+<div class="d-flex justify-content-between align-items-baseline mt-4 mb-3">
+  <h2 class="h5 mb-0" id="connection">Connection history</h2>
+  <a class="small" href="{% url 'activity:list' %}?device={{ device.pk }}">All activity of this device →</a>
+</div>
 <div class="card shadow-sm">
   <div class="table-responsive">
     <table class="table table-sm align-middle mb-0">

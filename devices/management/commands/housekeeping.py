@@ -9,6 +9,7 @@ systemd: iot-housekeeping.service). Cukup SATU proses.
                                 device tanpa data > DEVICE_OFFLINE_SECONDS -> offline
     setiap ROLLUP_EVERY detik   devices/rollups.update()
                                 tabel ringkasan telemetri per menit dan per jam
+    setiap CLEANUP_EVERY detik  hapus log aktivitas > ACTIVITY_LOG_DAYS hari (tahap 18)
 
 Mengapa tidak di dalam rule_engine? Rule engine bisa dimatikan
 (RULE_ENGINE_MODE=off), sedangkan status device dan chart tetap dibutuhkan.
@@ -17,7 +18,9 @@ Proses pertama kali di server dengan data lama bisa memakan waktu (semua data
 diringkas); lihat juga `manage.py rollup_telemetry`.
 """
 import time
+from datetime import timedelta
 
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import close_old_connections, connection
 from django.utils import timezone
@@ -26,6 +29,7 @@ from devices import presence, rollups
 
 STATUS_EVERY = 10
 ROLLUP_EVERY = 60
+CLEANUP_EVERY = 3600
 
 
 class Command(BaseCommand):
@@ -51,8 +55,18 @@ class Command(BaseCommand):
             self.log(f"Summaries: {result['minutes']} minute row(s), {result['hours']} hour row(s) "
                      f"from {timezone.localtime(result['from']):%Y-%m-%d %H:%M} ({took:.1f} s)")
 
+    def run_cleanup(self):
+        days = settings.ACTIVITY_LOG_DAYS
+        if days <= 0:
+            return
+        from activity.models import ActivityEvent
+
+        deleted, _ = ActivityEvent.objects.filter(at__lt=timezone.now() - timedelta(days=days)).delete()
+        if deleted:
+            self.log(f"Activity log: removed {deleted} event(s) older than {days} days")
+
     def handle(self, *args, **options):
-        jobs = [(self.run_status, STATUS_EVERY), (self.run_rollups, ROLLUP_EVERY)]
+        jobs = [(self.run_status, STATUS_EVERY), (self.run_rollups, ROLLUP_EVERY), (self.run_cleanup, CLEANUP_EVERY)]
         if options["once"]:
             for job, _ in jobs:
                 job()

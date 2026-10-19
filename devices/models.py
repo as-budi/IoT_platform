@@ -523,9 +523,24 @@ class CommandQuerySet(models.QuerySet):
         Mengembalikan jumlah baris yang diubah.
         """
         now = timezone.now()
-        return self.pending().filter(expires_at__lte=now).update(
+        due = list(self.pending().filter(expires_at__lte=now).select_related("device__owner"))
+        if not due:
+            return 0
+        # UPDATE bersyarat (masih pending): command yang baru saja selesai tidak ikut ditimpa.
+        changed = self.pending().filter(pk__in=[c.pk for c in due]).update(
             status=CommandStatus.EXPIRED, completed_at=now
         )
+        # update() tidak memicu sinyal post_save; kirim sendiri supaya log aktivitas
+        # (tahap 18, activity/signals.py) mencatat command yang kedaluwarsa.
+        expired = set(self.filter(pk__in=[c.pk for c in due], status=CommandStatus.EXPIRED, completed_at=now)
+                      .values_list("pk", flat=True))
+        for command in (c for c in due if c.pk in expired):
+            command.status, command.completed_at = CommandStatus.EXPIRED, now
+            models.signals.post_save.send(
+                sender=Command, instance=command, created=False, raw=False,
+                using=self.db, update_fields={"status", "completed_at"},
+            )
+        return changed
 
 
 class Command(models.Model):

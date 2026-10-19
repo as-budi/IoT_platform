@@ -260,6 +260,13 @@ class PasswordChangeView(SuccessMessageMixin, auth_views.PasswordChangeView):
     success_url = reverse_lazy("accounts:profile")
     success_message = "Your password was changed. Other browsers where you were logged in have been logged out."
 
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        from activity.log import Category, record   # tahap 18
+
+        record("account.password", "Password changed", category=Category.ACCOUNT, owner=self.request.user)
+        return response
+
 
 class EmailChangeCancelView(LoginRequiredMixin, View):
     """POST /accounts/profile/email/cancel/: batalkan perubahan email yang belum dikonfirmasi."""

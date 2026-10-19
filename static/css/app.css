@@ -1089,3 +1089,12 @@ a.user-chip.active {
 .je-hint {
   transition: color 0.2s;
 }
+
+/* Log aktivitas (tahap 18): level selalu ditulis sebagai teks, warna hanya penegas. */
+.activity-level { font-weight: 600; border: 1px solid transparent; }
+.activity-level-info { color: var(--app-muted); background: var(--app-surface-2); border-color: var(--app-border); }
+.activity-level-warning { color: #8a5300; background: rgba(240, 160, 0, 0.14); border-color: rgba(240, 160, 0, 0.4); }
+.activity-level-error { color: #b42318; background: rgba(220, 38, 38, 0.1); border-color: rgba(220, 38, 38, 0.35); }
+[data-bs-theme="dark"] .activity-level-warning { color: #f2b544; }
+[data-bs-theme="dark"] .activity-level-error { color: #ff8a80; }
+.rule-search { flex: 1 1 18rem; max-width: 32rem; }

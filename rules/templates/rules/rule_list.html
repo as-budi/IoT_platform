@@ -13,6 +13,27 @@
 
 {% include "devices/includes/auto_refresh.html" %}
 
+{# Pencarian (tahap 18): nama, deskripsi, device, variabel, isi aksi, nama/isi node. #}
+{% if total_rules %}
+<form method="get" class="d-flex flex-wrap gap-2 mb-3" role="search">
+  <input type="search" name="q" value="{{ search }}" class="form-control rule-search" placeholder="Search rules: pump, Greenhouse Node, telegram, soil_moisture …" aria-label="Search rules">
+  <select name="model" class="form-select w-auto" aria-label="Rule model">
+    <option value="">All models</option>
+    {% for key, label in rule_models %}<option value="{{ key }}"{% if key == model_filter %} selected{% endif %}>{{ key }}</option>{% endfor %}
+  </select>
+  <select name="state" class="form-select w-auto" aria-label="State">
+    <option value="">Any state</option>
+    <option value="active"{% if state_filter == "active" %} selected{% endif %}>Active now</option>
+    <option value="enabled"{% if state_filter == "enabled" %} selected{% endif %}>Enabled</option>
+    <option value="disabled"{% if state_filter == "disabled" %} selected{% endif %}>Disabled</option>
+    <option value="scheduled"{% if state_filter == "scheduled" %} selected{% endif %}>On a schedule</option>
+  </select>
+  <button type="submit" class="btn btn-outline-primary">Search</button>
+  {% if filtering %}<a class="btn btn-link" href="{% url 'rules:list' %}">Clear</a>{% endif %}
+</form>
+{% if filtering %}<p class="small text-muted">{{ rules|length }} of {{ total_rules }} rule{{ total_rules|pluralize }}{% if search %} match “{{ search }}”{% endif %}.</p>{% endif %}
+{% endif %}
+
 {% if rules %}
 <div class="card shadow-sm">
   <div class="table-responsive">
@@ -47,6 +68,12 @@
     </table>
   </div>
 </div>
+{% elif filtering %}
+<div class="card shadow-sm"><div class="card-body text-center py-5">
+  <h2 class="h5">No matching rules</h2>
+  <p class="text-muted mb-3">Try another word: a device name, a variable key such as <code>temperature</code>, or an action such as <em>email</em>.</p>
+  <a class="btn btn-outline-secondary" href="{% url 'rules:list' %}">Show all rules</a>
+</div></div>
 {% else %}
 <div class="card shadow-sm"><div class="card-body text-center py-5">
   <h2 class="h5">No rules yet</h2>

@@ -28,6 +28,8 @@ urlpatterns = [
     path("api/", include("api.urls")),
     # Menyambungkan akun dengan Telegram (tahap 17).
     path("notifications/", include("notifications.urls")),
+    # Log aktivitas (tahap 18).
+    path("activity/", include("activity.urls")),
     # Halaman depan langsung diarahkan ke dashboard.
     path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]
