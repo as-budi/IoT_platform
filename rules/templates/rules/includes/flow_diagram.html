@@ -1,7 +1,9 @@
 {% comment %}
   Gambar rule chain (SVG). Butuh `diagram` dari rules/flow_diagram.py:layout().
   Node/panah yang dilewati pesan terakhir diberi class "is-walked".
+  Tombol "Export PNG" ditangani static/js/flow_export.js (dimuat oleh halaman).
 {% endcomment %}
+<div data-flow-diagram>
 <div class="flow-diagram-wrap">
 <svg class="flow-diagram" width="{{ diagram.width|floatformat:0 }}" height="{{ diagram.height|floatformat:0 }}" viewBox="0 0 {{ diagram.width|floatformat:0 }} {{ diagram.height|floatformat:0 }}" role="img" aria-label="Rule chain diagram">
   <defs>
@@ -31,10 +33,16 @@
   {% endfor %}
 </svg>
 </div>
-<div class="flow-legend small text-muted">
+<div class="flow-legend small text-muted align-items-center">
   <span><i class="flow-swatch flow-node-filter"></i>Filter</span>
   <span><i class="flow-swatch flow-node-enrichment"></i>Enrichment</span>
   <span><i class="flow-swatch flow-node-transformation"></i>Transformation</span>
   <span><i class="flow-swatch flow-node-action"></i>Action</span>
   {% if diagram.has_unreachable %}<span>dashed = not connected to Input (never runs)</span>{% endif %}
+  <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-flow-export
+          data-filename="rule-chain-{{ rule.name|default:'diagram'|slugify }}" data-title="{{ rule.name|default:'Rule chain' }}"
+          title="Download this diagram as a PNG image (in the current light/dark theme)">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" class="me-1" style="vertical-align:-2px"><path fill="currentColor" d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>Export PNG
+  </button>
+</div>
 </div>

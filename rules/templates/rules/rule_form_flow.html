@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New rule chain{% endif %} · IoT Platform{% endblock %}
 
@@ -119,6 +120,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/flow_export.js' %}"></script>
 <script>
 /*
  * Form rule chain:
