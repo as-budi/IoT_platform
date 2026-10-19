@@ -176,6 +176,17 @@ class Device(models.Model):
     # server): hanya device yang tahu pasti firmware mana yang menyala.
     firmware_version = models.CharField("firmware version", max_length=40, blank=True, editable=False)
     firmware_reported_at = models.DateTimeField("firmware reported", null=True, blank=True, editable=False)
+    # --- Status koneksi (tahap 16, devices/presence.py) ---
+    # Online = mengirim data dalam DEVICE_OFFLINE_SECONDS terakhir, ATAU punya sesi
+    # MQTT yang diumumkan lewat topik <prefix>/<token>/status (Last Will).
+    # Disimpan (bukan dihitung saat menampilkan), supaya PERUBAHANNYA bisa dicatat
+    # dan dikabarkan ke browser saat itu juga.
+    is_online = models.BooleanField("online", default=False, editable=False)
+    status_changed_at = models.DateTimeField("status changed", null=True, blank=True, editable=False)
+    # True selama device mengumumkan sesi MQTT "online" dan Last Will-nya belum
+    # dikirim broker. Selama itu batas waktu tanpa data tidak dipakai: broker
+    # sendiri yang mendeteksi koneksi putus (keepalive).
+    mqtt_connected = models.BooleanField("MQTT session", default=False, editable=False)
 
     class Meta:
         ordering = ["name"]
@@ -396,10 +407,95 @@ class Telemetry(models.Model):
         indexes = [
             # Index mempercepat pencarian "data variabel X, urut waktu".
             models.Index(fields=["variable", "ts"], name="telemetry_var_ts"),
+            # Tahap 16: tabel ringkasan membaca "semua data antara pukul A dan B"
+            # tanpa menyebut variabel; tanpa index ini MySQL membaca seluruh tabel.
+            models.Index(fields=["ts"], name="telemetry_ts"),
         ]
 
     def __str__(self):
         return f"{self.variable}: {self.value}"
+
+
+# --- Tabel ringkasan telemetri (tahap 16, devices/rollups.py) -------------------
+
+class TelemetryRollup(models.Model):
+    """Ringkasan telemetri satu variabel dalam satu "ember" waktu.
+
+        resolution = 60    -> satu baris per variabel per MENIT
+        resolution = 3600  -> satu baris per variabel per JAM (dihitung dari baris menit)
+
+    Disimpan jumlah (total) dan banyaknya data (count), bukan rata-rata: rata-rata
+    beberapa ember bisa digabung dengan benar (sum total / sum count), sedangkan
+    rata-rata dari rata-rata salah bila jumlah data tiap ember berbeda.
+    Data asli di tabel Telemetry tidak diubah atau dihapus.
+    """
+
+    class Resolution(models.IntegerChoices):
+        MINUTE = 60, "1 minute"
+        HOUR = 3600, "1 hour"
+
+    variable = models.ForeignKey(Variable, on_delete=models.CASCADE, related_name="rollups")
+    resolution = models.PositiveIntegerField("resolution (s)", choices=Resolution.choices)
+    bucket = models.DateTimeField("bucket start")
+    count = models.PositiveIntegerField("readings")
+    total = models.FloatField("sum")
+    min_value = models.FloatField("min")
+    max_value = models.FloatField("max")
+
+    class Meta:
+        ordering = ["bucket"]
+        verbose_name = "telemetry rollup"
+        verbose_name_plural = "telemetry rollups"
+        constraints = [
+            # Juga berfungsi sebagai index untuk chart: (variabel, resolusi, waktu).
+            models.UniqueConstraint(fields=["variable", "resolution", "bucket"], name="rollup_unique_bucket"),
+        ]
+        indexes = [
+            # Untuk menghitung ulang satu rentang waktu untuk SEMUA variabel.
+            models.Index(fields=["resolution", "bucket"], name="rollup_res_bucket"),
+        ]
+
+    def __str__(self):
+        return f"{self.variable} {self.bucket:%Y-%m-%d %H:%M} ({self.get_resolution_display()})"
+
+    @property
+    def average(self):
+        return self.total / self.count if self.count else None
+
+
+class RollupProgress(models.Model):
+    """Sampai kapan ringkasan suatu resolusi sudah lengkap (eksklusif).
+
+    Chart memakai ringkasan untuk waktu < done_until, dan data asli setelahnya.
+    """
+
+    resolution = models.PositiveIntegerField(primary_key=True, choices=TelemetryRollup.Resolution.choices)
+    done_until = models.DateTimeField()
+
+    class Meta:
+        verbose_name = "rollup progress"
+        verbose_name_plural = "rollup progress"
+
+    def __str__(self):
+        return f"{self.get_resolution_display()} until {self.done_until:%Y-%m-%d %H:%M}"
+
+
+class DeviceStatusEvent(models.Model):
+    """Riwayat perubahan online/offline sebuah device (tahap 16)."""
+
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="status_events")
+    online = models.BooleanField("online")
+    reason = models.CharField("reason", max_length=200)
+    at = models.DateTimeField("time", default=timezone.now)
+
+    class Meta:
+        ordering = ["-at", "-pk"]
+        verbose_name = "device status event"
+        verbose_name_plural = "device status events"
+        indexes = [models.Index(fields=["device", "at"], name="status_event_device_at")]
+
+    def __str__(self):
+        return f"{self.device} {'online' if self.online else 'offline'} at {self.at:%Y-%m-%d %H:%M:%S}"
 
 
 # --- Command (setara "RPC" di ThingsBoard) ------------------------------------

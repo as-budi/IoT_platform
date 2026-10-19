@@ -41,6 +41,7 @@ HISTORY_PAGE_SIZE = 25
 # Periode chart dan peringkasan titiknya ada di devices/charts.py.
 # Jumlah command terakhir yang ditampilkan di halaman device.
 RECENT_COMMANDS = 20
+RECENT_STATUS_EVENTS = 10
 
 
 # --- Aturan kepemilikan ------------------------------------------------------
@@ -125,6 +126,8 @@ def data_version(device, variable=None):
             commands["done"] and commands["done"].timestamp(),
             ota and ota.timestamp(),
             device.firmware_reported_at and device.firmware_reported_at.timestamp(),
+            # Status online/offline (tahap 16).
+            device.status_changed_at and device.status_changed_at.timestamp(),
         ]
     return "-".join(str(part or 0) for part in parts)
 
@@ -228,12 +231,16 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
             reverse("api:firmware", args=[device.access_token])
         )
         context["mqtt"]["firmware"] = mqtt_topics.firmware(prefix, token)
+        context["mqtt"]["status"] = mqtt_topics.status(prefix, token)
         # Kartu "Firmware" (tahap 9, OTA): versi, tombol update, progres, riwayat.
         from ota.views import device_firmware_context
 
         context.update(device_firmware_context(self.request, device))
         # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
         context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
+        # Riwayat online/offline (tahap 16, devices/presence.py).
+        context["status_events"] = device.status_events.all()[:RECENT_STATUS_EVENTS]
+        context["offline_after"] = settings.DEVICE_OFFLINE_SECONDS
 
         # Pembaruan langsung: WebSocket, dengan polling versi data sebagai cadangan.
         context["data_version"] = data_version(device)
@@ -416,6 +423,8 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
             "end": end,
             "rows": series["rows"],
             "bucket": describe_seconds(series["bucket_seconds"]) if series["bucket_seconds"] else "",
+            # Tahap 16: titik dibaca dari tabel ringkasan per menit/jam (0 = data asli).
+            "source": describe_seconds(series["source"]) if series["source"] else "",
             # Batas sumbu x = seluruh periode, walau datanya hanya sebagian.
             "range": {"min": int(start.timestamp() * 1000), "max": int(end.timestamp() * 1000)},
         }

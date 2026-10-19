@@ -47,6 +47,7 @@
             {% else %}
             <span class="badge text-bg-secondary">Inactive</span>
             {% endif %}
+            {% include "devices/includes/online_pill.html" %}
           </td>
           {# telemetry_count dihitung oleh Subquery di DeviceListView. #}
           {# intcomma: 1234 -> 1,234 (butuh django.contrib.humanize). #}

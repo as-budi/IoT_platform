@@ -7,6 +7,7 @@ Menjalankan SEMUA layanan platform dari satu terminal:
     mqtt   mqtt_bridge    device lewat MQTT
     coap   coap_server    device lewat CoAP
     rules  rule_engine    worker rule engine
+    housekeeping          status online/offline device + tabel ringkasan telemetri (tahap 16)
 
 Setiap layanan tetap proses tersendiri (lihat launcher/supervisor.py); runall
 hanya "pengasuh"-nya: log digabung dengan awalan nama, layanan yang crash
@@ -43,6 +44,7 @@ SERVICES = {
     "mqtt": ("mqtt_bridge", "devices over MQTT"),
     "coap": ("coap_server", "devices over CoAP"),
     "rules": ("rule_engine", "rule engine worker"),
+    "housekeeping": ("housekeeping", "device online/offline + telemetry summaries"),
 }
 DEFAULT_ADDRPORT = "127.0.0.1:8000"
 

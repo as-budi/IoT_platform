@@ -24,8 +24,10 @@ class TopicTests(SimpleTestCase):
         self.assertEqual(topics.command("p", "TOK", 7), "p/TOK/commands/7")
         self.assertEqual(topics.command_response("p", "TOK", 7), "p/TOK/commands/7/response")
         self.assertEqual(topics.firmware("p", "TOK"), "p/TOK/firmware")
+        self.assertEqual(topics.status("p", "TOK"), "p/TOK/status")
         self.assertEqual(
-            topics.subscriptions("p"), ["p/+/telemetry", "p/+/commands/+/response", "p/+/firmware"]
+            topics.subscriptions("p"),
+            ["p/+/telemetry", "p/+/commands/+/response", "p/+/firmware", "p/+/status"],
         )
 
     def test_parse_topics(self):

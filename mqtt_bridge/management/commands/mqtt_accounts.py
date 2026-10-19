@@ -55,6 +55,7 @@ topic readwrite {prefix}/#
 # Setiap device: hanya topik yang memuat tokennya sendiri.
 pattern write {prefix}/%u/telemetry
 pattern write {prefix}/%u/firmware
+pattern write {prefix}/%u/status
 pattern write {prefix}/%u/commands/+/response
 pattern read  {prefix}/%u/desired
 pattern read  {prefix}/%u/commands/+

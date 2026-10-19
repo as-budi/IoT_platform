@@ -109,4 +109,4 @@ class RunallCommandTests(SimpleTestCase):
                 mock.patch.object(Supervisor, "run", fake_run), \
                 mock.patch.object(runall.Command, "single_instance_lock"):
             call_command("runall", "127.0.0.1:0", skip="rules", stdout=io.StringIO())
-        self.assertEqual(captured["argv"], [["runserver", "127.0.0.1:0"], ["mqtt_bridge"], ["coap_server"]])
+        self.assertEqual(captured["argv"], [["runserver", "127.0.0.1:0"], ["mqtt_bridge"], ["coap_server"], ["housekeeping"]])

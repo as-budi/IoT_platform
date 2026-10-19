@@ -6,7 +6,10 @@ cepat untuk memasukkan data telemetri secara manual saat mencoba-coba.
 """
 from django.contrib import admin
 
-from .models import Command, DesiredStateLog, Device, Location, Telemetry, Variable
+from .models import (
+    Command, DesiredStateLog, Device, DeviceStatusEvent, Location, RollupProgress, Telemetry, TelemetryRollup,
+    Variable,
+)
 
 
 class VariableInline(admin.TabularInline):
@@ -19,7 +22,7 @@ class VariableInline(admin.TabularInline):
 
 @admin.register(Device)
 class DeviceAdmin(admin.ModelAdmin):
-    list_display = ("name", "device_type", "location", "owner", "is_active")
+    list_display = ("name", "device_type", "location", "owner", "is_active", "is_online")
     list_filter = ("is_active", "location", "device_type")
     search_fields = ("name", "location__name", "owner__username")
     inlines = [VariableInline]
@@ -62,3 +65,21 @@ class LocationAdmin(admin.ModelAdmin):
     list_display = ("name", "owner", "latitude", "longitude")
     list_filter = ("owner",)
     search_fields = ("name", "owner__username")
+
+
+@admin.register(DeviceStatusEvent)
+class DeviceStatusEventAdmin(admin.ModelAdmin):
+    list_display = ("at", "device", "online", "reason")
+    list_filter = ("online",)
+
+
+@admin.register(TelemetryRollup)
+class TelemetryRollupAdmin(admin.ModelAdmin):
+    list_display = ("bucket", "variable", "resolution", "count", "min_value", "max_value", "average")
+    list_filter = ("resolution",)
+    raw_id_fields = ("variable",)
+
+
+@admin.register(RollupProgress)
+class RollupProgressAdmin(admin.ModelAdmin):
+    list_display = ("resolution", "done_until")

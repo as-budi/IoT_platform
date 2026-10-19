@@ -61,6 +61,9 @@ def handle_message(topic, payload, prefix):
     if not device.is_active:
         return Result(False, "Device is inactive.", device)
 
+    if kind == topics.STATUS:
+        # Bukan JSON: device (atau broker, lewat Last Will) mengirim teks "online"/"offline".
+        return handle_status(device, payload)
     try:
         data = decode_json(payload)
         if kind == topics.TELEMETRY:
@@ -87,6 +90,18 @@ def handle_command_response(device, command_id, data):
     """Device melaporkan hasil command (aturannya di devices/control.py)."""
     command = record_command_result(device, command_id, data)
     return Result(True, f"command {command_id} ({command.method}): {command.status}", device)
+
+
+def handle_status(device, payload):
+    """Sesi MQTT device dimulai / berakhir (tahap 16, devices/presence.py)."""
+    from devices import presence
+
+    online = presence.parse_status(payload)
+    if online is None:
+        return Result(False, 'Status must be "online" or "offline".', device)
+    changed = presence.mqtt_status(device, online)
+    state = "online" if online else "offline"
+    return Result(True, f"status: {state}" + ("" if changed else " (unchanged)"), device)
 
 
 def handle_firmware(device, data):

@@ -20,6 +20,7 @@ Bentuk pesan yang sampai di browser (JSON):
         "kind": "SENSOR", "boolean": false, "value": 25.1, "ts": 1791436800000}, ...]}
     {"type": "desired", "variable": 9}
     {"type": "command", "id": 12, "status": "SUCCEEDED"}
+    {"type": "status", "device": 3, "online": false, "reason": "No data for 300 s", "since": 1791436800000}
 """
 import logging
 
@@ -92,3 +93,8 @@ def desired_changed(variable):
 
 def command_changed(command):
     emit(command.device_id, {"type": "command", "id": command.pk, "status": command.status})
+
+
+def status_changed(device_id, online, reason, at):
+    """Device berubah online/offline (tahap 16, devices/presence.py)."""
+    emit(device_id, {"type": "status", "device": device_id, "online": online, "reason": reason, "since": to_ms(at)})

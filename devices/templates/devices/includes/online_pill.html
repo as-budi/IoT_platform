@@ -1,0 +1,9 @@
+{% comment %}
+  Status koneksi device (tahap 16, devices/presence.py). Butuh `device`.
+  Halaman dimuat ulang oleh kabar WebSocket "status" (auto_refresh.js).
+{% endcomment %}
+{% if device.is_online %}
+<span class="status-pill online" title="Online since {{ device.status_changed_at|date:'d M Y H:i:s' }}{% if device.mqtt_connected %} · MQTT session open{% endif %}"><span class="dot"></span>Online</span>
+{% else %}
+<span class="status-pill" title="{% if device.status_changed_at %}Offline since {{ device.status_changed_at|date:'d M Y H:i:s' }}{% else %}Has not connected yet{% endif %}"><span class="dot"></span>Offline</span>
+{% endif %}

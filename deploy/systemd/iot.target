@@ -3,8 +3,8 @@
 #   sudo systemctl enable iot.target     (ikut menyala saat server boot)
 # Layanan yang tidak dipakai (mis. CoAP) cukup tidak di-enable: sudo systemctl disable iot-coap
 [Unit]
-Description=IoT platform (web, MQTT bridge, CoAP, rule engine)
-Wants=iot-web.service iot-mqtt.service iot-rules.service
+Description=IoT platform (web, MQTT bridge, CoAP, rule engine, housekeeping)
+Wants=iot-web.service iot-mqtt.service iot-rules.service iot-housekeeping.service
 
 [Install]
 WantedBy=multi-user.target

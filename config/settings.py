@@ -284,6 +284,14 @@ RULE_ENGINE_TICK = float(os.getenv("RULE_ENGINE_TICK", "1"))
 # worker mati saat jadwal tiba, TIDAK dijalankan lagi tetapi dicatat "Skipped".
 RULE_SCHEDULE_GRACE_SECONDS = int(os.getenv("RULE_SCHEDULE_GRACE_SECONDS", "300"))
 
+# --- Housekeeping (tahap 16): status online/offline dan tabel ringkasan ------------
+# Worker `manage.py housekeeping` (systemd: iot-housekeeping, runall: "housekeeping").
+# Device tanpa data selama ini (detik) dianggap offline, kecuali punya sesi MQTT.
+DEVICE_OFFLINE_SECONDS = int(os.getenv("DEVICE_OFFLINE_SECONDS", "300"))
+# Ringkasan per menit dihitung ulang mundur sejauh ini (detik), supaya data yang
+# datang terlambat (device menyimpan data saat offline) ikut terhitung.
+TELEMETRY_ROLLUP_LATE_SECONDS = int(os.getenv("TELEMETRY_ROLLUP_LATE_SECONDS", "600"))
+
 
 # --- Email (aksi "Send email" pada aturan, aktivasi akun, lupa password) ----------
 # EMAIL_HOST kosong: email TIDAK dikirim, melainkan dicetak di terminal proses

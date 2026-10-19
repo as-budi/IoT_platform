@@ -607,7 +607,7 @@ pattern read  iot/%u/errors
 ## 10. Menjalankan semua layanan
 
 ```bash
-sudo systemctl enable --now iot.target          # web, MQTT bridge, rule engine
+sudo systemctl enable --now iot.target          # web, MQTT bridge, rule engine, housekeeping
 sudo systemctl enable --now iot-backup.timer
 sudo systemctl enable --now iot-cleanup.timer   # hapus akun Sign up yang tidak diaktivasi > 7 hari
 systemctl list-units 'iot-*' --no-pager
@@ -625,7 +625,7 @@ Uji reboot sekali. Setelah server menyala lagi, semua layanan harus aktif sendir
 ```bash
 sudo reboot
 # tunggu ±1 menit, lalu SSH lagi:
-systemctl is-active iot-web iot-mqtt iot-rules mosquitto nginx mysql redis-server
+systemctl is-active iot-web iot-mqtt iot-rules iot-housekeeping mosquitto nginx mysql redis-server
 ```
 
 ### 10.1 Email: aktivasi akun dan lupa password
@@ -837,6 +837,10 @@ Skrip itu menjalankan langkah berikut:
 5. `collectstatic` (di produksi juga membuat salinan ber-hash, mis. `app.3f9a1c0b7d2e.css`,
    sehingga browser langsung memakai CSS/JS terbaru; lihat `docs/tahap-15-cache-busting-file-statis.md`),
 6. restart semua layanan.
+
+Perubahan `deploy/systemd/` (mis. unit baru `iot-housekeeping.service` di tahap 16) juga tidak
+ikut diterapkan: salin ulang seperti langkah 8.1, lalu `sudo systemctl daemon-reload` dan
+`sudo systemctl restart iot.target`.
 
 Perubahan `deploy/nginx/iot-platform.conf` **tidak** ikut diterapkan oleh skrip ini. Bila
 file itu berubah, salin ulang seperti di langkah 8.3 (buat cadangan dulu).

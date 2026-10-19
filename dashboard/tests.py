@@ -36,6 +36,7 @@ class DashboardTestData(TestCase):
         cls.misc = Variable.objects.create(device=cls.loose, key="misc")
         cls.secret = Variable.objects.create(device=cls.other, key="secret")
         Telemetry.objects.create(variable=cls.temp, value=25, ts=timezone.now())
+        Device.objects.filter(pk=cls.node.pk).update(is_online=True)   # tahap 16: status disimpan
 
     def setUp(self):
         self.client.force_login(self.budi)

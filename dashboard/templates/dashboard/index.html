@@ -42,8 +42,8 @@
   <div class="col-6 col-xl-3">
     <div class="card shadow-sm stat-tile h-100"><div class="card-body">
       <div class="stat-label">Online now</div>
-      <div class="stat-value">{{ stats.online }}<span class="fs-6 text-muted fw-normal"> / {{ stats.devices }}</span></div>
-      <div class="stat-note">sent data in the last 5 minutes</div>
+      <div class="stat-value"><span data-live="online-count">{{ stats.online }}</span><span class="fs-6 text-muted fw-normal"> / {{ stats.devices }}</span></div>
+      <div class="stat-note">recent data or an open MQTT session</div>
     </div></div>
   </div>
   <div class="col-6 col-xl-3">
@@ -83,7 +83,7 @@
         {% if device.online %}
         <span class="status-pill online"><span class="dot"></span>Online{% if device.last_protocol %} · via {{ device.get_last_protocol_display }}{% endif %}</span>
         {% else %}
-        <span class="status-pill"><span class="dot"></span>Offline{% if device.last_seen %} · {{ device.last_seen|timesince }} ago{% endif %}</span>
+        <span class="status-pill"><span class="dot"></span>Offline{% if device.status_changed_at %} · {{ device.status_changed_at|timesince }} ago{% elif device.last_seen %} · {{ device.last_seen|timesince }} ago{% endif %}</span>
         {% endif %}
       </span>
     </div>
@@ -160,12 +160,30 @@
 
     const PROTOCOL_LABELS = { HTTP: "HTTP", MQTT: "MQTT", COAP: "CoAP" };
 
+    function countOnline() {
+      const count = document.querySelector('[data-live="online-count"]');
+      if (count) count.textContent = document.querySelectorAll("[data-live-device] .status-pill.online").length;
+    }
+
     function markOnline(card, protocol) {
       const status = card.closest("[data-live-device]")?.querySelector('[data-live="status"]');
       if (!status) return;
       const via = protocol ? " · via " + (PROTOCOL_LABELS[protocol] || protocol) : "";
       status.innerHTML = '<span class="status-pill online"><span class="dot"></span>Online' + via + "</span>";
+      countOnline();
     }
+
+    // Tahap 16: device berubah online/offline (devices/presence.py), juga saat device diam.
+    AutoRefresh.on("status", (event) => {
+      const status = document.querySelector(`[data-live-device="${event.device}"] [data-live="status"]`);
+      if (!status) return true;                   // device tidak tampil di dashboard
+      status.innerHTML = event.online
+        ? '<span class="status-pill online"><span class="dot"></span>Online</span>'
+        : '<span class="status-pill" title=""><span class="dot"></span>Offline · just now</span>';
+      status.firstElementChild.title = event.reason;
+      countOnline();
+      return true;
+    });
 
     AutoRefresh.on("telemetry", (event) => {
       // Ambil bacaan terbaru per variabel.

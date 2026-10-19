@@ -70,6 +70,7 @@ class FakeDevice:
         self.topic_commands = f"{base}/commands/"   # + <id>
         self.topic_errors = f"{base}/errors"
         self.topic_firmware = f"{base}/firmware"
+        self.topic_status = f"{base}/status"
         # Firmware yang "sedang berjalan" di device tiruan ini.
         self.firmware_version = args.firmware_version
         self.seen_updates = set()   # command ota bisa terkirim ulang (QoS 1): jalankan sekali saja
@@ -88,6 +89,12 @@ class FakeDevice:
             self.client.username_pw_set(args.username, args.password)
         if args.tls:
             self.client.tls_set()
+        # Last Will (tahap 16): bila koneksi putus tanpa pamit (proses dibunuh,
+        # jaringan hilang), BROKER yang mengirim "offline" ke topik status atas
+        # nama device ini, setelah ±1,5 × keepalive tanpa kabar.
+        # --no-will: coba bedanya (platform baru tahu dari batas waktu tanpa data).
+        if not args.no_will:
+            self.client.will_set(self.topic_status, "offline", qos=1, retain=True)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
 
@@ -103,6 +110,9 @@ class FakeDevice:
             (self.topic_commands + "+", 1),  # + = satu level: hanya nomor command
             (self.topic_errors, 0),
         ])
+        # Umumkan sesi (retained: bridge yang baru menyala pun langsung tahu).
+        if not self.args.no_will:
+            client.publish(self.topic_status, "online", qos=1, retain=True)
         # Setiap kali (re)start: beri tahu platform firmware apa yang berjalan.
         # Laporan inilah yang menyelesaikan pembaruan OTA (UPDATED).
         self.publish(self.topic_firmware, {"version": self.firmware_version, "board": self.args.board})
@@ -241,6 +251,10 @@ class FakeDevice:
         except KeyboardInterrupt:
             print("Stopped.")
         finally:
+            # Berhenti dengan pamit: Last Will TIDAK dikirim broker pada disconnect
+            # yang rapi, jadi status "offline" dikirim sendiri.
+            if not self.args.no_will and self.client.is_connected():
+                self.client.publish(self.topic_status, "offline", qos=1, retain=True).wait_for_publish(2)
             self.client.disconnect()
             self.client.loop_stop()
 
@@ -259,6 +273,8 @@ def main():
     parser.add_argument("--board", default="sim", help="Board reported to the platform (sim, esp32, ...)")
     parser.add_argument("--ota-fail", choices=["download", "md5", "boot"], help="Make the next update fail")
     parser.add_argument("--ota-delay", type=float, default=0.7, help="Seconds between update steps")
+    parser.add_argument("--no-will", action="store_true",
+                        help="Do not announce the MQTT session / Last Will on the status topic")
     FakeDevice(parser.parse_args()).run()
 
 

@@ -21,5 +21,5 @@ echo "==> collectstatic"
 as_iot "$VENV/bin/python" manage.py collectstatic --noinput --verbosity 0
 echo "==> restart"
 systemctl restart iot.target
-systemctl --no-pager --lines=0 status iot-web iot-mqtt iot-rules | grep -E "●|Active:"
+systemctl --no-pager --lines=0 status iot-web iot-mqtt iot-rules iot-housekeeping | grep -E "●|Active:" || true
 echo "Done."

@@ -9,6 +9,7 @@ Semua topik diawali MQTT_TOPIC_PREFIX (dari .env), lalu access token device:
     <prefix>/<token>/commands/<id>/response    device -> platform  hasil command
     <prefix>/<token>/errors                    platform -> device  pesan kesalahan
     <prefix>/<token>/firmware                  device -> platform  versi firmware & progres OTA (tahap 9)
+    <prefix>/<token>/status                    device -> platform  "online" / "offline" (retained, Last Will; tahap 16)
 
 Mengapa ada prefix? Broker publik dipakai bersama oleh siapa saja di internet.
 Prefix yang unik mencegah topik kita bertabrakan dengan topik orang lain.
@@ -19,6 +20,7 @@ pengolahan teks, sehingga mudah dites dan dipakai di mana saja.
 TELEMETRY = "telemetry"
 COMMAND_RESPONSE = "command_response"
 FIRMWARE = "firmware"
+STATUS = "status"
 
 
 def device_base(prefix, token):
@@ -49,12 +51,17 @@ def firmware(prefix, token):
     return f"{device_base(prefix, token)}/firmware"
 
 
+def status(prefix, token):
+    return f"{device_base(prefix, token)}/status"
+
+
 def subscriptions(prefix):
     """Topik yang didengarkan platform. `+` = wildcard tepat satu level topik."""
     return [
         f"{prefix}/+/telemetry",
         f"{prefix}/+/commands/+/response",
         f"{prefix}/+/firmware",
+        f"{prefix}/+/status",
     ]
 
 
@@ -75,6 +82,8 @@ def parse(topic, prefix):
         return (TELEMETRY, parts[0], None)
     if len(parts) == 2 and parts[0] and parts[1] == "firmware":
         return (FIRMWARE, parts[0], None)
+    if len(parts) == 2 and parts[0] and parts[1] == "status":
+        return (STATUS, parts[0], None)
     if (
         len(parts) == 4
         and parts[0]

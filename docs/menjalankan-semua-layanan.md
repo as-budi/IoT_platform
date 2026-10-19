@@ -8,6 +8,7 @@ Sejak tahap 7, platform terdiri dari empat proses yang harus menyala bersamaan:
 | `mqtt` | `mqtt_bridge` | device lewat MQTT |
 | `coap` | `coap_server` | device lewat CoAP |
 | `rules` | `rule_engine` | worker rule engine |
+| `housekeeping` | `housekeeping` | status online/offline device dan tabel ringkasan telemetri (tahap 16) |
 
 Daripada membuka empat terminal, cukup jalankan:
 
@@ -40,7 +41,8 @@ runall (supervisor)
   ├── python manage.py runserver      ──► punya anak sendiri untuk auto-reload
   ├── python manage.py mqtt_bridge
   ├── python manage.py coap_server
-  └── python manage.py rule_engine
+  ├── python manage.py rule_engine
+  └── python manage.py housekeeping
 ```
 
 Memisahkan proses adalah keputusan desain yang disengaja:

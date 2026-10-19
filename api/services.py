@@ -2,6 +2,7 @@
 from django.db import transaction
 from django.utils import timezone
 
+from devices import presence
 from devices.models import Device, Telemetry, Variable
 from realtime import events
 from rules import queue as rule_queue
@@ -47,6 +48,8 @@ def save_telemetry(device, rows, protocol=""):
         if protocol:
             changes["last_protocol"] = protocol
         Device.objects.filter(pk=device.pk).update(**changes)
+        # Tahap 16: device yang tadinya offline kini online (devices/presence.py).
+        presence.seen(device, changes["last_seen_at"])
         # Dikirim setelah transaksi selesai (lihat events.emit).
         saved = [(variables[key], value, ts) for key, value, ts in rows]
         events.telemetry_saved(device, saved, protocol)

@@ -10,7 +10,6 @@ halaman Customize (DashboardSettingsView). Pengaturannya disimpan per
 pengguna di model DashboardPreference.
 """
 from collections import defaultdict
-from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -18,7 +17,6 @@ from django.db.models import Max, Sum
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.urls import reverse
-from django.utils import timezone
 from django.views.generic import TemplateView
 
 from devices.models import Telemetry, Variable
@@ -26,9 +24,6 @@ from devices.views import visible_devices, with_latest_values
 from realtime.routing import DASHBOARD_WS_PATH
 
 from .models import DashboardPreference
-
-# Device dianggap "online" bila mengirim data dalam rentang waktu ini.
-ONLINE_WINDOW = timedelta(minutes=5)
 
 
 def device_tree(user):
@@ -81,7 +76,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         user = self.request.user
         preference = DashboardPreference.for_user(user)
         hidden = preference.hidden_ids()
-        now = timezone.now()
 
         groups = []
         shown_variables = set()
@@ -103,7 +97,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 device.shown_variables = [
                     v for v in device.dash_variables if v.pk not in hidden["variables"]
                 ]
-                device.online = bool(device.last_seen and now - device.last_seen <= ONLINE_WINDOW)
+                # Tahap 16: status disimpan di Device.is_online (devices/presence.py).
+                device.online = device.is_online
                 online += device.online
                 shown_devices += 1
                 shown_variables.update(v.pk for v in device.shown_variables)

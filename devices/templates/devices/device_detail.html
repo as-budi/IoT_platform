@@ -20,6 +20,7 @@
       {% else %}
       <span class="badge text-bg-secondary fs-6 align-middle">Inactive</span>
       {% endif %}
+      <span class="fs-6 align-middle">{% include "devices/includes/online_pill.html" %}</span>
     </h1>
     <div class="text-muted">
       {{ device.device_type|default:"No type" }}{% if device.location %} · <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% endif %} · owner: {{ device.owner.username }}
@@ -193,6 +194,7 @@
               <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code></td></tr>
               <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message was rejected</td></tr>
               <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.firmware }}</code></td><td>firmware version and update progress, see <a href="#firmware">Firmware</a></td></tr>
+              <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.status }}</code></td><td><code>online</code> on connect and <code>offline</code> as Last Will, both retained (optional), see <a href="#connection">Connection history</a></td></tr>
             </tbody>
           </table>
         </div>
@@ -326,6 +328,31 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+</div>
+
+{# ---------- Riwayat koneksi (tahap 16) ---------- #}
+<h2 class="h5 mt-4 mb-3" id="connection">Connection history</h2>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="table-light"><tr><th>Time</th><th>Status</th><th>Reason</th></tr></thead>
+      <tbody>
+        {% for event in status_events %}
+        <tr>
+          <td class="text-nowrap">{{ event.at|date:"d M Y H:i:s" }}</td>
+          <td>{% if event.online %}<span class="status-pill online"><span class="dot"></span>Online</span>{% else %}<span class="status-pill"><span class="dot"></span>Offline</span>{% endif %}</td>
+          <td class="small">{{ event.reason }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="3" class="text-center text-muted py-4">No status changes recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-footer small text-muted">
+    Offline after {{ offline_after }} s without data, or at once when an MQTT device's session ends (Last Will).
+    Checked by the <code>housekeeping</code> worker.
   </div>
 </div>
 {% endblock %}

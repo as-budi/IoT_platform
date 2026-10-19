@@ -78,7 +78,7 @@ WiFiClient network;
 #endif
 PubSubClient mqtt(network);
 
-String topicTelemetry, topicDesired, topicCommands, topicErrors, topicFirmware;
+String topicTelemetry, topicDesired, topicCommands, topicErrors, topicFirmware, topicStatus;
 bool lampOn = false;
 unsigned long lastSend = 0;
 
@@ -262,8 +262,12 @@ void connectMqtt() {
     // Broker milik server menolak klien tanpa akun. Username = password = access token;
     // ACL broker hanya mengizinkan topik yang memuat token ini (manage.py mqtt_accounts).
     // Broker publik (broker.emqx.io) mengabaikan akun ini, jadi aman dipakai di keduanya.
-    if (mqtt.connect(clientId.c_str(), ACCESS_TOKEN, ACCESS_TOKEN)) {
+    // Last Will (tahap 16): bila koneksi putus tanpa pamit (listrik mati, Wi-Fi hilang),
+    // broker mengirim "offline" (retained) ke topik status atas nama device ini.
+    if (mqtt.connect(clientId.c_str(), ACCESS_TOKEN, ACCESS_TOKEN,
+                     topicStatus.c_str(), 1, true, "offline")) {
       Serial.println("ok");
+      mqtt.publish(topicStatus.c_str(), "online", true);   // retained: sesi dimulai
       mqtt.subscribe(topicDesired.c_str(), 1);
       mqtt.subscribe((topicCommands + "+").c_str(), 1);
       mqtt.subscribe(topicErrors.c_str(), 0);
@@ -288,6 +292,7 @@ void setup() {
   topicCommands  = base + "/commands/";
   topicErrors    = base + "/errors";
   topicFirmware  = base + "/firmware";
+  topicStatus    = base + "/status";
 
   connectWifi();
 #if USE_TLS

@@ -91,6 +91,7 @@
           {% endif %}
           · {{ chart.rows|intcomma }} reading{{ chart.rows|pluralize }}
           {% if chart.bucket %}· {% if variable.is_boolean %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
+          {% if chart.source %}<span title="Read from the pre-computed {{ chart.source }} summary table (plus raw data for the last few minutes), not from every reading">· from {{ chart.source }} summaries</span>{% endif %}
         </p>
       </div>
 
