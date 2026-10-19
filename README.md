@@ -34,6 +34,7 @@ Penjelasan konsep:
 - [docs/tahap-12-lokasi-milik-pengguna.md](docs/tahap-12-lokasi-milik-pengguna.md) — lokasi punya pemilik: dikelola sendiri, nama unik per pemilik, RESTRICT vs PROTECT, migrasi data lokasi bersama
 - [docs/tahap-13-ekspor-impor-aturan.md](docs/tahap-13-ekspor-impor-aturan.md) — ekspor/impor aturan ECA dan rule chain (FLOW) sebagai JSON: nama bukan id, impor lewat form yang sama, mengganti isi aturan
 - [docs/tahap-14-penjadwalan.md](docs/tahap-14-penjadwalan.md) — penjadwalan aturan: ECA event "On a schedule" dan rule chain Input terjadwal, next_run_at + klaim atomik, jadwal terlewat, clear otomatis
+- [docs/tahap-15-cache-busting-file-statis.md](docs/tahap-15-cache-busting-file-statis.md) — nama file statis ber-hash (ManifestStaticFilesStorage) supaya browser tidak memakai CSS/JS lama setelah update, cache Nginx setahun untuk file ber-hash
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 - [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 

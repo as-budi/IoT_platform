@@ -834,8 +834,12 @@ Skrip itu menjalankan langkah berikut:
 2. memasang paket baru,
 3. `check --deploy` (berhenti bila ada peringatan keamanan),
 4. migrasi database,
-5. `collectstatic`,
+5. `collectstatic` (di produksi juga membuat salinan ber-hash, mis. `app.3f9a1c0b7d2e.css`,
+   sehingga browser langsung memakai CSS/JS terbaru; lihat `docs/tahap-15-cache-busting-file-statis.md`),
 6. restart semua layanan.
+
+Perubahan `deploy/nginx/iot-platform.conf` **tidak** ikut diterapkan oleh skrip ini. Bila
+file itu berubah, salin ulang seperti di langkah 8.3 (buat cadangan dulu).
 
 Bila satu langkah gagal, skrip berhenti dan layanan lama tetap berjalan. Untuk perubahan
 besar, buat snapshot manual dulu (tab Snapshots → **Create snapshot**).
@@ -872,6 +876,7 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | `400 Bad Request` | domain tidak ada di `DJANGO_ALLOWED_HOSTS` | perbaiki `.env`, lalu `restart iot-web` |
 | `403 CSRF verification failed` saat login | `DJANGO_CSRF_TRUSTED_ORIGINS` kosong atau tanpa `https://` | isi `https://domain` |
 | `502 Bad Gateway` | `iot-web` mati | `journalctl -u iot-web -n 50` |
+| Setelah update, tampilan setengah lama (mis. JS baru tetapi CSS lama) | browser memakai CSS dari cache; konfigurasi Nginx atau settings belum versi tahap 15 | pastikan HTML memuat `/static/css/app.<hash>.css` (`curl -s https://DOMAIN-ANDA/accounts/login/ \| grep app`); bila belum, `update.sh` dan salin ulang konfigurasi Nginx (langkah 8.3) |
 | Halaman tanpa CSS, live update *Connecting...* | `/static/` dijawab 403 (`/srv/iot` mode 750) atau `collectstatic` belum dijalankan | `sudo chmod 711 /srv/iot`; jalankan `collectstatic`; cek `sudo tail /var/log/nginx/error.log` |
 | Live update tidak jalan | WebSocket diblokir proxy atau `REDIS_URL` salah | cek blok `/ws/` di Nginx dan `redis-cli ping` |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |

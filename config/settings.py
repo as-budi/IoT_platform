@@ -168,6 +168,20 @@ STATICFILES_DIRS = [BASE_DIR / "static"]
 # Tujuan `python manage.py collectstatic` di server produksi. Nginx melayani
 # folder ini langsung, tanpa melewati Django (lihat deploy/nginx/).
 STATIC_ROOT = Path(os.getenv("DJANGO_STATIC_ROOT", "") or BASE_DIR / "staticfiles")
+# Nama file ber-hash (cache busting, tahap 15): di produksi `{% static 'css/app.css' %}`
+# menjadi /static/css/app.<hash>.css, sehingga browser selalu memakai versi terbaru.
+# Butuh `collectstatic` (yang membuat staticfiles.json), jadi hanya aktif bila
+# DEBUG=False dan bukan saat tes. Bisa dipaksa lewat DJANGO_STATIC_HASHED=True/False.
+STATIC_HASHED = os.getenv("DJANGO_STATIC_HASHED", "") == "True" or (
+    os.getenv("DJANGO_STATIC_HASHED", "") == "" and not DEBUG and sys.argv[1:2] != ["test"]
+)
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "config.storage.HashedStaticStorage" if STATIC_HASHED
+        else "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
 
 
 # --- MQTT -------------------------------------------------------------------
