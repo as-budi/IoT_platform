@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">{% if user.is_admin %}All devices{% else %}My devices{% endif %}</h1>
+  <h1 class="h3 mb-0">{% if user.is_admin %}All devices{% elif selected_access == "shared" %}Shared with me{% else %}My devices{% endif %}</h1>
   <a class="btn btn-primary" href="{% url 'devices:add' %}">Add device</a>
 </div>
 
@@ -19,8 +19,17 @@
     {% endfor %}
     <option value="{{ no_location }}" {% if selected_location == no_location %}selected{% endif %}>— No location —</option>
   </select>
+  {# Tahap 19: milik saya / dibagikan kepada saya. #}
+  {% if has_shared %}
+  <label class="form-label mb-0 ms-2" for="access-filter">Access</label>
+  <select id="access-filter" name="access" class="form-select form-select-sm w-auto">
+    <option value="">Mine and shared</option>
+    <option value="mine" {% if selected_access == "mine" %}selected{% endif %}>Only mine</option>
+    <option value="shared" {% if selected_access == "shared" %}selected{% endif %}>Shared with me</option>
+  </select>
+  {% endif %}
   <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
-  {% if selected_location %}<a class="btn btn-sm btn-link" href="{% url 'devices:list' %}">Clear</a>{% endif %}
+  {% if selected_location or selected_access %}<a class="btn btn-sm btn-link" href="{% url 'devices:list' %}">Clear</a>{% endif %}
 </form>
 
 {% if selected_location %}

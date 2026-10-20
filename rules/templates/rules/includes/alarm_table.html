@@ -1,3 +1,4 @@
+{% load device_tags %}
 {% comment %}
   Tabel alarm. Butuh `alarms`. Opsional: hide_device=True, empty_message.
 {% endcomment %}
@@ -29,6 +30,9 @@
             <div class="text-muted">{% if alarm.is_acknowledged %}Acknowledged{% if alarm.acknowledged_by %} by {{ alarm.acknowledged_by.username }}{% endif %}{% else %}Unacknowledged{% endif %}</div>
           </td>
           <td class="text-end text-nowrap">
+            {# Tahap 19: Acknowledge/Clear untuk peran Operator ke atas. #}
+            {% can_access alarm.device_id "OPERATOR" as can_handle %}
+            {% if can_handle %}
             {% if not alarm.is_acknowledged %}
             <form method="post" action="{% url 'rules:alarm_ack' alarm.pk %}" class="d-inline">
               {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -40,6 +44,7 @@
               {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
               <button class="btn btn-sm btn-outline-secondary">Clear</button>
             </form>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

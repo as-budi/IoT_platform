@@ -1,0 +1,102 @@
+{% comment %}
+  Kartu "Sharing" di halaman device (tahap 19). Data dari sharing/views.device_sharing_context().
+  Pemilik / Admin: daftar akses + form berbagi. Penerima: dari mana aksesnya, dan tombol Leave.
+{% endcomment %}
+<h2 class="h5 mb-3 mt-4" id="sharing">Sharing</h2>
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    {% if is_owner %}
+    <p class="small text-muted">
+      Give other users or a <a href="{% url 'sharing:group_list' %}">group</a> access to this device.
+      <strong>Viewer</strong>: data and charts ·
+      <strong>Operator</strong>: + control actuators, commands, alarms ·
+      <strong>Editor</strong>: + settings, variables, token, firmware.
+      Only the owner{% if user.is_admin %} and Admins{% endif %} can delete the device or change who has access.
+    </p>
+
+    {% if shares %}
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light"><tr><th>Who</th><th>Role</th><th>Shared</th><th></th></tr></thead>
+        <tbody>
+          {% for share in shares %}
+          <tr>
+            <td>
+              {% if share.group_id %}
+              <a href="{% url 'sharing:group_detail' share.group_id %}">Group {{ share.group.name }}</a>
+              <span class="small text-muted">· {{ share.member_count }} member{{ share.member_count|pluralize }} · owner {{ share.group.owner.username }}</span>
+              {% else %}
+              {{ share.user.username }}{% if share.user.get_full_name %} <span class="small text-muted">({{ share.user.get_full_name }})</span>{% endif %}
+              {% endif %}
+            </td>
+            <td>
+              <form method="post" action="{% url 'sharing:share_role' share.pk %}" class="d-flex gap-1">
+                {% csrf_token %}
+                <select name="role" class="form-select form-select-sm w-auto" aria-label="Role of {{ share.target_name }}">
+                  {% for value, label in roles %}<option value="{{ value }}" {% if share.role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+              </form>
+            </td>
+            <td class="small text-muted text-nowrap">{{ share.created_at|date:"d M Y" }}{% if share.created_by %} by {{ share.created_by.username }}{% endif %}</td>
+            <td class="text-end">
+              <form method="post" action="{% url 'sharing:share_delete' share.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-muted">Not shared with anyone.</p>
+    {% endif %}
+
+    <form method="post" action="{% url 'sharing:share_add' device.pk %}" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <div class="col-sm-4 col-lg-3">
+        <label class="form-label small mb-1" for="{{ share_form.username.id_for_label }}">User</label>
+        {{ share_form.username }}
+      </div>
+      <div class="col-sm-4 col-lg-3">
+        <label class="form-label small mb-1" for="{{ share_form.group.id_for_label }}">or group</label>
+        {{ share_form.group }}
+      </div>
+      <div class="col-sm-4 col-lg-2">
+        <label class="form-label small mb-1" for="{{ share_form.role.id_for_label }}">Role</label>
+        {{ share_form.role }}
+      </div>
+      <div class="col-sm-4 col-lg-2">
+        <button type="submit" class="btn btn-primary w-100">Share</button>
+      </div>
+    </form>
+    <div class="form-text">Sharing with someone who already has access changes their role.</div>
+
+    {% else %}
+    <p class="mb-2">
+      <strong>{{ device.owner.username }}</strong> shared this device with you as <strong>{{ my_role_label }}</strong>.
+    </p>
+    <ul class="small mb-2">
+      {% for share in my_shares %}
+      <li>
+        {% if share.group_id %}through group <a href="{% url 'sharing:group_detail' share.group_id %}">{{ share.group.name }}</a>{% else %}directly{% endif %}
+        as {{ share.get_role_display }}{% if share.created_by %}, by {{ share.created_by.username }}{% endif %}
+        {% if share.user_id == user.pk %}
+        <form method="post" action="{% url 'sharing:share_delete' share.pk %}" class="d-inline ms-2">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-link p-0 align-baseline text-danger">Leave</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="small text-muted mb-0">
+      {% if my_role == "VIEWER" %}You can see its data and use its sensors in your rules.
+      {% elif my_role == "OPERATOR" %}You can see its data, control it, and use it in your rules.
+      {% else %}You can see, control and change it, but not delete it or change who has access.{% endif %}
+    </p>
+    {% endif %}
+  </div>
+</div>

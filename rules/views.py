@@ -23,6 +23,7 @@ from django.urls import reverse, reverse_lazy
 from django.views.generic import DeleteView, ListView, TemplateView, View
 
 from devices.views import redirect_back, visible_devices
+from sharing import access
 from realtime.routing import DASHBOARD_WS_PATH, device_ws_path
 
 from . import schedules
@@ -315,6 +316,9 @@ def build_eca_forms(rule, owner, data=None, replace=False):
     dan diganti seluruhnya dengan isi JSON.
     """
     devices = visible_devices(owner).order_by("name")
+    # Tahap 19: kondisi boleh memakai device yang dibagikan (Viewer ke atas), tetapi
+    # TARGET aksi hanya device yang boleh dikontrol pemilik aturan (Operator ke atas).
+    action_devices = visible_devices(owner, access.OPERATOR).order_by("name")
     spec = getattr(rule, "eca", None) if rule else None
     spec_instance = EcaSpec() if replace or spec is None else spec
     rule_instance = Rule() if replace or rule is None else rule
@@ -324,7 +328,8 @@ def build_eca_forms(rule, owner, data=None, replace=False):
         "spec_form": EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
         "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
         "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
-        "action_formset": ActionFormSet(data, instance=rule_instance, prefix="actions", **kwargs),
+        "action_formset": ActionFormSet(data, instance=rule_instance, prefix="actions",
+                                        form_kwargs={"devices": action_devices}),
         "schedule_form": build_schedule_form(rule, data, with_active_for=True),
     }
 
@@ -475,6 +480,7 @@ def build_flow_forms(rule, owner, data=None, replace=False):
     node dan panah lama dihapus saat menyimpan dan diganti isi JSON.
     """
     devices = visible_devices(owner).order_by("name")
+    action_devices = visible_devices(owner, access.OPERATOR).order_by("name")   # tahap 19
     spec = getattr(rule, "flow", None) if rule else None
     initial_links = []
     if rule and data is None:
@@ -488,7 +494,8 @@ def build_flow_forms(rule, owner, data=None, replace=False):
         "rule_form": RuleForm(data, instance=rule, prefix="rule"),
         "spec_form": FlowSpecForm(data, instance=spec, devices=devices, prefix="flow"),
         "node_formset": NodeFormSet(
-            data, instance=node_instance, prefix="nodes", form_kwargs={"devices": devices}
+            data, instance=node_instance, prefix="nodes",
+            form_kwargs={"devices": devices, "action_devices": action_devices}
         ),
         "link_formset": LinkFormSet(data, initial=initial_links, prefix="links"),
         "schedule_form": build_schedule_form(rule, data, with_active_for=False),
@@ -883,6 +890,8 @@ class AlarmActionView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         alarm = get_object_or_404(visible_alarms(request.user), pk=pk)
+        # Tahap 19: menangani alarm = Operator ke atas (Viewer hanya melihat).
+        access.require(request.user, alarm.device_id, access.OPERATOR)
         if self.action == "acknowledge":
             done = alarm.acknowledge(request.user)
             text = "acknowledged"

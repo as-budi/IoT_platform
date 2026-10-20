@@ -25,6 +25,7 @@ class ActivityEvent(models.Model):
         ALARM = "ALARM", "Alarm"
         FIRMWARE = "FIRMWARE", "Firmware"
         ACCOUNT = "ACCOUNT", "Account"
+        SHARING = "SHARING", "Sharing"          # berbagi device & grup (tahap 19)
 
     class Level(models.TextChoices):
         INFO = "INFO", "Info"

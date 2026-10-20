@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Sharing groups · IoT Platform{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Sharing groups</h1>
+  <a class="btn btn-primary" href="{% url 'sharing:group_add' %}">New group</a>
+</div>
+<p class="text-muted">
+  A group is a list of users, e.g. a class team or the lab technicians. Share a device with a group
+  (on the device page, under <em>Sharing</em>) and every member gets that access; new members get it too.
+</p>
+
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Name</th><th>Owner</th><th class="text-end">Members</th><th class="text-end">Devices shared</th></tr>
+      </thead>
+      <tbody>
+        {% for group in groups %}
+        <tr>
+          <td>
+            <a href="{% url 'sharing:group_detail' group.pk %}">{{ group.name }}</a>
+            {% if group.description %}<div class="small text-muted">{{ group.description }}</div>{% endif %}
+          </td>
+          <td>{% if group.owner_id == user.pk %}you{% else %}{{ group.owner.username }}{% endif %}</td>
+          <td class="text-end">{{ group.member_count }}</td>
+          <td class="text-end">{{ group.device_count }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4" class="text-center text-muted py-4">You are not in any group yet. <a href="{% url 'sharing:group_add' %}">Create one</a>.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

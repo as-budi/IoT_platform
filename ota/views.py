@@ -16,6 +16,7 @@ from django.views.decorators.http import require_GET
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, View
 
 from devices.views import data_version, visible_devices
+from sharing import access
 from realtime.routing import device_ws_path
 
 from . import services
@@ -126,6 +127,7 @@ class StartUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, device_pk):
         device = get_object_or_404(visible_devices(request.user), pk=device_pk)
+        access.require(request.user, device, access.EDITOR)   # firmware = mengubah device (tahap 19)
         packages = services.compatible_packages(visible_packages(request.user), device)
         form = StartUpdateForm(request.POST, packages=packages)
         if not form.is_valid():
@@ -175,6 +177,7 @@ class CancelUpdateView(LoginRequiredMixin, View):
 
     def post(self, request, pk):
         update = get_object_or_404(visible_updates(request.user), pk=pk)
+        access.require(request.user, update.device, access.EDITOR)
         try:
             services.cancel(update, request.user)
             messages.success(request, "Update canceled.")

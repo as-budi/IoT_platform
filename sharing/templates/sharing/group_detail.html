@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}{{ group.name }} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'sharing:group_list' %}">Sharing groups</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ group.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">{{ group.name }}</h1>
+    <div class="text-muted">Owner: {{ group.owner.username }}{% if group.description %} · {{ group.description }}{% endif %}</div>
+  </div>
+  {% if can_manage %}
+  <div class="text-nowrap">
+    <a class="btn btn-outline-secondary" href="{% url 'sharing:group_edit' group.pk %}">Edit</a>
+    <a class="btn btn-outline-danger" href="{% url 'sharing:group_delete' group.pk %}">Delete</a>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <h2 class="h5 mb-3">Members</h2>
+    <div class="card shadow-sm">
+      <ul class="list-group list-group-flush">
+        {% for member in members %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>
+            {{ member.user.username }}{% if member.user.get_full_name %} <span class="small text-muted">({{ member.user.get_full_name }})</span>{% endif %}
+            {% if member.user_id == group.owner_id %}<span class="badge text-bg-light border ms-1">owner</span>{% endif %}
+          </span>
+          {% if member.user_id != group.owner_id %}
+          {% if can_manage or member.user_id == user.pk %}
+          <form method="post" action="{% url 'sharing:member_remove' group.pk member.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">{% if member.user_id == user.pk %}Leave{% else %}Remove{% endif %}</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% if can_manage %}
+      <div class="card-body border-top">
+        <form method="post" action="{% url 'sharing:member_add' group.pk %}" class="d-flex gap-2">
+          {% csrf_token %}
+          <label class="visually-hidden" for="{{ member_form.username.id_for_label }}">Username</label>
+          {{ member_form.username }}
+          <button type="submit" class="btn btn-primary text-nowrap">Add member</button>
+        </form>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <h2 class="h5 mb-3">Devices shared with this group</h2>
+    <div class="card shadow-sm">
+      <ul class="list-group list-group-flush">
+        {% for share in shares %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <span>
+            {% if is_member or user.is_admin %}<a href="{% url 'devices:detail' share.device_id %}">{{ share.device.name }}</a>{% else %}{{ share.device.name }}{% endif %}
+            <span class="small text-muted">· owner {{ share.device.owner.username }}</span>
+          </span>
+          <span class="badge text-bg-light border">{{ share.get_role_display }}</span>
+        </li>
+        {% empty %}
+        <li class="list-group-item text-muted">No device is shared with this group yet. Device owners share from the device page.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

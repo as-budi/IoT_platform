@@ -48,7 +48,10 @@ class DeviceForm(BootstrapFormMixin, forms.ModelForm):
             location.queryset = Location.objects.select_related("owner")
             location.label_from_instance = lambda loc: f"{loc.name} ({loc.owner.username})"
         else:
-            location.queryset = Location.objects.filter(owner=user) if user else Location.objects.none()
+            # Lokasi milik PEMILIK device: Editor (tahap 19) yang mengubah device
+            # orang lain memilih dari lokasi pemiliknya, bukan lokasinya sendiri.
+            owner = self.instance.owner if self.instance.owner_id else user
+            location.queryset = Location.objects.filter(owner=owner) if owner else Location.objects.none()
 
     def clean(self):
         """Lokasi device harus milik pemilik device (penting saat Admin mengganti pemilik)."""

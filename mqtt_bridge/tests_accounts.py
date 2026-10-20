@@ -15,9 +15,10 @@ from devices.models import Device
 
 # Pengganti mosquitto_passwd untuk tes: "-U file" mengganti setiap password teks
 # dengan tanda hash palsu, seperti program aslinya (yang memakai PBKDF2-SHA512).
+# Tanpa "sed -i": opsi itu berbeda antara macOS (BSD sed) dan Linux (GNU sed).
 FAKE_PASSWD = """#!/bin/sh
 [ "$1" = "-U" ] || exit 2
-sed -i 's/^\\([^:]*\\):\\(.*\\)$/\\1:$7$fakehash-\\2/' "$2"
+sed 's/^\\([^:]*\\):\\(.*\\)$/\\1:$7$fakehash-\\2/' "$2" > "$2.tmp" && mv "$2.tmp" "$2"
 """
 
 

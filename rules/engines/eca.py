@@ -127,7 +127,8 @@ class EcaEngine(RuleEngine):
 
         # 2) Device mengirim data -> aturan "device diam" untuk device ini pulih.
         for rule in self.rules().filter(eca__event=EcaSpec.Event.INACTIVITY, eca__device_id=device_id):
-            executions += self.evaluate(rule, now, value=0, condition=False, clear=True)
+            if can_watch(rule, rule.eca.device):
+                executions += self.evaluate(rule, now, value=0, condition=False, clear=True)
         return executions
 
     # --- pemeriksaan berkala --------------------------------------------------------
@@ -143,6 +144,8 @@ class EcaEngine(RuleEngine):
         # 2) "device tidak mengirim data selama N detik".
         for rule in self.rules().filter(eca__event=EcaSpec.Event.INACTIVITY):
             device = rule.eca.device
+            if not can_watch(rule, device):
+                continue   # share dicabut (tahap 19)
             last = device.last_seen_at or device.created_at
             silent_for = (now - last).total_seconds()
             silent = silent_for >= (rule.eca.silence_seconds or 0)
@@ -238,7 +241,11 @@ class EcaEngine(RuleEngine):
           trigger    (variabel, nilai) dari pesan yang memicu penilaian, atau None
         """
         spec = rule.eca
-        readings = latest_values(spec.variable_ids(), points, now)
+        # Tahap 19: hanya variabel yang (masih) boleh dilihat pemilik aturan. Bila share
+        # dicabut, nilainya dianggap TIDAK DIKETAHUI, sehingga aturan tidak aktif lagi.
+        variable_ids = readable_variables(rule, spec.variable_ids())
+        points = {pk: point for pk, point in points.items() if pk in variable_ids}
+        readings = latest_values(variable_ids, points, now)
         when_result, when_details = conditions.evaluate(spec.when_groups, readings, now, spec.max_age_seconds)
         if spec.has_hysteresis:
             clear_result, clear_details = conditions.evaluate(
@@ -389,6 +396,24 @@ def schedule_of(rule):
         return rule.schedule
     except RuleSchedule.DoesNotExist:
         return None
+
+
+def readable_variables(rule, variable_ids):
+    """Id variabel (dari `variable_ids`) yang device-nya boleh dilihat pemilik aturan."""
+    from devices.views import visible_devices
+
+    variable_ids = list(variable_ids)
+    if not variable_ids:
+        return []
+    allowed = set(Variable.objects.filter(pk__in=variable_ids, device__in=visible_devices(rule.owner))
+                  .values_list("pk", flat=True))
+    return [pk for pk in variable_ids if pk in allowed]
+
+
+def can_watch(rule, device):
+    from devices.views import visible_devices
+
+    return device is not None and visible_devices(rule.owner).filter(pk=device.pk).exists()
 
 
 def latest_values(variable_ids, points, now):

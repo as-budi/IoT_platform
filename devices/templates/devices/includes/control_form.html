@@ -2,7 +2,12 @@
 {% comment %}
   Form kontrol satu aktuator (pola 1: desired state). Mengirim POST ke
   SetDesiredView; field `next` membawa pengguna kembali ke halaman ini.
+  Tahap 19: hanya untuk peran Operator ke atas; Viewer melihat keterangan saja.
 {% endcomment %}
+{% can_access variable.device_id "OPERATOR" as can_operate %}
+{% if not can_operate %}
+<div class="small text-muted mt-3">View-only access: you cannot control this actuator.</div>
+{% else %}
 <form method="post" action="{% url 'devices:variable_set' variable.device_id variable.pk %}" class="mt-3">
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
@@ -31,3 +36,4 @@
   {% endif %}
   {% endif %}
 </form>
+{% endif %}

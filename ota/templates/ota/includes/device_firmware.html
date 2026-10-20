@@ -1,7 +1,10 @@
 {% comment %}
   Kartu "Firmware" di halaman device (devices/device_detail.html).
   Data dari ota/views.py: device_firmware_context().
+  Tahap 19: memulai/membatalkan pembaruan hanya untuk peran Editor ke atas.
 {% endcomment %}
+{% load device_tags %}
+{% can_access device.pk "EDITOR" as can_flash %}
 <h2 class="h5 mb-3" id="firmware">Firmware</h2>
 <div class="card shadow-sm mb-4">
   <div class="card-body">
@@ -14,7 +17,7 @@
       <div class="col-sm-4">
         <div class="small text-muted">Board</div>
         <div class="fs-5 fw-semibold">{{ device.get_board_display|default:"unknown" }}</div>
-        {% if not device.board %}<div class="small text-muted">Set it with <a href="{% url 'devices:edit' device.pk %}">Edit</a>, or let the device report it.</div>{% endif %}
+        {% if not device.board and can_flash %}<div class="small text-muted">Set it with <a href="{% url 'devices:edit' device.pk %}">Edit</a>, or let the device report it.</div>{% endif %}
       </div>
     </div>
 
@@ -27,10 +30,12 @@
           {% include "ota/includes/status_badge.html" with update=ota_active %}
           <a class="small ms-1" href="{% url 'ota:update_detail' ota_active.pk %}">Details</a>
         </div>
+        {% if can_flash %}
         <form method="post" action="{% url 'ota:cancel' ota_active.pk %}">
           {% csrf_token %}
           <button class="btn btn-sm btn-outline-danger" type="submit">Cancel</button>
         </form>
+        {% endif %}
       </div>
       {% include "ota/includes/progress.html" with update=ota_active %}
       <p class="small text-muted mt-2 mb-0">
@@ -39,6 +44,8 @@
         {% else %}The device reports each step; this box updates by itself.{% endif %}
       </p>
     </div>
+    {% elif not can_flash %}
+    {# Viewer / Operator: hanya melihat versi dan riwayat. #}
     {% elif ota_has_packages %}
     {# ---------- Mulai pembaruan ---------- #}
     <form method="post" action="{% url 'ota:start' device.pk %}" class="row g-2 align-items-end mb-2">

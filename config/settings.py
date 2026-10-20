@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "ota",          # pembaruan firmware over-the-air (tahap 9)
     "notifications",  # notifikasi Telegram untuk aksi aturan (tahap 17)
     "activity",       # log aktivitas seluruh platform (tahap 18)
+    "sharing",        # berbagi device antar-pengguna dan grup (tahap 19)
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view

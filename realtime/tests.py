@@ -80,7 +80,8 @@ class EventEmissionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.budi = User.objects.create_user("budi", password="rahasia-12345")
-        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+        # Sudah online: data pertama tidak menambah kabar "status" (tahap 16, devices/presence.py).
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi", is_online=True)
         cls.lamp = Variable.objects.create(
             device=cls.device, key="lamp", kind=Variable.Kind.ACTUATOR,
             value_type=Variable.ValueType.BOOLEAN,

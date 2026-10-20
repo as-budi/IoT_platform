@@ -25,6 +25,7 @@ from django.views.generic import (
 from mqtt_bridge import topics as mqtt_topics
 from realtime import events
 from realtime.routing import device_ws_path
+from sharing import access
 
 from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
 from .forms import (
@@ -46,16 +47,16 @@ RECENT_STATUS_EVENTS = 10
 
 # --- Aturan kepemilikan ------------------------------------------------------
 
-def visible_devices(user):
-    """Device yang boleh dilihat `user`: Admin semua, User hanya miliknya.
+def visible_devices(user, level=access.VIEWER):
+    """Device yang boleh dilihat `user`: Admin semua; pengguna lain miliknya
+    DAN yang dibagikan kepadanya (tahap 19).
 
-    Inilah SATU-SATUNYA tempat aturan kepemilikan ditulis. Semua view device
-    maupun variabel mengambil datanya lewat fungsi ini.
+    `level` menaikkan syaratnya, mis. visible_devices(user, access.OPERATOR) =
+    device yang boleh dikontrol. Aturannya sendiri ditulis di SATU tempat,
+    sharing/access.py; semua view device, variabel, dashboard, WebSocket, dan
+    rule engine mengambil datanya lewat fungsi ini.
     """
-    queryset = Device.objects.select_related("owner", "location__owner")
-    if user.is_admin:
-        return queryset
-    return queryset.filter(owner=user)
+    return access.devices_for(user, level).select_related("owner", "location__owner")
 
 
 def visible_locations(user):
@@ -138,11 +139,19 @@ class OwnedDeviceMixin(LoginRequiredMixin):
     """Membatasi view device ke device yang boleh dilihat pengguna.
 
     Pengguna biasa yang menebak URL device orang lain mendapat 404, karena
-    device itu "tidak ada" di queryset-nya.
+    device itu "tidak ada" di queryset-nya. Device yang TERLIHAT (dibagikan)
+    tetapi perannya kurang dari `access_level` mendapat 403 (tahap 19).
     """
+
+    access_level = access.VIEWER
 
     def get_queryset(self):
         return visible_devices(self.request.user)
+
+    def get_object(self, queryset=None):
+        device = super().get_object(queryset)
+        self.access_role = access.require(self.request.user, device, self.access_level)
+        return device
 
 
 def with_device_summary(devices):
@@ -181,13 +190,27 @@ class DeviceListView(OwnedDeviceMixin, ListView):
             devices = devices.filter(location__isnull=True)
         elif selected.isdigit():
             devices = devices.filter(location_id=int(selected))
+        # Tahap 19: ?access=mine (milik saya) atau ?access=shared (dibagikan kepada saya).
+        scope = self.request.GET.get("access", "")
+        if scope == "mine":
+            devices = devices.filter(owner=self.request.user)
+        elif scope == "shared":
+            devices = devices.exclude(owner=self.request.user)
         return devices
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["locations"] = visible_locations(self.request.user)
+        user = self.request.user
+        context["locations"] = visible_locations(user)
         context["selected_location"] = self.request.GET.get("location", "")
         context["no_location"] = self.NO_LOCATION
+        context["selected_access"] = self.request.GET.get("access", "")
+        # Lencana "Shared by siti · Operator" untuk device orang lain (bukan untuk Admin).
+        if not user.is_admin:
+            roles = access.remember(self.request, context["devices"])
+            for device in context["devices"]:
+                device.shared_role = None if device.owner_id == user.pk else access.LABEL.get(roles.get(device.pk))
+        context["has_shared"] = not user.is_admin and access.shares_of(user).exists()
         return context
 
 
@@ -200,6 +223,20 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         device = self.object
+        # Tahap 19: tombol yang tampil mengikuti peran (pemeriksaan sebenarnya di view POST).
+        role = self.access_role
+        access.request_cache(self.request)[device.pk] = role
+        context.update(
+            can_operate=access.has(role, access.OPERATOR),
+            can_edit=access.has(role, access.EDITOR),
+            is_owner=role == access.OWNER,
+            # Tautan lokasi hanya untuk yang boleh membuka halaman lokasinya.
+            location_visible=bool(device.location_id) and visible_locations(self.request.user).filter(
+                pk=device.location_id).exists(),
+        )
+        from sharing.views import device_sharing_context
+
+        context.update(device_sharing_context(self.request, device, role))
         variables = list(with_latest_values(device.variables.all()))
         # Dipisah di Python (bukan dua query) karena daftarnya sudah di tangan.
         context["actuators"] = [v for v in variables if v.is_actuator]
@@ -356,11 +393,13 @@ class DeviceCreateView(DeviceFormMixin, CreateView):
 
 
 class DeviceUpdateView(DeviceFormMixin, UpdateView):
+    access_level = access.EDITOR
     context_object_name = "device"
     success_message = "Device %(name)s was updated."
 
 
 class DeviceDeleteView(OwnedDeviceMixin, SuccessMessageMixin, DeleteView):
+    access_level = access.OWNER   # menghapus device: hanya pemilik dan Admin
     template_name = "devices/device_confirm_delete.html"
     context_object_name = "device"
     success_url = reverse_lazy("devices:list")
@@ -377,12 +416,17 @@ class OwnedVariableMixin(LoginRequiredMixin):
     device orang lain -> 404, dan variabel hanya dicari di device tersebut.
     """
 
+    access_level = access.VIEWER
+
     def get_device(self):
         # Disimpan di atribut supaya query device tidak diulang-ulang.
         if not hasattr(self, "_device"):
             self._device = get_object_or_404(
                 visible_devices(self.request.user), pk=self.kwargs["device_pk"]
             )
+            # Tahap 19: terlihat tetapi perannya kurang -> 403.
+            self.access_role = access.require(self.request.user, self._device, self.access_level)
+            access.request_cache(self.request)[self._device.pk] = self.access_role
         return self._device
 
     def get_queryset(self):
@@ -391,6 +435,8 @@ class OwnedVariableMixin(LoginRequiredMixin):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["device"] = self.get_device()
+        context["can_operate"] = access.has(self.access_role, access.OPERATOR)
+        context["can_edit"] = access.has(self.access_role, access.EDITOR)
         return context
 
 
@@ -470,6 +516,8 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
 class VariableFormMixin(OwnedVariableMixin, SuccessMessageMixin):
     """Bagian yang sama antara view tambah dan ubah variabel."""
 
+    access_level = access.EDITOR
+
     form_class = VariableForm
     template_name = "devices/variable_form.html"
 
@@ -498,6 +546,7 @@ class VariableUpdateView(VariableFormMixin, UpdateView):
 
 
 class VariableDeleteView(OwnedVariableMixin, SuccessMessageMixin, DeleteView):
+    access_level = access.EDITOR
     template_name = "devices/variable_confirm_delete.html"
     context_object_name = "variable"
     success_message = "Variable was deleted."
@@ -532,6 +581,7 @@ class SetDesiredView(OwnedVariableMixin, View):
     """
 
     http_method_names = ["post"]
+    access_level = access.OPERATOR
 
     def post(self, request, device_pk, pk):
         variable = get_object_or_404(
@@ -554,6 +604,7 @@ class CommandCreateView(LoginRequiredMixin, View):
 
     def post(self, request, device_pk):
         device = get_object_or_404(visible_devices(request.user), pk=device_pk)
+        access.require(request.user, device, access.OPERATOR)
         form = CommandForm(request.POST)
         if form.is_valid():
             command = Command.objects.create(
@@ -687,6 +738,7 @@ class DeviceTokenRegenerateView(OwnedDeviceMixin, View):
 
     def post(self, request, pk):
         device = get_object_or_404(self.get_queryset(), pk=pk)
+        access.require(request.user, device, access.EDITOR)
         device.regenerate_token()
         messages.success(
             request,

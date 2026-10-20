@@ -23,7 +23,8 @@
       <span class="fs-6 align-middle">{% include "devices/includes/online_pill.html" %}</span>
     </h1>
     <div class="text-muted">
-      {{ device.device_type|default:"No type" }}{% if device.location %} · <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% endif %} · owner: {{ device.owner.username }}
+      {{ device.device_type|default:"No type" }}{% if device.location %} · {% if location_visible %}<a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% else %}{{ device.location.name }}{% endif %}{% endif %} · owner: {{ device.owner.username }}
+      {% if not is_owner %}<span class="badge text-bg-info-subtle text-info-emphasis border border-info-subtle ms-1" title="Shared with you">Shared with you · {{ my_role_label }}</span>{% endif %}
     </div>
     {# Jalur & waktu data terakhir (Device.last_protocol / last_seen_at). #}
     <div class="small text-muted mt-1">
@@ -34,8 +35,10 @@
     {% if device.description %}<p class="mt-2 mb-0">{{ device.description }}</p>{% endif %}
   </div>
   <div class="text-nowrap">
-    <a class="btn btn-outline-secondary" href="{% url 'devices:edit' device.pk %}">Edit</a>
-    <a class="btn btn-outline-danger" href="{% url 'devices:delete' device.pk %}">Delete</a>
+    {# Tahap 19: tombol mengikuti peran. Pemeriksaan sebenarnya ada di view. #}
+    {% if is_owner %}<a class="btn btn-outline-secondary" href="#sharing">Share</a>{% endif %}
+    {% if can_edit %}<a class="btn btn-outline-secondary" href="{% url 'devices:edit' device.pk %}">Edit</a>{% endif %}
+    {% if is_owner %}<a class="btn btn-outline-danger" href="{% url 'devices:delete' device.pk %}">Delete</a>{% endif %}
   </div>
 </div>
 
@@ -49,13 +52,13 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="h5 mb-0">Variables</h2>
-  <a class="btn btn-sm btn-primary" href="{% url 'devices:variable_add' device.pk %}">Add variable</a>
+  {% if can_edit %}<a class="btn btn-sm btn-primary" href="{% url 'devices:variable_add' device.pk %}">Add variable</a>{% endif %}
 </div>
 
 {% if not actuators and not sensors %}
 <div class="alert alert-light border">
   This device has no variables yet.
-  <a href="{% url 'devices:variable_add' device.pk %}">Add the first one</a>.
+  {% if can_edit %}<a href="{% url 'devices:variable_add' device.pk %}">Add the first one</a>.{% endif %}
 </div>
 {% endif %}
 
@@ -129,6 +132,8 @@
 {% include "ota/includes/device_firmware.html" %}
 
 {# ---------- Koneksi device: access token & endpoint API ---------- #}
+{# Access token = "password" device: hanya Editor ke atas yang melihatnya (tahap 19). #}
+{% if can_edit %}
 <h2 class="h5 mb-3" id="connect">Connect a device</h2>
 <div class="card shadow-sm mb-4">
   <div class="card-body">
@@ -269,9 +274,11 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 {# ---------- Pola 2: command (aksi sekali jalan) ---------- #}
 <h2 class="h5 mb-3" id="commands">Commands</h2>
+{% if can_operate %}
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <form method="post" action="{% url 'devices:command_add' device.pk %}" class="row g-2 align-items-end">
@@ -297,6 +304,7 @@
     </div>
   </div>
 </div>
+{% endif %}
 
 <div class="card shadow-sm">
   <div class="table-responsive">
@@ -330,6 +338,9 @@
     </table>
   </div>
 </div>
+
+{# ---------- Berbagi device (tahap 19) ---------- #}
+{% include "sharing/includes/device_sharing.html" %}
 
 {# ---------- Riwayat koneksi (tahap 16) ---------- #}
 <div class="d-flex justify-content-between align-items-baseline mt-4 mb-3">

@@ -81,7 +81,12 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         shown_variables = set()
         all_variables = set()
         online = shown_devices = 0
-        for group in device_tree(user):
+        tree = device_tree(user)
+        # Tahap 19: peran per device (untuk tombol kontrol), 2 query untuk semuanya.
+        from sharing import access
+
+        access.remember(self.request, [d for group in tree for d in group["devices"]])
+        for group in tree:
             location = group["location"]
             for device in group["devices"]:
                 all_variables.update(v.pk for v in device.dash_variables)

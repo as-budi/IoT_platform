@@ -58,14 +58,27 @@ def show_value(variable, value):
 
 
 def allowed_devices(rule):
-    """Device yang boleh disentuh aturan ini = device yang boleh dilihat pemiliknya.
+    """Device yang boleh DIKONTROL aturan ini = device milik pemiliknya, atau yang
+    dibagikan kepadanya dengan peran Operator/Editor (tahap 19).
 
-    Diperiksa ulang SAAT aksi dijalankan: kepemilikan device bisa berubah
-    setelah aturan dibuat.
+    Diperiksa ulang SAAT aksi dijalankan: kepemilikan atau share bisa berubah
+    (dicabut, diturunkan ke Viewer) setelah aturan dibuat.
     """
     from devices.views import visible_devices
+    from sharing import access
 
-    return visible_devices(rule.owner)
+    return visible_devices(rule.owner, access.OPERATOR)
+
+
+def note_foreign_action(rule, device, text):
+    """Aturan orang lain mengontrol device ini (lewat share): catat di log pemilik device,
+    supaya ia tahu SIAPA yang menyalakan pompanya, bukan hanya "rule engine"."""
+    if device.owner_id == rule.owner_id:
+        return
+    from activity.log import Category, record
+
+    record("rule.shared_action", f"Rule \"{rule.name}\" of {rule.owner.username}: {text}",
+           category=Category.CONTROL, owner=device.owner, device=device, actor=rule.owner)
 
 
 # --- jenis aksi --------------------------------------------------------------------
@@ -90,6 +103,7 @@ def set_actuator(action, rule, context):
     if variable.desired_value is not None and abs(variable.desired_value - value) < 1e-9:
         return f"{label} {ALREADY_REQUESTED}"
     variable.set_desired(value, None)  # None = bukan pengguna, melainkan aturan
+    note_foreign_action(rule, variable.device, label)
     return label
 
 
@@ -106,6 +120,7 @@ def send_command(action, rule, context):
         expires_at=timezone.now() + timedelta(seconds=action.ttl_seconds or 300),
     )
     events.command_changed(command)
+    note_foreign_action(rule, device, f"command {command.method}")
     return f"{device.name}: {command.method} (command #{command.pk})"
 
 
@@ -114,6 +129,11 @@ def raise_alarm(action, rule, context):
     if device is None:
         # Aturan berjadwal tanpa kondisi dan tanpa aksi ke device (tahap 14).
         raise ActionError("No device to attach the alarm to: add a condition or a device action.")
+    # Tahap 19: alarm ikut tampil di daftar alarm pemilik device, jadi pada device
+    # yang dibagikan butuh peran Operator. Viewer cukup memakai aksi email/Telegram.
+    if not allowed_devices(rule).filter(pk=device.pk).exists():
+        raise ActionError(f"An alarm on {device.name} needs Operator access to it; "
+                          "use an email or Telegram action instead.")
     existing = Alarm.objects.active().filter(rule=rule, device=device).first()
     if existing:
         return f"Alarm #{existing.pk} is still active"

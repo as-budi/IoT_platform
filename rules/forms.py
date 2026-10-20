@@ -468,6 +468,8 @@ class FlowSpecForm(BootstrapFormMixin, forms.ModelForm):
     def __init__(self, *args, devices, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["device"].queryset = devices
+        # "Semua device saya" = device MILIK pemilik aturan saja, tidak termasuk yang
+        # dibagikan (tahap 19); device bersama harus dipilih satu per satu.
         self.fields["device"].empty_label = "— Any of my devices —"
         self.fields["trigger"].widget.attrs["class"] = "form-check-input"
         self.fields["trigger"].widget.attrs["data-flow-trigger"] = ""
@@ -518,12 +520,18 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
         }
         help_texts = {"name": "", "message": "Placeholders: {rule} {device} {values} and any message key, e.g. {temperature}."}
 
-    def __init__(self, *args, devices, **kwargs):
+    def __init__(self, *args, devices, action_devices=None, **kwargs):
+        """devices = boleh DIBACA (node Latest value); action_devices = boleh DIKONTROL
+        (node Set actuator / Send command), lihat tahap 19. Bawaan: sama."""
         super().__init__(*args, **kwargs)
+        action_devices = devices if action_devices is None else action_devices
         variables = Variable.objects.filter(device__in=devices).select_related("device").order_by("device__name", "key")
         self.fields["variable"].queryset = variables
-        self.fields["target_variable"].queryset = variables.filter(kind=Variable.Kind.ACTUATOR)
-        self.fields["target_device"].queryset = devices
+        self.fields["target_variable"].queryset = (
+            Variable.objects.filter(device__in=action_devices, kind=Variable.Kind.ACTUATOR)
+            .select_related("device").order_by("device__name", "key")
+        )
+        self.fields["target_device"].queryset = action_devices
         self.fields["variable"].empty_label = "— Variable —"
         self.fields["target_variable"].empty_label = "— Choose an actuator —"
         self.fields["target_device"].empty_label = "— Choose a device —"

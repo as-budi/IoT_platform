@@ -30,6 +30,8 @@ urlpatterns = [
     path("notifications/", include("notifications.urls")),
     # Log aktivitas (tahap 18).
     path("activity/", include("activity.urls")),
+    # Berbagi device dan grup (tahap 19).
+    path("sharing/", include("sharing.urls")),
     # Halaman depan langsung diarahkan ke dashboard.
     path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]

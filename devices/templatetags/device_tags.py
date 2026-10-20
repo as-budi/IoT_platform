@@ -43,3 +43,18 @@ def plain_number(value):
     if value is None:
         return ""
     return format(value, "g")
+
+
+@register.simple_tag(takes_context=True)
+def can_access(context, device_id, level):
+    """{% can_access variable.device_id "OPERATOR" as can_operate %} (tahap 19).
+
+    Peran disimpan di cache per request (sharing.access.request_cache), jadi
+    dashboard dengan puluhan aktuator tidak membuat puluhan query.
+    """
+    from sharing import access
+
+    request = context.get("request")
+    if request is None:
+        return False
+    return access.can(request.user, device_id, level, cache=access.request_cache(request))

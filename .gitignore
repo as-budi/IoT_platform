@@ -11,3 +11,5 @@ staticfiles/
 private_media/
 
 Claude outputs/
+# File sementara dari asisten (Claude)
+.claude-tmp/

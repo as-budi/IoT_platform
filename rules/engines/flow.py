@@ -502,6 +502,7 @@ class FlowEngine(RuleEngine):
         if message.get("type") != "TELEMETRY" or not message.get("data"):
             return []
         from devices.views import visible_devices
+        from sharing import access
 
         device_id = message["originator"]["device"]
         device = Device.objects.filter(pk=device_id).first()
@@ -512,8 +513,12 @@ class FlowEngine(RuleEngine):
             Q(flow__device_id=device_id) | Q(flow__device__isnull=True)
         )
         for rule in candidates:
-            # "Semua device": hanya device yang boleh dilihat pemilik aturan.
-            if not visible_devices(rule.owner).filter(pk=device_id).exists():
+            # Device yang dipilih: pemilik aturan harus (masih) boleh melihatnya, termasuk
+            # lewat share (tahap 19). "Semua device": hanya device MILIK pemilik aturan.
+            if rule.flow.device_id is None:
+                if not access.devices_for(rule.owner, shared=False).filter(pk=device_id).exists():
+                    continue
+            elif not visible_devices(rule.owner).filter(pk=device_id).exists():
                 continue
             execution = self.run(rule, message, device, now)
             if execution:

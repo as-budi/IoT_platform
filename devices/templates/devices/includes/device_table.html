@@ -22,10 +22,16 @@
         {# {% for %} ... {% empty %} : bagian empty tampil bila daftarnya kosong. #}
         {% for device in devices %}
         <tr>
-          <td><a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a></td>
+          <td>
+            <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
+            {# Tahap 19: device orang lain yang dibagikan kepada saya. #}
+            {% if device.shared_role %}<div class="small text-muted">Shared by {{ device.owner.username }} · {{ device.shared_role }}</div>{% endif %}
+          </td>
           <td>
             {% if device.location %}
+            {% if user.is_admin or device.location.owner_id == user.pk %}
             <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>
+            {% else %}{{ device.location.name }}{% endif %}
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td>

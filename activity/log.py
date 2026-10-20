@@ -13,6 +13,7 @@ import contextvars
 import logging
 
 from django.db import DatabaseError, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from .models import ActivityEvent
@@ -58,9 +59,18 @@ def record(verb, message, *, category, owner=None, level=Level.INFO, device=None
         return None
 
 
+# Kejadian device BERSAMA yang terlihat oleh penerima share (tahap 19). Kategori
+# Rule dan Account sengaja tidak: itu urusan pribadi pemilik device.
+SHARED_CATEGORIES = [Category.DEVICE, Category.CONTROL, Category.ALARM, Category.FIRMWARE, Category.SHARING]
+
+
 def visible_events(user):
-    """Admin: semua baris. Pengguna lain: baris yang owner-nya dia sendiri."""
+    """Admin: semua baris. Pengguna lain: baris yang owner-nya dia sendiri, ditambah
+    kejadian device/kontrol/alarm/firmware/berbagi pada device yang dibagikan kepadanya."""
+    from sharing import access
+
     events = ActivityEvent.objects.select_related("device", "rule")
     if user.is_admin:
         return events.select_related("owner")
-    return events.filter(owner=user)
+    shared = access.shares_of(user).values("device_id")
+    return events.filter(Q(owner=user) | Q(device_id__in=shared, category__in=SHARED_CATEGORIES))
