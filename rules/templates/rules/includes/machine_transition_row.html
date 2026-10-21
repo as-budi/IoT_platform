@@ -1,0 +1,35 @@
+{% comment %}
+  Satu transisi: <dari> → <ke> bila <pemicu>. Pilihan nama keadaan disusun ulang oleh
+  JavaScript setiap kali nama keadaan diubah; state_names dipakai saat halaman pertama tampil.
+{% endcomment %}
+<div class="transition-row{% if form.DELETE.value %} d-none{% endif %}" data-transition-row>
+  <div hidden>{{ form.DELETE }}</div>
+  <div class="transition-ends">
+    <select class="form-select form-select-sm" name="{{ form.source.html_name }}" data-state-select data-with-any data-value="{{ form.source.value|default:'' }}" aria-label="From">
+      <option value="{{ any_state }}"{% if form.source.value == any_state %} selected{% endif %}>* any state</option>
+      {% for name in state_names %}<option value="{{ name }}"{% if form.source.value == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+    <span class="link-arrow" aria-hidden="true">→</span>
+    <select class="form-select form-select-sm" name="{{ form.target.html_name }}" data-state-select data-value="{{ form.target.value|default:'' }}" aria-label="To">
+      <option value="">— state —</option>
+      {% for name in state_names %}<option value="{{ name }}"{% if form.target.value == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </div>
+  <select class="form-select form-select-sm" name="{{ form.trigger.html_name }}" data-transition-trigger aria-label="Trigger">
+    {% for value, text in form.fields.trigger.choices %}<option value="{{ value }}"{% if form.trigger.value == value %} selected{% endif %}>{{ text }}</option>{% endfor %}
+  </select>
+  <div class="transition-detail">
+    <input type="text" class="form-control form-control-sm font-monospace" name="{{ form.condition.html_name }}" value="{{ form.condition.value|default:'' }}"
+           placeholder="temperature > 35 and humidity < 40" data-trigger-for="CONDITION" aria-label="Condition" maxlength="400">
+    <div class="input-group input-group-sm transition-seconds" data-trigger-for="CONDITION TIMEOUT SILENT">
+      <span class="input-group-text" data-seconds-label>for</span>
+      <input type="number" min="0" class="form-control" name="{{ form.seconds.html_name }}" value="{{ form.seconds.value|default:'' }}" aria-label="Seconds">
+      <span class="input-group-text">s</span>
+    </div>
+    <input type="text" class="form-control form-control-sm" name="{{ form.label.html_name }}" value="{{ form.label.value|default:'' }}"
+           placeholder="Button text, e.g. Start defrost" data-trigger-for="MANUAL" aria-label="Button text" maxlength="40">
+  </div>
+  <button type="button" class="btn btn-sm btn-link text-danger" data-remove-transition aria-label="Remove transition">✕</button>
+  {% for field in form %}{% for error in field.errors %}<div class="text-danger small w-100">{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
+  {% for error in form.non_field_errors %}<div class="text-danger small w-100">{{ error }}</div>{% endfor %}
+</div>

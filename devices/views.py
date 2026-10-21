@@ -36,7 +36,7 @@ from .forms import (
     SetDesiredForm,
     VariableForm,
 )
-from .models import Command, Device, Location, Telemetry, Variable
+from .models import Command, Location, Telemetry, Variable
 
 HISTORY_PAGE_SIZE = 25
 # Periode chart dan peringkasan titiknya ada di devices/charts.py.
@@ -275,6 +275,14 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         context.update(device_firmware_context(self.request, device))
         # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
         context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
+        # Keadaan device ini di state machine milik pengguna (tahap 20). Aturan orang
+        # lain (mis. pemilik device yang dibagikan) tidak ditampilkan: itu urusan pribadinya.
+        from rules.models import MachineInstance
+
+        machines = MachineInstance.objects.filter(device=device).select_related("rule", "state")
+        if not self.request.user.is_admin:
+            machines = machines.filter(rule__owner=self.request.user)
+        context["machine_instances"] = machines
         # Riwayat online/offline (tahap 16, devices/presence.py).
         context["status_events"] = device.status_events.all()[:RECENT_STATUS_EVENTS]
         context["offline_after"] = settings.DEVICE_OFFLINE_SECONDS

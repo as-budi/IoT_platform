@@ -339,6 +339,22 @@
   </div>
 </div>
 
+{# ---------- State machine (tahap 20): keadaan device ini ---------- #}
+{% if machine_instances %}
+<h2 class="h5 mb-3 mt-4" id="states">State machines</h2>
+<div class="card shadow-sm mb-4">
+  <ul class="list-group list-group-flush">
+    {% for instance in machine_instances %}
+    <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <a href="{% url 'rules:detail' instance.rule_id %}#devices">{{ instance.rule.name }}</a>
+      <span>{% include "rules/includes/machine_state_badge.html" with state=instance.state %}
+        <span class="small text-muted ms-1">for {{ instance.entered_at|timesince }}</span></span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {# ---------- Berbagi device (tahap 19) ---------- #}
 {% include "sharing/includes/device_sharing.html" %}
 

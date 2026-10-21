@@ -23,6 +23,9 @@ def originator_device_id(rule):
     flow = getattr(rule, "flow", None) if rule.model == "FLOW" else None
     if flow is not None:
         return flow.device_id
+    if rule.model == "STATE_MACHINE":       # tahap 20: device yang diamati, atau None (semua device)
+        machine = getattr(rule, "machine", None)
+        return machine.device_id if machine else None
     spec = getattr(rule, "eca", None)
     if spec is None:
         return None

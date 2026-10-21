@@ -38,6 +38,15 @@ Contoh rule chain (lihat docs/flow-mekanisme.md):
                              tidak ada. Nonaktif bawaan (mengirim email).
 
 Node ditulis (nama, jenis, {field}); panah ditulis (asal, label, tujuan).
+
+Contoh state machine (tahap 20, docs/tahap-20-state-machine.md):
+
+    Cold room states      NORMAL → WARM (> 8 °C selama 2 menit) → BREACH (10 menit di WARM),
+                          tombol "Start defrost" / "End defrost", "* → OFFLINE" bila device
+                          offline. Alarm dibuat saat masuk keadaan dan di-clear saat keluar.
+
+Keadaan ditulis (nama, warna, arti); transisi (asal|"*", tujuan, pemicu, kondisi, detik, tombol);
+aksi (keadaan, ENTER|EXIT, jenis, {field}).
 """
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
@@ -45,8 +54,8 @@ from django.db import transaction
 
 from devices.models import Device, Variable
 from rules.models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleModel, RuleSchedule,
-    RuleState,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineCondition, MachineSpec, MachineState,
+    MachineTransition, Rule, RuleAction, RuleModel, RuleSchedule, RuleState,
 )
 
 User = get_user_model()
@@ -328,15 +337,54 @@ DEMO_CHAINS = [
 ]
 
 
+DEMO_MACHINES = [
+    {
+        "owner": "rina",
+        "name": "Cold room states",
+        "description": "Stages of a cold-room problem: a short warm spell is only watched, ten minutes "
+                       "of it is a breach. Defrosting pauses the watch; a lost connection has its own state.",
+        "device": "Cold Storage Unit",
+        "states": [
+            ("NORMAL", "OK", "2–8 °C"),
+            ("WARM", "WARNING", "above 8 °C, being watched"),
+            ("BREACH", "DANGER", "above 8 °C for 10 minutes"),
+            ("DEFROST", "INFO", "manual defrost, temperature not watched"),
+            ("OFFLINE", "NEUTRAL", "no connection"),
+        ],
+        "transitions": [
+            ("NORMAL", "WARM", "CONDITION", "temperature > 8", 120, ""),
+            ("WARM", "NORMAL", "CONDITION", "temperature <= 7.5", 0, ""),
+            ("WARM", "BREACH", "TIMEOUT", "", 600, ""),
+            ("BREACH", "NORMAL", "CONDITION", "temperature <= 7", 60, ""),
+            ("NORMAL", "DEFROST", "MANUAL", "", None, "Start defrost"),
+            ("DEFROST", "NORMAL", "TIMEOUT", "", 1800, ""),
+            ("DEFROST", "NORMAL", "MANUAL", "", None, "End defrost"),
+            ("*", "OFFLINE", "OFFLINE", "", None, ""),
+            ("OFFLINE", "NORMAL", "CONDITION", "temperature <= 8", 0, ""),
+            ("OFFLINE", "WARM", "CONDITION", "temperature > 8", 0, ""),
+        ],
+        "actions": [
+            ("WARM", "ENTER", "ALARM", {"severity": "WARNING", "message": "{device} above 8 °C ({values}), watching"}),
+            ("WARM", "EXIT", "CLEAR_ALARM", {}),
+            ("BREACH", "ENTER", "ALARM",
+             {"severity": "CRITICAL", "message": "Cold chain breach: {device} above 8 °C for 10 minutes"}),
+            ("BREACH", "EXIT", "CLEAR_ALARM", {}),
+            ("OFFLINE", "ENTER", "ALARM", {"severity": "MAJOR", "message": "{device} is offline"}),
+            ("OFFLINE", "EXIT", "CLEAR_ALARM", {}),
+        ],
+    },
+]
+
+
 class Command(BaseCommand):
-    help = "Create sample ECA rules and rule chains for the demo devices (run seed_demo first)."
+    help = "Create sample ECA rules, rule chains and state machines for the demo devices (run seed_demo first)."
 
     def add_arguments(self, parser):
         parser.add_argument("--reset", action="store_true", help="Delete and recreate the sample rules.")
 
     def handle(self, *args, **options):
         created = 0
-        for spec in DEMO_RULES + DEMO_CHAINS:
+        for spec in DEMO_RULES + DEMO_CHAINS + DEMO_MACHINES:
             try:
                 owner = User.objects.get(username=spec["owner"])
             except User.DoesNotExist:
@@ -349,7 +397,12 @@ class Command(BaseCommand):
                 Alarm.objects.filter(rule__in=existing).delete()
                 existing.delete()
             with transaction.atomic():
-                rule = self.create_chain(owner, spec) if "nodes" in spec else self.create_rule(owner, spec)
+                if "states" in spec:
+                    rule = self.create_machine(owner, spec)
+                elif "nodes" in spec:
+                    rule = self.create_chain(owner, spec)
+                else:
+                    rule = self.create_rule(owner, spec)
             created += 1
             state = "enabled" if rule.is_enabled else "disabled"
             self.stdout.write(f"Rule created: {rule.name} ({owner.username}, {state})")
@@ -463,5 +516,33 @@ class Command(BaseCommand):
                 label=label, target=nodes[target], order=order,
             )
         self.create_schedule(rule, spec)
+        RuleState.objects.create(rule=rule)
+        return rule
+
+    def create_machine(self, owner, spec):
+        """State machine contoh (tahap 20)."""
+        from rules.engines.state_machine import parse_condition
+
+        rule = Rule.objects.create(
+            owner=owner, name=spec["name"], description=spec.get("description", ""),
+            model=RuleModel.STATE_MACHINE, is_enabled=spec.get("enabled", True),
+        )
+        MachineSpec.objects.create(rule=rule, device=self.device(owner, spec["device"]) if spec.get("device") else None)
+        states = {}
+        for order, (name, tone, description) in enumerate(spec["states"]):
+            states[name] = MachineState.objects.create(
+                rule=rule, name=name, tone=tone, description=description, order=order, is_initial=order == 0,
+            )
+        for order, (source, target, trigger, condition, seconds, label) in enumerate(spec["transitions"]):
+            transition = MachineTransition.objects.create(
+                rule=rule, order=order, trigger=trigger, seconds=seconds, label=label,
+                source=None if source == "*" else states[source], target=states[target],
+            )
+            for number, group in enumerate(parse_condition(condition) if condition else [], start=1):
+                for position, (key, operator, threshold) in enumerate(group):
+                    MachineCondition.objects.create(transition=transition, group=number, order=position,
+                                                    key=key, operator=operator, threshold=threshold)
+        for order, (state, run_on, kind, fields) in enumerate(spec["actions"]):
+            RuleAction.objects.create(rule=rule, state=states[state], run_on=run_on, kind=kind, order=order, **fields)
         RuleState.objects.create(rule=rule)
         return rule

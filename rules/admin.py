@@ -1,8 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleAction, RuleExecution, RuleSchedule,
-    RuleState,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineInstance, MachineState, MachineTransition,
+    Rule, RuleAction, RuleExecution, RuleSchedule, RuleState,
 )
 
 
@@ -68,3 +68,22 @@ class AlarmAdmin(admin.ModelAdmin):
 class EcaConditionAdmin(admin.ModelAdmin):
     list_display = ("spec", "role", "group", "variable", "operator", "threshold")
     list_filter = ("role",)
+
+
+# --- State machine (tahap 20) ---------------------------------------------------------
+
+@admin.register(MachineState)
+class MachineStateAdmin(admin.ModelAdmin):
+    list_display = ("name", "rule", "tone", "is_initial", "order")
+    list_filter = ("tone",)
+
+
+@admin.register(MachineTransition)
+class MachineTransitionAdmin(admin.ModelAdmin):
+    list_display = ("__str__", "rule", "trigger", "seconds", "label", "order")
+    list_filter = ("trigger",)
+
+
+@admin.register(MachineInstance)
+class MachineInstanceAdmin(admin.ModelAdmin):
+    list_display = ("rule", "device", "state", "entered_at", "last_evaluated_at")

@@ -126,7 +126,7 @@ class PortableRuleTests(MultiVariableData):
         cases = {
             "not json": "Not valid JSON",
             json.dumps({"format": "x"}): "&quot;format&quot; must be",
-            json.dumps({**export_rule(self.rule), "model": "SQL"}): "must be &quot;ECA&quot; or &quot;FLOW&quot;",
+            json.dumps({**export_rule(self.rule), "model": "SQL"}): "must be &quot;ECA&quot;, &quot;FLOW&quot; or &quot;STATE_MACHINE&quot;",
             json.dumps({**export_rule(self.rule), "model": "FLOW"}): "&quot;flow&quot; must be an object",
         }
         for text, message in cases.items():

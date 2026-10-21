@@ -98,7 +98,9 @@
     let x = PAD;
     const y = PAD + TITLE_H + height + LEGEND_H / 2;
     ctx.font = `12px ${font}`;
-    LEGEND.forEach(([label, variable]) => {
+    // Diagram lain (state machine, tahap 20) membawa keterangannya sendiri: data-legend.
+    const legend = button.dataset.legend ? JSON.parse(button.dataset.legend) : LEGEND;
+    legend.forEach(([label, variable]) => {
       ctx.fillStyle = cssVar(variable, "#888");
       ctx.fillRect(x, y - 5, 10, 10);
       ctx.fillStyle = muted;

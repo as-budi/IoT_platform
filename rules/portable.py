@@ -44,6 +44,22 @@ LATEST dan SET_ACTUATOR memakai "device" + "variable" (key variabel),
 SEND_COMMAND memakai "device". Panah menyebut node lewat NAMA, "Input" = awal.
 Ingatan node (memory: nilai terakhir CHANGED, waktu terakhir THROTTLE) tidak ikut.
 
+State machine (tahap 20) memakai "model": "STATE_MACHINE" dan bagian "machine":
+
+      "machine": {
+        "device": "Cold Storage Unit",     # null = setiap device milik pemilik aturan
+        "max_age_seconds": 300,
+        "states": [{"name": "NORMAL", "description": "...", "tone": "OK", "initial": true}, ...],
+        "transitions": [{"from": "NORMAL", "to": "WARM", "trigger": "CONDITION",
+                         "condition": "temperature > 8", "seconds": 120, "label": ""},
+                        {"from": "*", "to": "OFFLINE", "trigger": "OFFLINE", ...}, ...],
+        "actions": [{"state": "ALARM", "run_on": "ENTER", "kind": "ALARM", "severity": "CRITICAL", ...}, ...]
+      }
+
+Kondisi transisi ditulis sebagai TEKS yang sama dengan isian form
+("temperature > 35 and humidity < 40 or ..."); "from": "*" = dari keadaan mana pun.
+Keadaan device saat ini (MachineInstance) tidak ikut.
+
 Device dan variabel disebut lewat NAMA device dan KEY variabel, bukan id
 database. Id hanya bermakna di satu database; nama bisa dibaca manusia dan
 tetap cocok di server lain atau untuk pengguna lain yang punya device bernama sama.
@@ -68,7 +84,7 @@ from .schedules import DAY_NAMES
 FORMAT = "iot-platform.rule"
 VERSION = 1
 # Model yang bisa diekspor/diimpor.
-PORTABLE_MODELS = (RuleModel.ECA, RuleModel.FLOW)
+PORTABLE_MODELS = (RuleModel.ECA, RuleModel.FLOW, RuleModel.STATE_MACHINE)
 # Batas ukuran file/teks yang diimpor. Aturan biasa hanya beberapa KB.
 MAX_IMPORT_BYTES = 100_000
 
@@ -79,6 +95,7 @@ ACTION_FIELDS = {
     RuleAction.Kind.ALARM: ("severity", "message"),
     RuleAction.Kind.EMAIL: ("message", "recipients"),
     RuleAction.Kind.TELEGRAM: ("message", "recipients"),
+    RuleAction.Kind.CLEAR_ALARM: (),
 }
 
 
@@ -188,10 +205,40 @@ def export_flow(rule):
     }
 
 
+def export_machine(rule):
+    """State machine -> dict yang siap di-json.dumps()."""
+    from .engines.state_machine import format_condition
+
+    spec = getattr(rule, "machine", None)
+    states = list(rule.machine_states.order_by("order", "pk"))
+    names = {state.pk: state.name for state in states}
+    actions = rule.actions.select_related("state", "target_variable__device", "target_device").order_by(
+        "state__order", "order", "pk")
+    return {
+        **_header(rule),
+        "machine": {
+            "device": spec.device.name if spec and spec.device_id else None,
+            "max_age_seconds": spec.max_age_seconds if spec else 300,
+            "states": [
+                {"name": s.name, "description": s.description, "tone": s.tone, "initial": s.is_initial}
+                for s in states
+            ],
+            "transitions": [
+                {"from": names.get(t.source_id, "*"), "to": names.get(t.target_id), "trigger": t.trigger,
+                 "condition": format_condition(t.condition_groups()), "seconds": t.seconds, "label": t.label}
+                for t in rule.machine_transitions.prefetch_related("conditions").order_by("order", "pk")
+            ],
+            "actions": [{"state": a.state.name if a.state_id else None, **_action(a)} for a in actions],
+        },
+    }
+
+
 def export_rule(rule):
-    """Aturan ECA atau FLOW -> dict yang siap di-json.dumps()."""
+    """Aturan ECA, FLOW, atau STATE_MACHINE -> dict yang siap di-json.dumps()."""
     if rule.model == RuleModel.FLOW:
         return export_flow(rule)
+    if rule.model == RuleModel.STATE_MACHINE:
+        return export_machine(rule)
     spec = rule.eca
     extra = {}
     if spec.event == EcaSpec.Event.SCHEDULE:
@@ -252,8 +299,16 @@ def parse(text):
                 errors.append('"flow.nodes" must be a list.')
             if not isinstance(flow.get("links"), list):
                 errors.append('"flow.links" must be a list.')
+    elif model == RuleModel.STATE_MACHINE:
+        machine = data.get("machine")
+        if not isinstance(machine, dict):
+            errors.append('"machine" must be an object.')
+        else:
+            for part in ("states", "transitions", "actions"):
+                if not isinstance(machine.get(part, []), list):
+                    errors.append(f'"machine.{part}" must be a list.')
     else:
-        errors.append('"model" must be "ECA" or "FLOW".')
+        errors.append('"model" must be "ECA", "FLOW" or "STATE_MACHINE".')
     if errors:
         raise RuleImportError(errors)
     return data
@@ -484,10 +539,88 @@ def flow_form_data(data, owner):
     return post
 
 
+def _action_post(post, prefix, action, resolve, where):
+    """Satu aksi JSON -> isian form aksi (dipakai ECA dan state machine)."""
+    kind = action.get("kind")
+    post[f"{prefix}-kind"] = _text(kind)
+    if kind == RuleAction.Kind.SET_ACTUATOR:
+        variable = resolve.variable(action.get("device"), action.get("variable"), where)
+        post[f"{prefix}-target_variable"] = _text(variable.pk if variable else "")
+    elif kind == RuleAction.Kind.SEND_COMMAND:
+        target = resolve.device(action.get("device"), where)
+        post[f"{prefix}-target_device"] = _text(target.pk if target else "")
+    for name in ("value", "method", "ttl_seconds", "severity", "message", "recipients"):
+        if name in action:
+            post[f"{prefix}-{name}"] = _text(action[name])
+    params = action.get("params")
+    post[f"{prefix}-params"] = json.dumps(params) if params else ""
+    post.setdefault(f"{prefix}-ttl_seconds", "300")
+
+
+def machine_form_data(data, owner):
+    """dict hasil parse() (model STATE_MACHINE) -> data POST untuk form state machine.
+
+    Transisi dan aksi tetap menyebut keadaan lewat NAMA, persis seperti form, jadi
+    pemeriksaan check_machine() berjalan tanpa terjemahan tambahan.
+    """
+    resolve = _Resolver(owner)
+    machine = data["machine"]
+    post = {
+        "rule-name": _text(data.get("name")),
+        "rule-description": _text(data.get("description")),
+        "rule-is_enabled": _text(bool(data.get("enabled", True))),
+        "machine-max_age_seconds": _text(machine.get("max_age_seconds", 300)),
+    }
+    device = resolve.device(machine.get("device"), "Device")
+    post["machine-device"] = _text(device.pk if device else "")
+
+    states = machine.get("states") or []
+    for index, state in enumerate(states):
+        if not isinstance(state, dict):
+            resolve.errors.append(f"State {index + 1}: each state must be an object.")
+            continue
+        prefix = f"states-{index}"
+        post[f"{prefix}-name"] = _text(state.get("name"))
+        post[f"{prefix}-description"] = _text(state.get("description"))
+        post[f"{prefix}-tone"] = _text(state.get("tone", "NEUTRAL"))
+        post[f"{prefix}-is_initial"] = _text(bool(state.get("initial")))
+    _management(post, "states", len(states))
+
+    transitions = machine.get("transitions") or []
+    for index, row in enumerate(transitions):
+        if not isinstance(row, dict):
+            resolve.errors.append(f"Transition {index + 1}: each transition must be an object.")
+            continue
+        prefix = f"transitions-{index}"
+        post[f"{prefix}-source"] = _text(row.get("from", "*"))
+        post[f"{prefix}-target"] = _text(row.get("to"))
+        for name in ("trigger", "condition", "seconds", "label"):
+            post[f"{prefix}-{name}"] = _text(row.get(name))
+    _management(post, "transitions", len(transitions))
+
+    actions = machine.get("actions") or []
+    for index, action in enumerate(actions):
+        where = f"Action {index + 1}"
+        if not isinstance(action, dict):
+            resolve.errors.append(f"{where}: each action must be an object.")
+            continue
+        prefix = f"actions-{index}"
+        post[f"{prefix}-state_name"] = _text(action.get("state"))
+        post[f"{prefix}-run_on"] = _text(action.get("run_on", RuleAction.RunOn.ENTER))
+        _action_post(post, prefix, action, resolve, where)
+    _management(post, "actions", len(actions))
+
+    if resolve.errors:
+        raise RuleImportError(resolve.errors)
+    return post
+
+
 def form_data(data, owner):
     """Pilih penerjemah sesuai model."""
     if data["model"] == RuleModel.FLOW:
         return flow_form_data(data, owner)
+    if data["model"] == RuleModel.STATE_MACHINE:
+        return machine_form_data(data, owner)
     return eca_form_data(data, owner)
 
 
@@ -497,6 +630,7 @@ def form_errors(forms, cross_errors=()):
         "rule_form": "Rule", "spec_form": "Settings", "when_formset": "When",
         "clear_formset": "Clear", "action_formset": "Action",
         "node_formset": "Node", "link_formset": "Link", "schedule_form": "Schedule",
+        "state_formset": "State", "transition_formset": "Transition",
     }
     messages = []
     for key, label in sections.items():

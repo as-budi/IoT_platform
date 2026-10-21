@@ -69,6 +69,44 @@ Di seluruh panduan, ganti nilai contoh berikut dengan milik Anda:
 | `203.0.113.10` | static IP server dari Lightsail |
 | `198.51.100.7` | IP publik internet Anda (cek di whatismyip.com) |
 
+### Urutan pemasangan dan titik periksa
+
+Banyak langkah bergantung pada langkah sebelumnya. Bila dikerjakan tidak berurutan, layanan
+gagal start dengan pesan yang tidak jelas. Contohnya, Mosquitto berhenti dengan
+`status=13` bila `iot.conf` dipasang sebelum file akun dan sertifikatnya ada. Ikuti urutan
+ini, dan **jangan lanjut sebelum titik periksa (✔) sebuah langkah terpenuhi**:
+
+```
+ 1–3  domain + server + DNS        ✔ dig +short DOMAIN  = IP server
+ 4    amankan OS, swap             ✔ ufw: 22, 80, 443, 8883 terbuka
+ 5    paket (MySQL, Redis, Nginx, Mosquitto bawaan, certbot)
+ 6    database + user MySQL
+ 7    kode, venv, .env, migrate     ✔ manage.py check tanpa error
+ 8.1  salin unit systemd, start HANYA iot-web       ✔ curl 127.0.0.1:8001 → 200
+ 8.2  Nginx HTTP                    ✔ http://DOMAIN tampil
+ 8.3  sertifikat → Nginx HTTPS → DJANGO_HTTPS=True  ✔ /etc/letsencrypt/live/DOMAIN ada
+ 9.1  akun & ACL Mosquitto          ✔ /etc/mosquitto/iot/passwd dan acl ada
+ 9.2  sertifikat untuk Mosquitto    ✔ /etc/mosquitto/certs/*.pem ada
+ 9.3  iot.conf (PALING AKHIR)       ✔ mosquitto active, port 1883 (lokal) & 8883
+ 9.4  timer sinkron akun
+ 10   iot.target + backup + cleanup ✔ semua layanan active, juga setelah reboot
+```
+
+Layanan yang membutuhkan layanan lain:
+
+| Layanan | Butuh |
+|---|---|
+| `iot-web` (Daphne) | MySQL, Redis, `.env`, `migrate`, `collectstatic` |
+| `certbot` | DNS sudah mengarah ke server, port 80 terbuka, Nginx HTTP melayani `/var/www/certbot` |
+| `iot-mqtt-accounts` | `.env` (`MQTT_USERNAME`, `MQTT_PASSWORD`), MySQL, folder `/srv/iot/mosquitto`, program `mosquitto_passwd` |
+| Mosquitto + `iot.conf` | `/etc/mosquitto/iot/{passwd,acl}` dan `/etc/mosquitto/certs/{fullchain,privkey}.pem` |
+| `iot-mqtt` (bridge) | Mosquitto dengan `iot.conf` dan akun `iot-bridge` |
+| `iot-rules`, `iot-housekeeping` | MySQL, Redis |
+
+**Server selain Lightsail** (VPS lain, sering login langsung sebagai `root`): semua langkah
+sama, kecuali bagian khusus konsol Lightsail (static IP, firewall, snapshot). Atur firewall di
+panel penyedia VPS dengan port yang sama seperti tabel 2.4, dan pastikan IP server tetap.
+
 ---
 
 ## 1. Mendapatkan domain
@@ -461,8 +499,12 @@ sudo cp -rv /srv/iot/app/deploy/systemd/. /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl start iot-web
 sudo systemctl status iot-web --no-pager
-curl -sI -H "Host: iot.contoh.my.id" http://127.0.0.1:8001/accounts/login/ | head -1   # HTTP/1.1 200 OK
+curl -sI -H "Host: DOMAIN-ANDA" http://127.0.0.1:8001/accounts/login/ | head -1   # HTTP/1.1 200 OK
 ```
+
+Pada tahap ini **hanya `iot-web`** yang dijalankan. `iot.target` (bridge MQTT, rule engine,
+housekeeping) baru di-enable di langkah 10, setelah broker siap. Bila dijalankan lebih dulu,
+`iot-mqtt` akan terus restart karena belum ada akun `iot-bridge` di broker.
 
 Unit `iot-web.service` menjalankan Daphne sebagai user `iot` di `127.0.0.1:8001`, sehingga
 Daphne tidak bisa dijangkau dari luar. Pengamanan prosesnya (`ProtectSystem=strict`,
@@ -484,9 +526,25 @@ belum ada HTTPS.
 
 ### 8.3 Sertifikat HTTPS (Let's Encrypt)
 
+Prasyarat, karena Let's Encrypt memeriksa domain dari internet lewat port 80:
+
+```bash
+dig +short DOMAIN-ANDA                       # harus IP server ini
+curl -sI http://DOMAIN-ANDA/ | head -1       # Nginx menjawab (langkah 8.2)
+```
+
+Ganti `-d` dengan domain Anda dan `--email` dengan email aktif (Let's Encrypt mengirim
+peringatan ke sini bila perpanjangan gagal). `-w /var/www/certbot` sudah sesuai konfigurasi
+Nginx project. Uji dulu dengan `--dry-run`; batas kegagalan Let's Encrypt cukup ketat
+(±5 per jam per domain):
+
 ```bash
 sudo certbot certonly --webroot -w /var/www/certbot -d iot.contoh.my.id \
+     --email email-anda@contoh.com --agree-tos --no-eff-email --dry-run
+# berhasil? jalankan lagi TANPA --dry-run
+sudo certbot certonly --webroot -w /var/www/certbot -d iot.contoh.my.id \
      --email email-anda@contoh.com --agree-tos --no-eff-email
+sudo ls /etc/letsencrypt/live/iot.contoh.my.id/   # ✔ fullchain.pem, privkey.pem
 ```
 
 Lalu ganti ke konfigurasi akhir, yang memuat HTTPS, pengalihan, header keamanan, dan batas
@@ -559,26 +617,93 @@ iot-mqtt-reload.path melihat perubahan ─► iot-mqtt-reload.service (root)
       ─► salin ke /etc/mosquitto/iot (pemilik mosquitto, izin 600) ─► reload Mosquitto
 ```
 
-```bash
-# folder kerja akun: hanya user iot
-sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto
-# buat akun & ACL pertama kali, lalu pasang ke /etc/mosquitto/iot
-sudo systemctl start iot-mqtt-accounts.service
-sudo systemctl start iot-mqtt-reload.service
-sudo ls -l /etc/mosquitto/iot            # passwd, acl: pemilik mosquitto, -rw-------
+Mosquitto dari langkah 5 masih berjalan dengan konfigurasi bawaan Ubuntu. Biarkan dulu.
+Konfigurasi platform (`iot.conf`) menunjuk ke file akun dan sertifikat, jadi file-file itu
+harus **sudah ada sebelum** `iot.conf` dipasang. Kerjakan 9.1 sampai 9.4 berurutan.
 
-# sertifikat untuk port 8883 (hook ini juga berjalan otomatis setiap perpanjangan)
+Prasyarat:
+
+```bash
+sudo grep -E '^MQTT_(USERNAME|PASSWORD)=' /srv/iot/app/.env   # terisi, bukan GANTI-...
+ls /etc/systemd/system/iot-mqtt-*                              # disalin di langkah 8.1
+sudo ls /etc/letsencrypt/live/                                 # sertifikat dari langkah 8.3
+which mosquitto_passwd                                         # /usr/bin/mosquitto_passwd
+```
+
+### 9.1 Akun dan ACL
+
+```bash
+# folder kerja akun: hanya user iot. HARUS ada sebelum service dijalankan
+# (ReadWritePaths di unit systemd menolak folder yang tidak ada).
+sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto
+
+# buat akun & ACL dari database
+sudo systemctl start iot-mqtt-accounts.service
+sudo ls -l /srv/iot/mosquitto            # ✔ passwd, acl, passwd.sha256
+
+# salin ke /etc/mosquitto/iot (pemilik mosquitto, izin 600)
+sudo systemctl start iot-mqtt-reload.service
+sudo ls -l /etc/mosquitto/iot            # ✔ passwd, acl: mosquitto mosquitto -rw-------
+```
+
+Bila `passwd` tidak muncul, lihat alasannya dengan `sudo journalctl -u iot-mqtt-accounts -n 30
+--no-pager`. Biasanya `MQTT_PASSWORD` belum diisi, MySQL belum siap, atau `mosquitto_passwd`
+tidak ditemukan.
+
+### 9.2 Sertifikat untuk Mosquitto (port 8883)
+
+Mosquitto berjalan sebagai user `mosquitto`, yang tidak boleh membaca `/etc/letsencrypt`.
+Hook berikut menyalin sertifikat ke `/etc/mosquitto/certs`. Hook ini juga berjalan otomatis
+setiap kali certbot memperpanjang sertifikat.
+
+```bash
 sudo cp /srv/iot/app/deploy/mosquitto/certbot-deploy-hook.sh /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh
 sudo sed -i 's/iot.contoh.my.id/DOMAIN-ANDA/' /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh
+sudo grep DOMAIN= /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh   # ✔ domain Anda
 sudo /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh
+sudo ls -l /etc/mosquitto/certs          # ✔ fullchain.pem (644), privkey.pem (640), grup mosquitto
+```
 
-# konfigurasi broker
+### 9.3 Konfigurasi broker (paling akhir)
+
+Periksa sekali lagi bahwa keempat file yang dibutuhkan `iot.conf` sudah ada. Baris ini
+menulis **SIAP** atau nama file yang masih kurang:
+
+```bash
+ok=1; for f in /etc/mosquitto/iot/passwd /etc/mosquitto/iot/acl \
+               /etc/mosquitto/certs/fullchain.pem /etc/mosquitto/certs/privkey.pem; do
+  sudo test -s "$f" || { echo "KURANG: $f"; ok=0; }; done; [ $ok = 1 ] && echo SIAP
+```
+
+Hanya bila **SIAP**:
+
+```bash
 sudo cp /srv/iot/app/deploy/mosquitto/iot.conf /etc/mosquitto/conf.d/iot.conf
 sudo systemctl restart mosquitto
-sudo ss -tlpn | grep mosquitto           # 127.0.0.1:1883 dan *:8883
+sudo systemctl status mosquitto --no-pager   # ✔ active (running)
+sudo ss -tlpn | grep mosquitto               # ✔ 127.0.0.1:1883 dan *:8883
+```
 
-# sinkron akun berkala + muat ulang broker bila akun berubah
+Bila Mosquitto gagal start: pesan aslinya **tidak** ada di `journalctl`, karena konfigurasi
+bawaan Ubuntu menulis log ke file. Lihat:
+
+```bash
+sudo tail -n 20 /var/log/mosquitto/mosquitto.log
+```
+
+Contohnya `Unable to open pwfile "/etc/mosquitto/iot/passwd"` berarti langkah 9.1 belum
+berhasil. Perbaiki penyebabnya, lalu `sudo systemctl reset-failed mosquitto && sudo
+systemctl restart mosquitto` (setelah 5 kali gagal, systemd berhenti mencoba sampai di-reset).
+Selama memperbaiki, broker bisa dijalankan dengan konfigurasi bawaan dulu:
+`sudo mv /etc/mosquitto/conf.d/iot.conf /root/iot.conf.bak && sudo systemctl restart mosquitto`.
+
+### 9.4 Sinkron akun otomatis
+
+```bash
+# akun dibuat ulang tiap 2 menit; broker dimuat ulang bila daftar akun berubah
 sudo systemctl enable --now iot-mqtt-accounts.timer iot-mqtt-reload.path
+systemctl list-timers iot-mqtt-accounts --no-pager   # ✔ terjadwal
 ```
 
 Uji bahwa broker menolak tamu:
@@ -605,6 +730,8 @@ pattern read  iot/%u/errors
 ---
 
 ## 10. Menjalankan semua layanan
+
+Prasyarat: langkah 9.3 selesai (Mosquitto *active* dengan `iot.conf`). Setelah itu:
 
 ```bash
 sudo systemctl enable --now iot.target          # web, MQTT bridge, rule engine, housekeeping
@@ -872,6 +999,32 @@ besar, buat snapshot manual dulu (tab Snapshots → **Create snapshot**).
 Bila kode disalin dengan rsync (cara 2 di langkah 7.2), jalankan rsync lagi, lalu baris
 `pip install` sampai `restart` dari skrip secara manual.
 
+### 14.1 Dari tahap 18 ke versi terbaru (tahap 19–20)
+
+Tahap 19 (berbagi device) dan tahap 20 (state machine) hanya mengubah kode dan database.
+Tidak ada layanan systemd baru, perubahan Nginx, atau isian `.env` baru.
+
+```bash
+# 1. cadangan dulu: snapshot manual di konsol, dan backup database
+sudo systemctl start iot-backup.service
+sudo ls -lt /srv/iot/backups | head -3          # ✔ file backup terbaru hari ini
+
+# 2. di Mac: commit & push tahap 19–20; lalu di server:
+sudo /srv/iot/app/deploy/scripts/update.sh
+#    migrate menjalankan: sharing 0001–0002, activity 0002, rules 0006
+
+# 3. periksa
+sudo -u iot -H /srv/iot/venv/bin/python /srv/iot/app/manage.py showmigrations sharing rules activity | grep '\[ \]'   # ✔ tidak ada keluaran
+systemctl is-active iot-web iot-mqtt iot-rules iot-housekeeping mosquitto
+```
+
+Setelah itu menu **Sharing groups** muncul di sidebar, dan **State machine** bisa dipilih di
+*Rules → New rule*. `seed_demo` dan `seed_rules` tetap **jangan** dijalankan di server publik
+(akun contoh berpassword `demo12345`).
+
+Bila `update.sh` berhenti di `migrate`, layanan lama tetap berjalan. Kirim keluarannya untuk
+diperiksa; jangan menjalankan `migrate --fake`.
+
 Pembaruan paket Python tidak otomatis. Cek sebulan sekali:
 
 ```bash
@@ -904,6 +1057,9 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | Setelah update, tampilan setengah lama (mis. JS baru tetapi CSS lama) | browser memakai CSS dari cache; konfigurasi Nginx atau settings belum versi tahap 15 | pastikan HTML memuat `/static/css/app.<hash>.css` (`curl -s https://DOMAIN-ANDA/accounts/login/ \| grep app`); bila belum, `update.sh` dan salin ulang konfigurasi Nginx (langkah 8.3) |
 | Halaman tanpa CSS, live update *Connecting...* | `/static/` dijawab 403 (`/srv/iot` mode 750) atau `collectstatic` belum dijalankan | `sudo chmod 711 /srv/iot`; jalankan `collectstatic`; cek `sudo tail /var/log/nginx/error.log` |
 | Live update tidak jalan | WebSocket diblokir proxy atau `REDIS_URL` salah | cek blok `/ws/` di Nginx dan `redis-cli ping` |
+| `mosquitto` gagal start (`status=13`), journal hanya menulis *Loading config file* | file akun atau sertifikat yang disebut `iot.conf` belum ada / izinnya salah | baca `sudo tail /var/log/mosquitto/mosquitto.log`; ulangi 9.1 atau 9.2; lalu `reset-failed` + `restart mosquitto` (langkah 9.3) |
+| `iot-mqtt-accounts` gagal, `Failed to set up mount namespacing` | folder `/srv/iot/mosquitto` belum dibuat | `sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto`, ulangi 9.1 |
+| `certbot` gagal *Timeout* / *Invalid response* | DNS belum mengarah ke server, port 80 tertutup, atau Nginx HTTP belum aktif | cek `dig +short DOMAIN`, firewall, `curl -sI http://DOMAIN` (langkah 8.3) |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |
 | `iot-mqtt` terus restart | `MQTT_USERNAME`/`MQTT_PASSWORD` di `.env` tidak sama dengan akun broker | jalankan ulang `iot-mqtt-accounts` setelah mengubah `.env` |
 | ESP32 gagal TLS | `ROOT_CA` salah atau jam ESP32 belum sinkron | tempel ulang ISRG Root X1; tunggu NTP |

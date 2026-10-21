@@ -1,0 +1,2 @@
+{% comment %}Lencana nama keadaan state machine. Butuh `state` (MachineState).{% endcomment %}
+<span class="badge state-badge state-badge-{{ state.tone|lower }}"{% if state.description %} title="{{ state.description }}"{% endif %}>{{ state.name }}</span>

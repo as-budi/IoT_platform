@@ -32,12 +32,14 @@ from .events import originator_device_id
 from .engines.flow import NODE_TYPES, node_summary
 from .flow_diagram import layout as flow_layout
 from .forms import (
-    INPUT, ActionFormSet, ClearFormSet, EcaSpecForm, FlowSpecForm, LinkFormSet, NodeFormSet, RuleForm,
-    RuleScheduleForm, WhenFormSet, check_graph, cross_check, live_links, schedule_checks,
+    ANY_STATE, INPUT, ActionFormSet, ClearFormSet, EcaSpecForm, FlowSpecForm, LinkFormSet, MachineActionFormSet,
+    MachineSpecForm, NodeFormSet, RuleForm, RuleScheduleForm, StateFormSet, TransitionFormSet, WhenFormSet,
+    check_graph, check_machine, cross_check, live_links, live_transitions, schedule_checks,
 )
+from .machine_diagram import layout as machine_layout
 from .models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, Rule, RuleExecution, RuleModel, RuleSchedule,
-    RuleState,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineCondition, MachineInstance,
+    MachineTransition, Rule, RuleAction, RuleExecution, RuleModel, RuleSchedule, RuleState,
 )
 from .portable import (
     MAX_IMPORT_BYTES, PORTABLE_MODELS, RuleImportError, export_json, form_data, form_errors, parse,
@@ -48,10 +50,11 @@ EXECUTIONS_PAGE_SIZE = 25
 
 def visible_rules(user):
     queryset = Rule.objects.select_related(
-        "owner", "state", "eca", "eca__device", "flow", "flow__device", "schedule"
+        "owner", "state", "eca", "eca__device", "flow", "flow__device", "schedule", "machine", "machine__device",
     ).prefetch_related(
         "eca__conditions__variable__device",
         "nodes__variable__device", "nodes__target_variable__device", "nodes__target_device", "links",
+        "machine_states", "machine_transitions__conditions",
     )
     if user.is_admin:
         return queryset
@@ -65,10 +68,12 @@ def visible_alarms(user):
 
 
 def reset_state(rule):
-    """Kembalikan aturan ke IDLE (tanpa menjalankan aksi), mis. setelah diubah."""
+    """Kembalikan aturan ke IDLE (tanpa menjalankan aksi), mis. setelah diubah.
+    State machine (tahap 20): semua device mulai lagi dari keadaan awal."""
     RuleState.objects.update_or_create(
         rule=rule, defaults={"status": RuleState.Status.IDLE, "pending_since": None}
     )
+    MachineInstance.objects.filter(rule=rule).delete()
 
 
 # --- Jadwal (tahap 14) ------------------------------------------------------------------
@@ -142,11 +147,14 @@ def alarms_version(alarms):
 def rule_version(rule):
     state = RuleState.objects.filter(rule=rule).first()
     last_execution = rule.executions.aggregate(last=Max("pk"))["last"] or 0
+    # State machine (tahap 20): device baru yang mulai diamati juga perlu ditampilkan.
+    instances = rule.machine_instances.aggregate(n=Count("pk"), moved=Max("entered_at"))
     return "-".join([
         state.status if state else "IDLE",
         str(int(rule.is_enabled)),
         str(last_execution),
         alarms_version(rule.alarms.all()),
+        f"{instances['n']}.{stamp(instances['moved'])}",
     ])
 
 
@@ -191,6 +199,9 @@ RULE_SEARCH_FIELDS = (
     "flow__device__name", "nodes__name", "nodes__kind", "nodes__key", "nodes__message", "nodes__method",
     "nodes__variable__key", "nodes__variable__device__name",
     "nodes__target_variable__key", "nodes__target_variable__label", "nodes__target_device__name",
+    # State machine (tahap 20): device, nama & arti keadaan, key di kondisi, teks tombol
+    "machine__device__name", "machine_states__name", "machine_states__description",
+    "machine_transitions__conditions__key", "machine_transitions__label",
 )
 
 
@@ -262,7 +273,9 @@ class RuleModelPickerView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["engines"] = list(ENGINES.values())
+        # Model yang sudah bisa dipakai di depan, yang direncanakan di belakang. sorted()
+        # bersifat stabil: di dalam tiap kelompok urutannya tetap seperti RuleModel.
+        context["engines"] = sorted(ENGINES.values(), key=lambda engine: not engine.implemented)
         return context
 
 
@@ -563,9 +576,245 @@ def save_flow_graph(rule, node_formset, links):
     ])
 
 
+# --- State machine (tahap 20) -------------------------------------------------------------
+
+class MachineRuleFormView(LoginRequiredMixin, View):
+    """Form state machine. Keadaan lewat model formset; transisi dan aksi menyebut
+    keadaan lewat NAMANYA, karena keadaan baru belum punya id saat form diisi."""
+
+    template_name = "rules/rule_form_machine.html"
+
+    def get_rule(self):
+        pk = self.kwargs.get("pk")
+        if pk is None:
+            return None
+        return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.STATE_MACHINE)
+
+    def build_forms(self, rule, data=None):
+        return build_machine_forms(rule, rule.owner if rule else self.request.user, data)
+
+    def render_forms(self, rule, forms, machine_errors=()):
+        names = []
+        for form in forms["state_formset"].forms:
+            name = (form["name"].value() or "").strip()
+            deleted = form["DELETE"].value() if "DELETE" in form.fields else False
+            if name and not deleted and name not in names:
+                names.append(name)
+        return render(self.request, self.template_name, {
+            "rule": rule,
+            **forms,
+            "machine_errors": machine_errors,
+            "state_names": names,
+            "any_state": ANY_STATE,
+            "triggers": MachineTransition.Trigger.choices,
+            "engine": ENGINES[RuleModel.STATE_MACHINE],
+            "diagram": machine_layout(rule) if rule else None,
+        })
+
+    def get(self, request, pk=None):
+        rule = self.get_rule()
+        return self.render_forms(rule, self.build_forms(rule))
+
+    def post(self, request, pk=None):
+        rule = self.get_rule()
+        forms = self.build_forms(rule, request.POST)
+        valid, machine_errors = validate_machine_forms(forms)
+        if not valid:
+            return self.render_forms(rule, forms, machine_errors)
+        saved = save_machine_forms(forms, rule, request.user)
+        messages.success(request, f"Rule \"{saved.name}\" saved. Every device starts again in the initial state.")
+        return redirect("rules:detail", pk=saved.pk)
+
+
+def build_machine_forms(rule, owner, data=None, replace=False):
+    """Semua form halaman state machine. Dipakai form biasa dan impor JSON."""
+    devices = visible_devices(owner).order_by("name")
+    action_devices = visible_devices(owner, access.OPERATOR).order_by("name")
+    spec = getattr(rule, "machine", None) if rule else None
+    initial_transitions = []
+    if rule and data is None and not replace:
+        names = {state.pk: state.name for state in rule.machine_states.all()}
+        from .engines.state_machine import format_condition
+
+        initial_transitions = [
+            {"source": names.get(t.source_id, ANY_STATE), "target": names[t.target_id], "trigger": t.trigger,
+             "condition": format_condition(t.condition_groups()), "seconds": t.seconds, "label": t.label}
+            for t in rule.machine_transitions.all()
+        ]
+    instance = Rule() if replace or rule is None else rule
+    return {
+        "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+        "spec_form": MachineSpecForm(data, instance=spec, devices=devices, prefix="machine"),
+        "state_formset": StateFormSet(data, instance=instance, prefix="states"),
+        "transition_formset": TransitionFormSet(data, initial=initial_transitions, prefix="transitions"),
+        "action_formset": MachineActionFormSet(
+            data, instance=instance, prefix="actions", form_kwargs={"devices": action_devices},
+            queryset=RuleAction.objects.none() if replace or rule is None
+            else rule.actions.select_related("state", "target_variable__device", "target_device"),
+        ),
+    }
+
+
+def validate_machine_forms(forms):
+    """Validasi semua bagian + keadaan/transisi/aksi. Mengembalikan (lolos?, daftar error)."""
+    valid = [form.is_valid() for form in forms.values()]
+    if not all(valid):
+        return False, []
+    names = forms["state_formset"].state_names()
+    errors = check_machine(names, live_transitions(forms["transition_formset"]))
+    for number, form in enumerate(forms["action_formset"].forms, start=1):
+        if form.cleaned_data and not form.cleaned_data.get("DELETE"):
+            state = form.cleaned_data.get("state_name", "")
+            if state not in names:
+                errors.append(f"Action {number}: there is no state called “{state}”.")
+    return not errors, errors
+
+
+def save_machine_forms(forms, rule, owner, replace=False):
+    """Simpan form state machine yang sudah valid. rule=None membuat aturan baru milik `owner`."""
+    with transaction.atomic():
+        saved = forms["rule_form"].save(commit=False)
+        if rule is None:
+            saved.owner = owner
+            saved.model = RuleModel.STATE_MACHINE
+        saved.save()
+        spec = forms["spec_form"].save(commit=False)
+        spec.rule = saved
+        spec.save()
+        if replace:
+            saved.actions.all().delete()
+            saved.machine_states.all().delete()      # transisi & keadaan device ikut terhapus
+        # Keadaan device dihapus dulu: keadaan yang dihapus dari form tidak boleh masih dipakai.
+        MachineInstance.objects.filter(rule=saved).delete()
+
+        state_formset = forms["state_formset"]
+        state_formset.instance = saved
+        state_formset.save(commit=False)
+        action_formset = forms["action_formset"]
+        action_formset.instance = saved
+        action_formset.save(commit=False)
+        for removed in action_formset.deleted_objects:
+            removed.delete()
+        for removed in state_formset.deleted_objects:
+            removed.delete()          # aksi milik keadaan ini ikut terhapus (CASCADE)
+        by_name = {}
+        for order, form in enumerate(state_formset.live_forms()):
+            state = form.instance
+            state.rule = saved
+            state.order = order
+            state.is_initial = bool(form.cleaned_data.get("is_initial"))
+            state.save()
+            by_name[state.name] = state
+
+        saved.machine_transitions.all().delete()
+        for order, row in enumerate(live_transitions(forms["transition_formset"])):
+            transition = MachineTransition.objects.create(
+                rule=saved, order=order, trigger=row["trigger"],
+                source=None if row["source"] == ANY_STATE else by_name[row["source"]],
+                target=by_name[row["target"]], seconds=row.get("seconds"), label=row.get("label", ""),
+            )
+            MachineCondition.objects.bulk_create([
+                MachineCondition(transition=transition, group=number, order=position, key=key,
+                                 operator=operator, threshold=threshold)
+                for number, group in enumerate(row.get("groups") or [], start=1)
+                for position, (key, operator, threshold) in enumerate(group)
+            ])
+
+        live_actions = [f for f in action_formset.forms if f.cleaned_data and not f.cleaned_data.get("DELETE")
+                        and (f.has_changed() or f.instance.pk)]
+        for order, form in enumerate(live_actions):
+            action = form.save(commit=False)
+            action.rule = saved
+            action.state = by_name[form.cleaned_data["state_name"]]
+            action.order = order
+            action.save()
+        reset_state(saved)
+    return saved
+
+
+def machine_context(rule, user=None):
+    """Data kotak "Devices" (keadaan tiap device) di halaman detail state machine."""
+    states = {state.pk: state for state in rule.machine_states.all()}
+    buttons = [t for t in rule.machine_transitions.all() if t.trigger == MachineTransition.Trigger.MANUAL]
+    instances = list(rule.machine_instances.select_related("device", "state"))
+    spec = getattr(rule, "machine", None)
+    from .engines.state_machine import StateMachineEngine
+
+    initial = StateMachineEngine().initial_state(rule)
+    # Aturan untuk satu device yang belum pernah dinilai: tampilkan device itu di keadaan awal.
+    if spec and spec.device_id and not any(i.device_id == spec.device_id for i in instances) and initial:
+        instances.insert(0, MachineInstance(rule=rule, device=spec.device, state=initial, entered_at=None))
+    now = timezone.now()
+    rows = []
+    for instance in instances:
+        snapshot = instance.snapshot or {}
+        waiting = [row for row in snapshot.get("transitions", []) if row.get("waiting")]
+        can_press = user is not None and access.can(user, instance.device, access.OPERATOR)
+        rows.append({
+            "instance": instance,
+            "state": instance.state,
+            "since": instance.entered_at,
+            "seconds": round((now - instance.entered_at).total_seconds()) if instance.entered_at else None,
+            "values": snapshot.get("values", {}),
+            "waiting": waiting,
+            "transitions": snapshot.get("transitions", []),
+            "buttons": [
+                {"transition": t, "enabled": can_press and t.source_id in (None, instance.state_id)
+                 and not (t.source_id is None and t.target_id == instance.state_id)}
+                for t in buttons
+            ],
+        })
+    counts = {}
+    for row in rows:
+        counts[row["state"].pk] = counts.get(row["state"].pk, 0) + 1
+    return {
+        "rule": rule,
+        "machine_rows": rows,
+        "machine_buttons": buttons,
+        "machine_states": list(states.values()),
+        "diagram": machine_layout(rule, counts),
+    }
+
+
+class MachineButtonView(LoginRequiredMixin, View):
+    """POST /rules/<pk>/devices/<device_pk>/press/<transition_pk>/ — tombol transisi manual.
+
+    Pemilik aturan (atau Admin) yang boleh MENGONTROL device itu (Operator ke atas, tahap 19).
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request, pk, device_pk, transition_pk):
+        rule = get_object_or_404(visible_rules(request.user), pk=pk, model=RuleModel.STATE_MACHINE)
+        transition = get_object_or_404(
+            rule.machine_transitions.select_related("source", "target"), pk=transition_pk,
+            trigger=MachineTransition.Trigger.MANUAL,
+        )
+        device = get_object_or_404(visible_devices(request.user), pk=device_pk)
+        access.require(request.user, device, access.OPERATOR)
+        engine = ENGINES[RuleModel.STATE_MACHINE]
+        if not rule.is_enabled:
+            messages.error(request, "Enable the rule first.")
+        elif not engine.watches(rule, device):
+            messages.error(request, f"This rule does not watch {device.name}.")
+        else:
+            try:
+                execution = engine.press(rule, device, transition, request.user)
+                failed = [r for r in execution.results if not r["ok"]]
+                text = f"{device.name}: {execution.from_state} → {execution.to_state}."
+                if failed:
+                    messages.warning(request, text + f" {len(failed)} action(s) failed; see the log below.")
+                else:
+                    messages.success(request, text)
+            except ValueError as exc:
+                messages.error(request, str(exc))
+        return redirect_back(request, reverse("rules:detail", args=[rule.pk]) + "#devices")
+
+
 FORM_VIEWS = {
     RuleModel.ECA: EcaRuleFormView,
     RuleModel.FLOW: FlowRuleFormView,
+    RuleModel.STATE_MACHINE: MachineRuleFormView,
 }
 
 
@@ -657,6 +906,8 @@ def rule_evaluation(request, pk):
     rule = get_object_or_404(visible_rules(request.user), pk=pk)
     if rule.model == RuleModel.FLOW:
         return render(request, "rules/includes/flow_run.html", flow_run_context(rule))
+    if rule.model == RuleModel.STATE_MACHINE:
+        return render(request, "rules/includes/machine_devices.html", machine_context(rule, request.user))
     return render(request, "rules/includes/evaluation.html", evaluation_context(rule))
 
 
@@ -665,7 +916,10 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
 
     def get_template_names(self):
         rule = get_object_or_404(visible_rules(self.request.user), pk=self.kwargs["pk"])
-        return ["rules/rule_detail_flow.html" if rule.model == RuleModel.FLOW else self.template_name]
+        return [{
+            RuleModel.FLOW: "rules/rule_detail_flow.html",
+            RuleModel.STATE_MACHINE: "rules/rule_detail_machine.html",
+        }.get(rule.model, self.template_name)]
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -673,6 +927,9 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
         executions = Paginator(rule.executions.all(), EXECUTIONS_PAGE_SIZE).get_page(self.request.GET.get("page"))
         if rule.model == RuleModel.FLOW:
             context.update(self.flow_context(rule, executions))
+            return context
+        if rule.model == RuleModel.STATE_MACHINE:
+            context.update(self.machine_detail(rule, executions))
             return context
         # Nilai di execution log: (label, nilai, alamat halaman variabel atau None).
         _, urls = variable_urls(rule)
@@ -711,6 +968,38 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             reverse("rules:detail_updates", args=[rule.pk]),
             rule_version(rule),
         )
+
+    def machine_detail(self, rule, executions):
+        from .engines.state_machine import describe_transition
+
+        for execution in executions:
+            execution.value_rows = [(label, value, None) for label, value in (execution.snapshot or {}).items()]
+        states = list(rule.machine_states.all())
+        actions = list(rule.actions.select_related("state", "target_variable__device", "target_device"))
+        names = {state.pk: state.name for state in states}
+        transitions = [
+            {"transition": t, "source": names.get(t.source_id, ANY_STATE), "target": names.get(t.target_id, "?"),
+             "text": describe_transition(t)}
+            for t in rule.machine_transitions.all()
+        ]
+        state_rows = [
+            {"state": state,
+             "enter": [a for a in actions if a.state_id == state.pk and a.run_on == "ENTER"],
+             "exit": [a for a in actions if a.state_id == state.pk and a.run_on == "EXIT"]}
+            for state in states
+        ]
+        return {
+            "rule": rule,
+            "spec": getattr(rule, "machine", None),
+            "summary": rule.engine.describe(rule),
+            "rule_json": export_json(rule),
+            "state_rows": state_rows,
+            "transition_rows": transitions,
+            "executions": executions,
+            "alarms": rule.alarms.select_related("device")[:10],
+            **{k: v for k, v in machine_context(rule, self.request.user).items() if k != "rule"},
+            **self.live(rule),
+        }
 
     def flow_context(self, rule, executions):
         for execution in executions:
@@ -779,6 +1068,7 @@ class RuleImportView(LoginRequiredMixin, View):
     HANDLERS = {
         RuleModel.ECA: (build_eca_forms, validate_eca_forms, save_eca_forms),
         RuleModel.FLOW: (build_flow_forms, validate_flow_forms, save_flow_forms),
+        RuleModel.STATE_MACHINE: (build_machine_forms, validate_machine_forms, save_machine_forms),
     }
 
     template_name = "rules/rule_import.html"

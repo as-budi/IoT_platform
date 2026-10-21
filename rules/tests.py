@@ -248,9 +248,10 @@ class EcaEngineTests(RuleTestData):
 
 
 class RegistryTests(TestCase):
-    def test_all_six_models_are_registered_eca_and_flow_implemented(self):
+    def test_all_six_models_are_registered_eca_flow_and_state_machine_implemented(self):
         self.assertEqual(list(ENGINES), list(RuleModel.values))
-        self.assertEqual([e.key for e in implemented_engines()], [RuleModel.ECA, RuleModel.FLOW])
+        self.assertEqual([e.key for e in implemented_engines()],
+                         [RuleModel.ECA, RuleModel.FLOW, RuleModel.STATE_MACHINE])
         self.assertIsInstance(ENGINES[RuleModel.ECA], EcaEngine)
         for engine in ENGINES.values():
             self.assertTrue(engine.summary and engine.example, engine.key)
@@ -327,7 +328,11 @@ class RuleViewTests(RuleTestData):
         response = self.client.get(reverse("rules:new"))
         for engine in ENGINES.values():
             self.assertContains(response, engine.label)
-        self.assertContains(response, "Coming in a later stage", count=4)
+        self.assertContains(response, "Coming in a later stage", count=3)
+        # Yang tersedia (ECA, FLOW, STATE_MACHINE) tampil sebelum yang direncanakan.
+        keys = [engine.key for engine in response.context["engines"]]
+        self.assertEqual(keys[:3], [RuleModel.ECA, RuleModel.FLOW, RuleModel.STATE_MACHINE])
+        self.assertTrue(all(not e.implemented for e in response.context["engines"][3:]))
         self.assertContains(response, reverse("rules:new_model", args=["eca"]))
         self.assertContains(response, reverse("rules:new_model", args=["flow"]))
 
@@ -714,6 +719,7 @@ class SampleRulesTests(TestCase):
         self.assertIn("0 sample rule(s) created", out.getvalue())
         self.assertEqual(Rule.objects.filter(model=RuleModel.ECA).count(), 7)
         self.assertEqual(Rule.objects.filter(model=RuleModel.FLOW).count(), 5)
+        self.assertEqual(Rule.objects.filter(model=RuleModel.STATE_MACHINE).count(), 1)
         self.assertFalse(Rule.objects.get(name="Weather station silent").is_enabled)
         self.assertEqual(len(Rule.objects.get(name="Smart irrigation").eca.when_groups), 2)
         for username in ("andi", "rina"):
@@ -743,6 +749,23 @@ class SampleRulesTests(TestCase):
         self.assertEqual(self.status("Smart irrigation"), "PENDING")   # cooldown s.d. t=370
         [again] = self.tick(371)
         self.assertEqual(again.transition, "ACTIVATE")
+
+    def test_cold_room_states(self):
+        """State machine contoh (tahap 20): WARM setelah 2 menit, BREACH setelah 10 menit, kembali NORMAL."""
+        machine = ENGINES[RuleModel.STATE_MACHINE]
+        rule = Rule.objects.get(name="Cold room states")
+        Device.objects.filter(name="Cold Storage Unit").update(is_online=True)
+        self.send("Cold Storage Unit", 0, temperature=9.5)
+        [warm] = machine.tick(T0 + timedelta(days=1, seconds=121))
+        self.assertEqual((warm.rule, warm.to_state), (rule, "WARM"))
+        self.assertEqual(Alarm.objects.active().get(rule=rule).severity, "WARNING")
+        [breach] = machine.tick(T0 + timedelta(days=1, seconds=721))
+        self.assertEqual(breach.to_state, "BREACH")
+        self.assertEqual(Alarm.objects.active().get(rule=rule).severity, "CRITICAL")
+        self.send("Cold Storage Unit", 800, temperature=6)
+        [normal] = machine.tick(T0 + timedelta(days=1, seconds=861))
+        self.assertEqual(normal.to_state, "NORMAL")
+        self.assertFalse(Alarm.objects.active().filter(rule=rule).exists())
 
     def test_weather_station_silent_when_enabled(self):
         rule = Rule.objects.get(name="Weather station silent")

@@ -199,12 +199,29 @@ def send_telegram(action, rule, context):
     return "Telegram to " + ("the owner" if not action.recipients.strip() else ", ".join(sent))
 
 
+def clear_device_alarm(action, rule, context):
+    """State machine (tahap 20): clear alarm aktif aturan ini pada device yang berpindah keadaan.
+
+    ECA tidak membutuhkannya: alarm ECA di-clear otomatis saat aturan pulih. State machine
+    tidak punya "pulih"; keadaan mana yang berarti "aman" ditentukan pembuat aturan.
+    """
+    device = context.get("originator")
+    if device is None:
+        raise ActionError("No device to clear the alarm of.")
+    cleared = []
+    for alarm in Alarm.objects.active().filter(rule=rule, device=device):
+        alarm.clear(user=None)
+        cleared.append(f"#{alarm.pk}")
+    return ("Cleared " + ", ".join(cleared)) if cleared else "No active alarm"
+
+
 HANDLERS = {
     RuleAction.Kind.SET_ACTUATOR: set_actuator,
     RuleAction.Kind.SEND_COMMAND: send_command,
     RuleAction.Kind.ALARM: raise_alarm,
     RuleAction.Kind.EMAIL: send_email,
     RuleAction.Kind.TELEGRAM: send_telegram,
+    RuleAction.Kind.CLEAR_ALARM: clear_device_alarm,
 }
 
 
@@ -239,4 +256,26 @@ def run_actions(rule, transition, value, context):
         cleared = clear_alarms(rule)
         if cleared:
             results.append({"action": "Clear alarm", "ok": True, "detail": "Cleared " + ", ".join(cleared)})
+    return results
+
+
+def run_state_actions(rule, state, run_on, context):
+    """State machine (tahap 20): jalankan aksi ENTER atau EXIT milik satu keadaan.
+
+    Sama dengan run_actions(): kegagalan satu aksi tidak menghentikan aksi lain, dan
+    setiap hasil dicatat. Label aksi diberi awalan keadaannya, mis. "Enter ALARM · Raise alarm".
+    """
+    where = ("Enter " if run_on == RuleAction.RunOn.ENTER else "Exit ") + state.name
+    results = []
+    for action in rule.actions.filter(state=state, run_on=run_on).select_related(
+        "target_variable__device", "target_device"
+    ):
+        label = f"{where} · {action.get_kind_display()}"
+        try:
+            detail = HANDLERS[action.kind](action, rule, context)
+            results.append({"action": label, "ok": True, "detail": detail})
+        except Exception as exc:
+            if not isinstance(exc, ActionError):
+                logger.exception("Action %s of rule %s failed", action.pk, rule.pk)
+            results.append({"action": label, "ok": False, "detail": str(exc)})
     return results

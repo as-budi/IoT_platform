@@ -25,8 +25,8 @@ from accounts.forms import BootstrapFormMixin
 from devices.models import Variable
 
 from .models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MathOp, Operator, Rule, RuleAction,
-    RuleSchedule,
+    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineSpec, MachineState, MachineTransition,
+    MathOp, Operator, Rule, RuleAction, RuleSchedule,
 )
 from .schedules import DAY_LABELS, format_times, parse_times
 
@@ -199,6 +199,9 @@ def cross_check(event, when_formset, clear_formset):
 
 
 class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
+    HIDDEN_KINDS = {RuleAction.Kind.CLEAR_ALARM}
+    RUN_ON = {RuleAction.RunOn.ACTIVATE, RuleAction.RunOn.CLEAR}
+
     # Parameter command diketik sebagai teks JSON lalu diubah ke dict.
     params = forms.CharField(
         label="Parameters", required=False,
@@ -232,6 +235,9 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
         self.fields["target_variable"].empty_label = "— Choose an actuator —"
         self.fields["target_device"].empty_label = "— Choose a device —"
         self.fields["kind"].widget.attrs["data-action-kind"] = ""
+        # Pilihan khusus state machine (tahap 20) tidak ditawarkan di form ECA.
+        self.fields["kind"].choices = [c for c in self.fields["kind"].choices if c[0] not in self.HIDDEN_KINDS]
+        self.fields["run_on"].choices = [c for c in RuleAction.RunOn.choices if c[0] in self.RUN_ON]
         if self.instance.pk and self.instance.params:
             self.initial["params"] = json.dumps(self.instance.params)
         if not self.instance.pk:
@@ -714,3 +720,210 @@ def check_graph(node_kinds, links):
                 errors.append(f"The links form a loop: {found}. A rule chain must not loop back.")
                 break
     return errors
+
+
+# --- State machine (tahap 20) -------------------------------------------------------------
+#
+# Form state machine terdiri dari:
+#     RuleForm              nama, deskripsi, aktif (sama dengan ECA)
+#     MachineSpecForm       device yang diamati (kosong = semua device milik saya)
+#     StateFormSet          keadaan-keadaan (model formset; tepat satu "initial")
+#     TransitionFormSet     panah antar-keadaan. Formset BIASA yang menyebut keadaan lewat
+#                           NAMANYA (keadaan baru belum punya id), seperti panah rule chain.
+#     MachineActionFormSet  aksi "on enter" / "on exit"; keadaannya juga disebut lewat nama.
+
+ANY_STATE = "*"
+STATE_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+class MachineSpecForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = MachineSpec
+        fields = ("device", "max_age_seconds")
+
+    def __init__(self, *args, devices, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["device"].queryset = devices
+        # "Semua device saya" = device MILIK pemilik aturan, tidak termasuk yang dibagikan
+        # (sama dengan rule chain, tahap 19); device bersama dipilih satu per satu.
+        self.fields["device"].empty_label = "— Every device I own —"
+
+
+class MachineStateForm(BootstrapFormMixin, forms.ModelForm):
+    class Meta:
+        model = MachineState
+        fields = ("name", "description", "tone", "is_initial")
+        widgets = {
+            "name": forms.TextInput(attrs={"placeholder": "e.g. NORMAL", "data-state-name": ""}),
+            "description": forms.TextInput(attrs={"placeholder": "what this state means"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["is_initial"].widget.attrs.update({"class": "form-check-input", "data-state-initial": ""})
+        self.fields["name"].help_text = ""
+
+    def clean_name(self):
+        name = self.cleaned_data["name"].strip()
+        if not STATE_NAME.match(name):
+            raise forms.ValidationError("Use letters, digits and _, starting with a letter.")
+        return name
+
+
+class BaseStateFormSet(forms.BaseInlineFormSet):
+    def live_forms(self):
+        return [
+            form for form in self.forms
+            if (form.has_changed() or form.instance.pk)
+            and not (self.can_delete and self._should_delete_form(form))
+            and form.cleaned_data
+        ]
+
+    def clean(self):
+        super().clean()
+        if any(self.errors):
+            return
+        live = self.live_forms()
+        seen = set()
+        for form in live:
+            name = form.cleaned_data.get("name", "")
+            if name.lower() in seen:
+                form.add_error("name", "Another state already has this name.")
+            seen.add(name.lower())
+        if len(live) < 2:
+            raise forms.ValidationError("A state machine needs at least two states.")
+        initial = [form for form in live if form.cleaned_data.get("is_initial")]
+        if len(initial) > 1:
+            raise forms.ValidationError("Only one state can be the initial state.")
+        if not initial:
+            live[0].cleaned_data["is_initial"] = True   # tanpa pilihan: keadaan pertama
+
+    def state_names(self):
+        return [form.cleaned_data["name"] for form in self.live_forms()]
+
+
+StateFormSet = inlineformset_factory(
+    Rule, MachineState, form=MachineStateForm, formset=BaseStateFormSet,
+    extra=0, min_num=2, validate_min=True, max_num=20, validate_max=True, can_delete=True,
+)
+
+
+class TransitionForm(forms.Form):
+    """Satu panah: <dari> → <ke> bila <pemicu>. Dari/ke = NAMA keadaan ("*" = keadaan mana pun)."""
+
+    source = forms.CharField(max_length=30)
+    target = forms.CharField(max_length=30)
+    trigger = forms.ChoiceField(choices=MachineTransition.Trigger.choices)
+    condition = forms.CharField(
+        required=False, max_length=400,
+        widget=forms.TextInput(attrs={"placeholder": "temperature > 35 and humidity < 40 or temperature > 45"}),
+    )
+    seconds = forms.IntegerField(required=False, min_value=0, max_value=30 * 86400)
+    label = forms.CharField(required=False, max_length=40)
+
+    def clean(self):
+        from .engines.state_machine import ConditionSyntaxError, parse_condition
+
+        cleaned = super().clean()
+        if cleaned.get("DELETE"):
+            return cleaned
+        trigger = cleaned.get("trigger")
+        Trigger = MachineTransition.Trigger
+        cleaned["groups"] = []
+        if trigger == Trigger.CONDITION:
+            try:
+                cleaned["groups"] = parse_condition(cleaned.get("condition"))
+            except ConditionSyntaxError as exc:
+                self.add_error("condition", str(exc))
+            cleaned["seconds"] = cleaned.get("seconds") or 0
+        else:
+            cleaned["condition"] = ""
+        if trigger in (Trigger.TIMEOUT, Trigger.SILENT):
+            if not cleaned.get("seconds"):
+                self.add_error("seconds", "Enter the number of seconds (at least 1).")
+        elif trigger in (Trigger.OFFLINE, Trigger.MANUAL):
+            cleaned["seconds"] = None
+        if trigger == Trigger.MANUAL and not (cleaned.get("label") or "").strip():
+            cleaned["label"] = f"Go to {cleaned.get('target', '')}".strip()
+        cleaned["label"] = (cleaned.get("label") or "").strip()
+        return cleaned
+
+
+TransitionFormSet = forms.formset_factory(TransitionForm, extra=0, can_delete=True, max_num=40, validate_max=True)
+
+
+def live_transitions(formset):
+    return [
+        form.cleaned_data for form in formset.forms
+        if form.cleaned_data and not form.cleaned_data.get("DELETE")
+    ]
+
+
+def check_machine(state_names, transitions):
+    """Pemeriksaan keadaan + transisi utuh. Mengembalikan daftar pesan error.
+
+    - asal harus "*" atau nama keadaan; tujuan harus nama keadaan,
+    - panah ke dirinya sendiri hanya untuk pemicu waktu di keadaan (TIMEOUT) dan tombol:
+      kondisi, "diam", atau "offline" yang tetap benar akan menembak terus-menerus,
+    - tidak ada panah kembar, dan minimal satu transisi.
+    """
+    Trigger = MachineTransition.Trigger
+    names = set(state_names)
+    errors = []
+    seen = set()
+    for row in transitions:
+        source, target, trigger = row["source"], row["target"], row["trigger"]
+        arrow = f"{source} → {target}"
+        if source != ANY_STATE and source not in names:
+            errors.append(f"{arrow}: there is no state called “{source}”.")
+            continue
+        if target not in names:
+            errors.append(f"{arrow}: there is no state called “{target}”.")
+            continue
+        if source == target and trigger not in (Trigger.TIMEOUT, Trigger.MANUAL):
+            errors.append(f"{arrow}: a transition back to the same state is only allowed with "
+                          "“After some time in the state” or a button (otherwise it would fire again and again).")
+        key = (source, target, trigger, row.get("condition", ""), row.get("seconds"), row.get("label", ""))
+        if key in seen:
+            errors.append(f"{arrow} appears twice.")
+        seen.add(key)
+    if not transitions:
+        errors.append("Add at least one transition.")
+    return errors
+
+
+class MachineActionForm(RuleActionForm):
+    """Aksi milik satu keadaan: "on enter" atau "on exit". Keadaan disebut lewat nama."""
+
+    HIDDEN_KINDS = set()
+    RUN_ON = {RuleAction.RunOn.ENTER, RuleAction.RunOn.EXIT}
+
+    state_name = forms.CharField(label="State", max_length=30)
+
+    class Meta(RuleActionForm.Meta):
+        help_texts = {
+            "message": "Placeholders: {rule} {device} {state} {from_state} {to_state} {values} {value} {time}.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk and self.instance.state_id:
+            self.initial["state_name"] = self.instance.state.name
+        if not self.instance.pk:
+            self.initial.setdefault("run_on", RuleAction.RunOn.ENTER)
+        self.fields["state_name"].widget.attrs["data-action-state"] = ""
+        self.fields["message"].widget.attrs["placeholder"] = "{device} is {state}: {values}"
+
+    def clean(self):
+        # RuleActionForm.clean() memaksa alarm berjalan "on activate" (aturan ECA). Di state
+        # machine, alarm boleh dibuat saat masuk ATAU keluar keadaan: pilihan pengguna dipakai.
+        run_on = self.cleaned_data.get("run_on")
+        cleaned = super().clean()
+        cleaned["run_on"] = run_on
+        return cleaned
+
+
+MachineActionFormSet = inlineformset_factory(
+    Rule, RuleAction, form=MachineActionForm,
+    extra=0, min_num=0, max_num=40, validate_max=True, can_delete=True,
+)

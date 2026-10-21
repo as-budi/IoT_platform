@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ rule.name }} · Rules · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ rule.name }}</li>
+  </ol>
+</nav>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-1">
+      {{ rule.name }}
+      {% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled model=rule.model %}
+    </h1>
+    <div class="text-muted small">
+      <span class="badge model-badge">STATE MACHINE</span> {{ rule.get_model_display }} · owner: {{ rule.owner.username }}
+      · watches {% if spec.device %}<a href="{% url 'devices:detail' spec.device_id %}">{{ spec.device.name }}</a>{% else %}every device of {{ rule.owner.username }}{% endif %}
+    </div>
+    {% if rule.description %}<p class="mt-2 mb-0">{{ rule.description }}</p>{% endif %}
+  </div>
+  <div class="text-nowrap">
+    <form method="post" action="{% url 'rules:toggle' rule.pk %}" class="d-inline">
+      {% csrf_token %}
+      <button class="btn btn-outline-secondary" title="Enabling or disabling puts every device back in the initial state">{% if rule.is_enabled %}Disable{% else %}Enable{% endif %}</button>
+    </form>
+    <a class="btn btn-outline-secondary" href="{% url 'rules:edit' rule.pk %}">Edit</a>
+    {% if rule_json %}{% include "rules/includes/json_buttons.html" %}{% endif %}
+    <a class="btn btn-outline-danger" href="{% url 'rules:delete' rule.pk %}">Delete</a>
+  </div>
+</div>
+
+{% include "devices/includes/auto_refresh.html" %}
+
+{# Diagram + keadaan tiap device; diperbarui langsung setiap ada data baru. #}
+<div class="card shadow-sm mb-4"><div class="card-body" data-evaluation data-url="{% url 'rules:evaluation' rule.pk %}">
+  {% include "rules/includes/machine_devices.html" %}
+</div></div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h2 class="h6 text-muted text-uppercase">Transitions <span class="fw-normal text-lowercase">(checked top to bottom; the first that holds wins)</span></h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0 small">
+          <thead class="table-light"><tr><th>#</th><th>From</th><th>To</th><th>When</th></tr></thead>
+          <tbody>
+            {% for row in transition_rows %}
+            <tr>
+              <td class="text-muted">{{ forloop.counter }}</td>
+              <td class="text-nowrap">{% if row.transition.source %}{% include "rules/includes/machine_state_badge.html" with state=row.transition.source %}{% else %}<span class="text-muted">* any</span>{% endif %}</td>
+              <td class="text-nowrap">{% include "rules/includes/machine_state_badge.html" with state=row.transition.target %}</td>
+              <td><span class="badge text-bg-light border me-1">{{ row.transition.get_trigger_display }}</span><code>{{ row.text }}</code></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="text-muted">No transitions.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div></div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100"><div class="card-body">
+      <h2 class="h6 text-muted text-uppercase">States and their actions</h2>
+      {% for row in state_rows %}
+      <div class="mb-2">
+        {% include "rules/includes/machine_state_badge.html" with state=row.state %}{% if row.state.is_initial %} <span class="small text-muted">initial</span>{% endif %}
+        {% if row.state.description %}<span class="small text-muted"> · {{ row.state.description }}</span>{% endif %}
+        <ul class="small mb-0 ps-3">
+          {% for action in row.enter %}<li><span class="text-muted">on enter:</span> {% include "rules/includes/action_text.html" %}</li>{% endfor %}
+          {% for action in row.exit %}<li><span class="text-muted">on exit:</span> {% include "rules/includes/action_text.html" %}</li>{% endfor %}
+          {% if not row.enter and not row.exit %}<li class="text-muted">no actions</li>{% endif %}
+        </ul>
+      </div>
+      {% endfor %}
+      <p class="small text-muted mt-3 mb-0">Saving, enabling or disabling the rule puts every device back in the initial state, without running actions.</p>
+    </div></div>
+  </div>
+</div>
+
+{% if rule_json %}{% include "rules/includes/json_card.html" %}{% endif %}
+
+{% if alarms %}
+<h2 class="h5 mb-3">Alarms from this rule</h2>
+<div class="mb-4">{% include "rules/includes/alarm_table.html" %}</div>
+{% endif %}
+
+<h2 class="h5 mb-1">Execution log</h2>
+<p class="small text-muted">Every change of state, with the values at that moment and the result of each action.</p>
+<div class="card shadow-sm">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead class="table-light">
+        <tr><th>Time</th><th>Device</th><th>Change</th><th>Values</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for execution in executions %}
+        <tr>
+          <td class="text-nowrap align-top">{{ execution.created_at|date:"d M Y H:i:s" }}</td>
+          <td class="small align-top">{% if execution.device %}<a href="{% url 'devices:detail' execution.device_id %}">{{ execution.device.name }}</a>{% else %}—{% endif %}</td>
+          <td class="small align-top text-nowrap">{{ execution.from_state }} → <strong>{{ execution.to_state }}</strong></td>
+          <td class="small align-top">{% for label, value, url in execution.value_rows %}{{ label }} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}<br>{% endif %}{% empty %}<span class="text-muted">—</span>{% endfor %}</td>
+          <td class="small align-top">
+            {% for result in execution.results %}
+            <div class="{% if not result.ok %}text-danger{% endif %}">{% if result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
+            {% empty %}<span class="text-muted">no actions</span>
+            {% endfor %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-muted py-4">No device has changed state yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% if executions.has_other_pages %}
+<nav class="mt-3" aria-label="Pages">
+  <ul class="pagination pagination-sm">
+    {% if executions.has_previous %}<li class="page-item"><a class="page-link" href="?page={{ executions.previous_page_number }}">Newer</a></li>{% endif %}
+    <li class="page-item disabled"><span class="page-link">Page {{ executions.number }} of {{ executions.paginator.num_pages }}</span></li>
+    {% if executions.has_next %}<li class="page-item"><a class="page-link" href="?page={{ executions.next_page_number }}">Older</a></li>{% endif %}
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/flow_export.js' %}"></script>
+<script>
+/*
+ * Halaman state machine:
+ *   rule_eval  -> data baru dinilai, keadaan tetap -> kotak diagram + device diambil ulang
+ *   rule       -> sebuah device berpindah keadaan  -> muat ulang (log baru)
+ *   alarm      -> alarm dari aturan ini berubah    -> muat ulang
+ */
+(function () {
+  "use strict";
+  if (!window.AutoRefresh) return;
+  const RULE_ID = {{ rule.pk }};
+  const box = document.querySelector("[data-evaluation]");
+  let loading = false;
+
+  async function reloadBox() {
+    if (loading) return;
+    loading = true;
+    try {
+      const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
+      if (response.ok) box.innerHTML = await response.text();
+    } catch (err) { /* dicoba lagi pada kabar berikutnya */ }
+    loading = false;
+  }
+
+  AutoRefresh.on("rule_eval", (event) => {
+    if (event.rule === RULE_ID) reloadBox();
+    return true;
+  });
+  AutoRefresh.on("rule", (event) => event.rule !== RULE_ID);
+  AutoRefresh.on("alarm", (event) => event.rule !== RULE_ID);
+  ["telemetry", "desired", "command", "status"].forEach((type) => AutoRefresh.on(type, () => true));
+})();
+</script>
+{% endblock %}

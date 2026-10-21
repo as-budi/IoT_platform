@@ -39,6 +39,7 @@ Penjelasan konsep:
 - [docs/tahap-17-notifikasi-telegram.md](docs/tahap-17-notifikasi-telegram.md) — notifikasi Telegram: satu bot platform, menyambungkan akun lewat deep link + getUpdates, aksi ECA dan node rule chain "Send Telegram message"
 - [docs/tahap-18-log-aktivitas-dan-pencarian-aturan.md](docs/tahap-18-log-aktivitas-dan-pencarian-aturan.md) — log aktivitas seluruh platform (owner vs pelaku, sinyal Django, Admin melihat semua), `activity_backfill`, dan pencarian aturan berdasarkan kata kunci
 - [docs/tahap-19-berbagi-device.md](docs/tahap-19-berbagi-device.md) — berbagi device ke pengguna atau grup dengan peran Viewer / Operator / Editor, satu tempat aturan akses (`sharing/access.py`), 404 vs 403, aturan yang memakai device bersama diperiksa ulang saat berjalan
+- [docs/tahap-20-state-machine.md](docs/tahap-20-state-machine.md) — model aturan state machine: keadaan bernama per device, transisi karena kondisi / waktu di keadaan / device diam / offline / tombol, aksi saat masuk dan keluar keadaan, diagram SVG, contoh "Cold room states"
 - [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
 - [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 

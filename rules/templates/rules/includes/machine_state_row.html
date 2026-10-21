@@ -1,0 +1,26 @@
+{% comment %}
+  Satu keadaan di formset keadaan state machine (tahap 20).
+{% endcomment %}
+<div class="state-row{% if form.DELETE.value %} d-none{% endif %}" data-state-row>
+  {{ form.id }}
+  <div hidden>{{ form.DELETE }}</div>
+  <div>
+    <label class="form-label small mb-1" for="{{ form.name.id_for_label }}">Name</label>
+    {{ form.name }}
+    {% for error in form.name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+  </div>
+  <div>
+    <label class="form-label small mb-1" for="{{ form.description.id_for_label }}">Meaning</label>
+    {{ form.description }}
+  </div>
+  <div>
+    <label class="form-label small mb-1" for="{{ form.tone.id_for_label }}">Colour</label>
+    {{ form.tone }}
+  </div>
+  <div class="form-check mb-2">
+    {{ form.is_initial }}
+    <label class="form-check-label small" for="{{ form.is_initial.id_for_label }}">Initial</label>
+  </div>
+  <button type="button" class="btn btn-sm btn-link text-danger mb-1" data-remove-state aria-label="Remove state">✕</button>
+  {% for error in form.non_field_errors %}<div class="text-danger small w-100">{{ error }}</div>{% endfor %}
+</div>

@@ -1,0 +1,49 @@
+{% comment %}
+  Gambar state machine (SVG). Butuh `diagram` dari rules/machine_diagram.py:layout().
+  Keadaan yang sedang ditempati device diberi class "is-occupied" dan jumlah device-nya.
+  Tombol "Export PNG" ditangani static/js/flow_export.js (data-legend = keterangan warna).
+{% endcomment %}
+<div data-flow-diagram>
+<div class="flow-diagram-wrap">
+<svg class="flow-diagram machine-diagram" width="{{ diagram.width|floatformat:0 }}" height="{{ diagram.height|floatformat:0 }}" viewBox="0 0 {{ diagram.width|floatformat:0 }} {{ diagram.height|floatformat:0 }}" role="img" aria-label="State machine diagram">
+  <defs>
+    <marker id="machine-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="flow-arrowhead"/></marker>
+  </defs>
+  {% for link in diagram.links %}
+  <path d="{{ link.d }}" class="machine-link machine-link-{{ link.trigger }}" marker-end="url(#machine-arrow)"><title>{{ link.full }}</title></path>
+  {% endfor %}
+  {% if diagram.start %}
+  <circle cx="{{ diagram.start.cx }}" cy="{{ diagram.start.cy|floatformat:1 }}" r="7" class="machine-start"/>
+  <path d="M{{ diagram.start.x1|floatformat:1 }},{{ diagram.start.cy|floatformat:1 }} L{{ diagram.start.x2|floatformat:1 }},{{ diagram.start.y2|floatformat:1 }}" class="machine-link" marker-end="url(#machine-arrow)"/>
+  {% endif %}
+  {% for state in diagram.states %}
+  <g class="machine-state machine-tone-{{ state.tone }}{% if state.occupied %} is-occupied{% endif %}">
+    <title>{{ state.name }}{% if state.description %}: {{ state.description }}{% endif %}{% if state.initial %} (initial){% endif %}</title>
+    <rect x="{{ state.x }}" y="{{ state.y|floatformat:1 }}" width="{{ state.w }}" height="{{ state.h }}" rx="14"/>
+    <text x="{{ state.cx }}" y="{{ state.ty1|floatformat:1 }}" text-anchor="middle" class="flow-node-name">{{ state.name }}</text>
+    <text x="{{ state.cx }}" y="{{ state.ty2|floatformat:1 }}" text-anchor="middle" class="flow-node-kind">{% if diagram.has_counts %}{% if state.count %}{{ state.count }} device{{ state.count|pluralize }}{% else %}—{% endif %}{% else %}{{ state.description|default:"" }}{% endif %}</text>
+  </g>
+  {% endfor %}
+  {% for link in diagram.links %}
+  <g class="machine-label machine-label-{{ link.trigger }}" transform="translate({{ link.lx|floatformat:1 }},{{ link.ly|floatformat:1 }})">
+    <title>{{ link.full }}</title>
+    <rect x="{{ link.lx0|floatformat:1 }}" y="-9" width="{{ link.lw|floatformat:1 }}" height="18" rx="9"/>
+    <text text-anchor="middle" y="4">{{ link.label }}</text>
+  </g>
+  {% endfor %}
+</svg>
+</div>
+<div class="flow-legend small text-muted align-items-center">
+  <span><i class="machine-swatch machine-trigger-condition"></i>condition</span>
+  <span><i class="machine-swatch machine-trigger-timeout"></i>time in state</span>
+  <span><i class="machine-swatch machine-trigger-silent"></i>no data / offline</span>
+  <span><i class="machine-swatch machine-trigger-manual"></i>button</span>
+  <span>● = initial state · * = from any state</span>
+  <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-flow-export
+          data-filename="state-machine-{{ rule.name|default:'diagram'|slugify }}" data-title="{{ rule.name|default:'State machine' }}"
+          data-legend='[["condition","--sm-condition"],["time in state","--sm-timeout"],["no data / offline","--sm-silent"],["button","--sm-manual"]]'
+          title="Download this diagram as a PNG image (in the current light/dark theme)">
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" class="me-1" style="vertical-align:-2px"><path fill="currentColor" d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>Export PNG
+  </button>
+</div>
+</div>

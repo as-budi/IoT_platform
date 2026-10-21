@@ -1,0 +1,46 @@
+{% comment %}
+  Satu aksi state machine: milik satu keadaan, berjalan saat masuk (ENTER) atau keluar (EXIT).
+  Field sesuai jenis aksi ditampilkan lewat data-for (skrip di rule_form_machine.html).
+{% endcomment %}
+<div class="card action-row mb-3{% if form.DELETE.value %} d-none{% endif %}" data-action-row>
+  <div class="card-body">
+    {{ form.id }}
+    <div class="d-none">{{ form.DELETE }}</div>
+    {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+    <div class="row g-3 align-items-end">
+      <div class="col-sm-3">
+        <div class="mb-3">
+          <label class="form-label" for="{{ form.state_name.id_for_label }}">State</label>
+          <select class="form-select" name="{{ form.state_name.html_name }}" id="{{ form.state_name.id_for_label }}" data-state-select data-value="{{ form.state_name.value|default:'' }}">
+            <option value="">— state —</option>
+            {% for name in state_names %}<option value="{{ name }}"{% if form.state_name.value == name %} selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+          {% for error in form.state_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+        </div>
+      </div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.run_on %}</div>
+      <div class="col-sm-3">{% include "rules/includes/field.html" with field=form.kind %}</div>
+      <div class="col-sm-2 text-sm-end mb-3">
+        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-action>Remove</button>
+      </div>
+    </div>
+    <div class="row g-3" data-for="SET_ACTUATOR">
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.target_variable %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">1 = ON, 0 = OFF for on/off actuators.</div></div>
+    </div>
+    <div class="row g-3" data-for="SEND_COMMAND">
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.target_device %}</div>
+      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.method %}</div>
+      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.params %}</div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.ttl_seconds %}</div>
+    </div>
+    <div class="row g-3">
+      <div class="col-sm-4" data-for="ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
+      <div class="col-sm-4" data-for="EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      <div class="col-sm-8" data-for="ALARM EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="TELEGRAM">Blank recipients = the Telegram chat connected on the rule owner's profile.</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="ALARM">One alarm per device: it stays active until a “Clear alarm” action (e.g. on entering NORMAL) or a person clears it.</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="CLEAR_ALARM">Clears this rule's active alarm on the device that changed state.</div>
+    </div>
+  </div>
+</div>

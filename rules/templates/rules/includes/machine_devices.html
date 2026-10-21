@@ -1,0 +1,45 @@
+{% comment %}
+  Diagram + keadaan setiap device (tahap 20). Data dari rules/views.py: machine_context().
+  Diambil ulang oleh halaman detail setiap ada kabar "rule_eval" (lihat rule_detail_machine.html).
+{% endcomment %}
+{% include "rules/includes/machine_diagram.html" %}
+
+<h2 class="h6 text-muted text-uppercase mt-4" id="devices">Devices</h2>
+{% if machine_rows %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle mb-0 small">
+    <thead class="table-light"><tr><th>Device</th><th>State</th><th>Since</th><th>Latest values</th><th>Next</th>{% if machine_buttons %}<th class="text-end">Buttons</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for row in machine_rows %}
+      <tr>
+        <td class="text-nowrap"><a href="{% url 'devices:detail' row.instance.device_id %}">{{ row.instance.device.name }}</a></td>
+        <td>{% include "rules/includes/machine_state_badge.html" with state=row.state %}</td>
+        <td class="text-nowrap">{% if row.since %}<span title="{{ row.since|date:'d M Y H:i:s' }}">{{ row.since|timesince }}</span>{% else %}<span class="text-muted">not started</span>{% endif %}</td>
+        <td>{% for key, value in row.values.items %}<code>{{ key }}</code> = {{ value|floatformat:"-2" }}{% if not forloop.last %}, {% endif %}{% empty %}<span class="text-muted">—</span>{% endfor %}</td>
+        <td>
+          {% for wait in row.waiting %}<div>→ {{ wait.to }} in {{ wait.waiting.left }} s <span class="text-muted">({{ wait.text }})</span></div>{% endfor %}
+          {% for check in row.transitions %}{% if not check.waiting %}
+          <div class="{% if check.result is None %}text-muted{% elif not check.result %}text-muted{% endif %}">
+            → {{ check.to }}: <span title="{{ check.text }}">{{ check.text|truncatechars:40 }}</span>
+            {% if check.result is None %}<span class="badge text-bg-light border">unknown</span>{% elif check.result %}<span class="badge text-bg-success">true</span>{% else %}<span class="badge text-bg-light border">false</span>{% endif %}
+          </div>
+          {% endif %}{% endfor %}
+        </td>
+        {% if machine_buttons %}
+        <td class="text-end text-nowrap">
+          {% for button in row.buttons %}
+          <form method="post" action="{% url 'rules:machine_press' rule.pk row.instance.device_id button.transition.pk %}" class="d-inline">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}#devices">
+            <button class="btn btn-sm btn-outline-primary"{% if not button.enabled %} disabled title="Not available in this state, or you cannot control this device"{% endif %}>{{ button.transition.label }}</button>
+          </form>
+          {% endfor %}
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<p class="text-muted small mb-0">No device yet. A device appears here, in the initial state, the first time it sends data{% if not rule.is_enabled %} while the rule is enabled{% endif %}.</p>
+{% endif %}

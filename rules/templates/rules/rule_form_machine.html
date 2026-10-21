@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New state machine{% endif %} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'rules:list' %}">Rules</a></li>
+    {% if rule %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    {% else %}
+    <li class="breadcrumb-item"><a href="{% url 'rules:new' %}">New rule</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{ engine.label }}</li>
+    {% endif %}
+  </ol>
+</nav>
+
+<div class="row justify-content-center">
+  <div class="col-xl-10">
+    <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">STATE MACHINE</span></h1>
+    <p class="text-muted mb-4">Every device the rule watches is in <strong>one state</strong> at a time, e.g. NORMAL, WARNING or CRITICAL.
+      Transitions move it to another state when a condition holds, after some time, when the device goes quiet or offline,
+      or when someone presses a button. Actions run when a device <strong>enters</strong> or <strong>leaves</strong> a state.</p>
+
+    {% if rule_form.errors or spec_form.errors or state_formset.total_error_count or transition_formset.total_error_count or action_formset.total_error_count or machine_errors %}
+    <div class="alert alert-danger">Please correct the errors below.</div>
+    {% endif %}
+
+    {% if diagram %}
+    <div class="card shadow-sm mb-3"><div class="card-body">
+      <h2 class="h6 text-muted text-uppercase">Current machine</h2>
+      {% include "rules/includes/machine_diagram.html" %}
+    </div></div>
+    {% endif %}
+
+    <form method="post" novalidate id="rule-form">
+      {% csrf_token %}
+
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">{% include "rules/includes/field.html" with field=rule_form.name %}</div>
+          <div class="col-md-6 d-flex align-items-center">
+            <div class="form-check form-switch mt-md-3">
+              {{ rule_form.is_enabled }}
+              <label class="form-check-label" for="{{ rule_form.is_enabled.id_for_label }}">{{ rule_form.is_enabled.label }}</label>
+            </div>
+          </div>
+          <div class="col-12">{% include "rules/includes/field.html" with field=rule_form.description %}</div>
+        </div>
+      </div></div>
+
+      {# ---------- 1. Device ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">1</span> Devices to watch</h2>
+        <div class="row g-3">
+          <div class="col-md-7">{% include "rules/includes/field.html" with field=spec_form.device %}</div>
+          <div class="col-md-5">{% include "rules/includes/field.html" with field=spec_form.max_age_seconds %}</div>
+        </div>
+        <p class="small text-muted mb-0">Conditions name a <strong>key</strong> such as <code>temperature</code>, not one variable,
+          so the same machine works for every device that sends that key. With “every device I own”, each device
+          has its own current state.</p>
+      </div></div>
+
+      {# ---------- 2. States ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">2</span> States</h2>
+        <p class="small text-muted">A device starts in the <strong>initial</strong> state the first time the rule sees it (no actions run then).
+          The colour is only for the diagram.</p>
+        {{ state_formset.management_form }}
+        {% for error in state_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div id="state-list">
+          {% for form in state_formset %}{% include "rules/includes/machine_state_row.html" %}{% endfor %}
+        </div>
+        <template id="state-template">{% include "rules/includes/machine_state_row.html" with form=state_formset.empty_form %}</template>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-state">Add state</button>
+      </div></div>
+
+      {# ---------- 3. Transitions ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">3</span> Transitions</h2>
+        <p class="small text-muted mb-2">From the device's current state, the rows are checked <strong>from top to bottom</strong>;
+          the first one whose trigger holds moves the device. <code>*</code> means “from any state”.</p>
+        <ul class="small text-muted mb-3">
+          <li><strong>Condition</strong>: comparisons joined with <code>and</code> / <code>or</code>
+            (<code>and</code> binds first), e.g. <code>temperature &gt; 35 and humidity &lt; 40 or temperature &gt; 45</code>.
+            ON/OFF may be written for on/off values. “for N s” = the condition must hold that long.</li>
+          <li><strong>After some time</strong>: N seconds in the source state (a transition back to the same state repeats its actions every N s).</li>
+          <li><strong>No data</strong> / <strong>offline</strong>: the device is quiet for N s, or its status turns offline.</li>
+          <li><strong>Button</strong>: shown on the rule page for each device; pressing it needs Operator access to the device.</li>
+        </ul>
+        {% for error in machine_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        {{ transition_formset.management_form }}
+        {% for error in transition_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div class="transition-head small text-muted"><span>From → To</span><span>Trigger</span><span>Details</span></div>
+        <div id="transition-list">
+          {% for form in transition_formset %}{% include "rules/includes/machine_transition_row.html" %}{% endfor %}
+        </div>
+        <template id="transition-template">{% include "rules/includes/machine_transition_row.html" with form=transition_formset.empty_form %}</template>
+        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="add-transition">Add transition</button>
+      </div></div>
+
+      {# ---------- 4. Actions ---------- #}
+      <div class="card shadow-sm mb-3"><div class="card-body">
+        <h2 class="h6 eca-heading"><span class="eca-step">4</span> Actions on entering / leaving a state</h2>
+        <p class="small text-muted">On a move, the old state's <em>leaving</em> actions run first, then the new state's <em>entering</em> actions.
+          Placeholders: <code>{device}</code> <code>{state}</code> <code>{from_state}</code> <code>{to_state}</code> <code>{values}</code> <code>{value}</code> <code>{time}</code>.</p>
+        {{ action_formset.management_form }}
+        {% for error in action_formset.non_form_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
+        <div id="action-list">
+          {% for form in action_formset %}{% include "rules/includes/machine_action_form.html" %}{% endfor %}
+        </div>
+        <template id="action-template">{% include "rules/includes/machine_action_form.html" with form=action_formset.empty_form %}</template>
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-action">Add action</button>
+      </div></div>
+
+      <p class="small text-muted">Saving puts every device back in the initial state.</p>
+      <button type="submit" class="btn btn-primary">Save rule</button>
+      <a class="btn btn-link" href="{% if rule %}{% url 'rules:detail' rule.pk %}{% else %}{% url 'rules:list' %}{% endif %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/flow_export.js' %}"></script>
+<script>
+/*
+ * Form state machine (tahap 20):
+ * - menambah/menghapus keadaan, transisi, dan aksi (Django formset: hapus = centang DELETE),
+ * - menyusun ulang pilihan keadaan (dari/ke/keadaan aksi) dari NAMA yang sedang diketik,
+ * - menampilkan isian sesuai pemicu transisi dan jenis aksi,
+ * - hanya satu keadaan yang boleh dicentang "Initial".
+ * Server tetap memeriksa semuanya lagi (rules/forms.py: check_machine).
+ */
+(function () {
+  "use strict";
+  const form = document.getElementById("rule-form");
+  const ANY = "{{ any_state }}";
+
+  function visible(selector) {
+    return [...form.querySelectorAll(selector)].filter((row) => !row.classList.contains("d-none"));
+  }
+  function stateNames() {
+    const names = [];
+    visible("#state-list [data-state-row]").forEach((row) => {
+      const name = row.querySelector("[data-state-name]").value.trim();
+      if (name && !names.includes(name)) names.push(name);
+    });
+    return names;
+  }
+
+  function addFromTemplate(templateId, listId, totalName) {
+    const total = form.querySelector(`input[name='${totalName}']`);
+    const index = parseInt(total.value, 10);
+    const html = document.getElementById(templateId).innerHTML.replace(/__prefix__/g, index);
+    const holder = document.createElement("div");
+    holder.innerHTML = html.trim();
+    const row = holder.firstElementChild;
+    document.getElementById(listId).appendChild(row);
+    total.value = index + 1;
+    return row;
+  }
+
+  function removeRow(row) {
+    row.querySelector("input[name$='-DELETE']").checked = true;
+    row.classList.add("d-none");
+  }
+
+  // --- pilihan nama keadaan ----------------------------------------------------
+  function fill(select, names) {
+    const current = select.value || select.dataset.value || "";
+    const withAny = select.hasAttribute("data-with-any");
+    select.innerHTML = "";
+    const options = withAny ? [[ANY, "* any state"]] : [["", "— state —"]];
+    names.forEach((n) => options.push([n, n]));
+    options.forEach(([value, text]) => select.add(new Option(text, value, false, value === current)));
+    if (current && ![...select.options].some((o) => o.value === current)) {
+      select.add(new Option(`${current} (missing)`, current, false, true));
+    }
+    select.dataset.value = select.value;
+  }
+  function refreshStates() {
+    const names = stateNames();
+    form.querySelectorAll("[data-state-select]").forEach((select) => fill(select, names));
+  }
+
+  // --- keadaan -------------------------------------------------------------------
+  function wireState(row) {
+    const name = row.querySelector("[data-state-name]");
+    name.addEventListener("input", refreshStates);
+    // Satu keadaan awal saja: mencentang satu melepas yang lain.
+    row.querySelector("[data-state-initial]").addEventListener("change", (e) => {
+      if (!e.target.checked) return;
+      form.querySelectorAll("[data-state-initial]").forEach((box) => { if (box !== e.target) box.checked = false; });
+    });
+    row.querySelector("[data-remove-state]").addEventListener("click", () => { removeRow(row); refreshStates(); });
+  }
+  form.querySelectorAll("#state-list [data-state-row]").forEach(wireState);
+  document.getElementById("add-state").addEventListener("click", () => {
+    const row = addFromTemplate("state-template", "state-list", "states-TOTAL_FORMS");
+    wireState(row);
+    row.querySelector("[data-state-name]").focus();
+  });
+
+  // --- transisi ------------------------------------------------------------------
+  const SECONDS_LABEL = { CONDITION: "for", TIMEOUT: "after", SILENT: "no data for" };
+  function showTrigger(row) {
+    const trigger = row.querySelector("[data-transition-trigger]").value;
+    row.querySelectorAll("[data-trigger-for]").forEach((el) => {
+      el.hidden = !el.dataset.triggerFor.split(" ").includes(trigger);
+    });
+    const label = row.querySelector("[data-seconds-label]");
+    if (label) label.textContent = SECONDS_LABEL[trigger] || "";
+  }
+  function wireTransition(row) {
+    row.querySelector("[data-transition-trigger]").addEventListener("change", () => showTrigger(row));
+    row.querySelectorAll("[data-state-select]").forEach((s) => s.addEventListener("change", (e) => { e.target.dataset.value = e.target.value; }));
+    row.querySelector("[data-remove-transition]").addEventListener("click", () => removeRow(row));
+    showTrigger(row);
+  }
+  form.querySelectorAll("#transition-list [data-transition-row]").forEach(wireTransition);
+  document.getElementById("add-transition").addEventListener("click", () => {
+    const row = addFromTemplate("transition-template", "transition-list", "transitions-TOTAL_FORMS");
+    const names = stateNames();
+    row.querySelector("[name$='-source']").dataset.value = names[0] || ANY;
+    row.querySelector("[name$='-target']").dataset.value = names[1] || "";
+    wireTransition(row);
+    refreshStates();
+  });
+
+  // --- aksi ----------------------------------------------------------------------
+  function showActionFields(row) {
+    const kind = row.querySelector("[data-action-kind]").value;
+    row.querySelectorAll("[data-for]").forEach((el) => { el.hidden = !el.dataset.for.split(" ").includes(kind); });
+  }
+  function wireAction(row) {
+    row.querySelector("[data-action-kind]").addEventListener("change", () => showActionFields(row));
+    row.querySelector("[data-state-select]").addEventListener("change", (e) => { e.target.dataset.value = e.target.value; });
+    row.querySelector("[data-remove-action]").addEventListener("click", () => removeRow(row));
+    showActionFields(row);
+  }
+  form.querySelectorAll("#action-list [data-action-row]").forEach(wireAction);
+  document.getElementById("add-action").addEventListener("click", () => {
+    const row = addFromTemplate("action-template", "action-list", "actions-TOTAL_FORMS");
+    const names = stateNames();
+    row.querySelector("[data-state-select]").dataset.value = names[names.length - 1] || "";
+    wireAction(row);
+    refreshStates();
+  });
+
+  // Aturan baru: sediakan satu transisi kosong.
+  if (!form.querySelector("#transition-list [data-transition-row]")) document.getElementById("add-transition").click();
+  refreshStates();
+})();
+</script>
+{% endblock %}

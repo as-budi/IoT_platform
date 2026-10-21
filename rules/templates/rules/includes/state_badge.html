@@ -6,6 +6,8 @@
 <span class="badge text-bg-secondary">Disabled</span>
 {% elif model == "FLOW" %}
 <span class="badge rule-state rule-state-listening" title="Every message from its devices runs through the chain">Listening</span>
+{% elif model == "STATE_MACHINE" %}
+<span class="badge rule-state rule-state-listening" title="Each device has its own current state; see the rule page">Running</span>
 {% elif status == "ACTIVE" %}
 <span class="badge rule-state rule-state-active">Active</span>
 {% elif status == "PENDING" %}

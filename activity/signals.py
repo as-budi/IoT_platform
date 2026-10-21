@@ -25,7 +25,7 @@ from notifications.models import TelegramLink
 from ota.models import OtaEvent, OtaStatus
 from rules.models import Alarm, Rule, RuleExecution
 
-from .log import Category, Level, record
+from .log import Category, Level, _user as current_user, record
 
 
 def _own_delete(instance, origin):
@@ -176,6 +176,15 @@ def rule_executed(sender, instance, created, raw=False, **kwargs):
         return
     rule = instance.rule
     results = "; ".join(f"{r.get('action')}: {r.get('detail')}" for r in instance.results or [])
+    if instance.transition == "MOVE":       # state machine (tahap 20)
+        device = instance.device
+        name = device.name if device else "device"
+        text = f"Rule \"{rule.name}\": {name} {instance.from_state} → {instance.to_state}"
+        record("rule.move", text + (f" — {results}" if results else ""), category=Category.RULE,
+               level=Level.INFO if instance.ok else Level.ERROR, owner=rule.owner, rule=rule, device=device,
+               # Tombol manual: pelakunya pengguna yang menekan (dari request); lainnya mesin aturan.
+               actor_name="" if current_user() else "rule engine", at=instance.created_at)
+        return
     text = f"Rule \"{rule.name}\" {TRANSITION_TEXT.get(instance.transition, instance.transition.lower())}"
     if instance.value is not None:
         text += f" (value {_fmt(instance.value)})"

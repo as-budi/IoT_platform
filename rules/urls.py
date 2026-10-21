@@ -21,6 +21,9 @@ urlpatterns = [
     path("<int:pk>/evaluation/", views.rule_evaluation, name="evaluation"),
     path("<int:pk>/edit/", views.edit_rule, name="edit"),
     path("<int:pk>/toggle/", views.RuleToggleView.as_view(), name="toggle"),
+    # State machine (tahap 20): tombol transisi manual untuk satu device.
+    path("<int:pk>/devices/<int:device_pk>/press/<int:transition_pk>/", views.MachineButtonView.as_view(),
+         name="machine_press"),
     path("<int:pk>/delete/", views.RuleDeleteView.as_view(), name="delete"),
     path("alarms/", views.AlarmListView.as_view(), name="alarms"),
     path("alarms/<int:pk>/acknowledge/", views.AlarmActionView.as_view(action="acknowledge"), name="alarm_ack"),

@@ -1098,3 +1098,69 @@ a.user-chip.active {
 [data-bs-theme="dark"] .activity-level-warning { color: #f2b544; }
 [data-bs-theme="dark"] .activity-level-error { color: #ff8a80; }
 .rule-search { flex: 1 1 18rem; max-width: 32rem; }
+
+/* ---------- State machine (tahap 20) ---------- */
+/* Warna keadaan (tone) dan warna pemicu transisi. */
+:root, [data-bs-theme="light"] {
+  --sm-neutral: #8a94a6;
+  --sm-ok: #0b8a0b;
+  --sm-info: #2a78d6;
+  --sm-warning: #d48a00;
+  --sm-danger: #c62828;
+  --sm-condition: #2a78d6;
+  --sm-timeout: #7c4dff;
+  --sm-silent: #d48a00;
+  --sm-manual: #0f9488;
+}
+[data-bs-theme="dark"] {
+  --sm-neutral: #a2abbb;
+  --sm-ok: #4cc94c;
+  --sm-info: #5aa0f0;
+  --sm-warning: #f2b544;
+  --sm-danger: #ff6b6b;
+  --sm-condition: #5aa0f0;
+  --sm-timeout: #a283ff;
+  --sm-silent: #f2b544;
+  --sm-manual: #2cc4b5;
+}
+.machine-state rect { fill: var(--app-surface); stroke-width: 2; }
+.machine-tone-neutral rect { stroke: var(--sm-neutral); }
+.machine-tone-ok rect { stroke: var(--sm-ok); }
+.machine-tone-info rect { stroke: var(--sm-info); }
+.machine-tone-warning rect { stroke: var(--sm-warning); }
+.machine-tone-danger rect { stroke: var(--sm-danger); }
+.machine-state.is-occupied rect { stroke-width: 4; fill: var(--app-surface-2); }
+.machine-start { fill: var(--bs-body-color); }
+.machine-link { fill: none; stroke: var(--app-border); stroke-width: 2; }
+.machine-link-condition { stroke: var(--sm-condition); }
+.machine-link-timeout { stroke: var(--sm-timeout); stroke-dasharray: 6 4; }
+.machine-link-silent, .machine-link-offline { stroke: var(--sm-silent); stroke-dasharray: 2 4; }
+.machine-link-manual { stroke: var(--sm-manual); }
+.machine-label rect { fill: var(--app-surface); stroke: var(--app-border); stroke-width: 1.2; }
+.machine-label text { font-size: 10.5px; font-weight: 600; }
+.machine-label-condition text { fill: var(--sm-condition) !important; }
+.machine-label-timeout text { fill: var(--sm-timeout) !important; }
+.machine-label-silent text, .machine-label-offline text { fill: var(--sm-silent) !important; }
+.machine-label-manual text { fill: var(--sm-manual) !important; }
+.machine-swatch { display: inline-block; width: 0.9rem; height: 0.2rem; border-radius: 2px; margin-right: 0.3rem; vertical-align: 0.2rem; }
+.machine-trigger-condition { background: var(--sm-condition); }
+.machine-trigger-timeout { background: var(--sm-timeout); }
+.machine-trigger-silent { background: var(--sm-silent); }
+.machine-trigger-manual { background: var(--sm-manual); }
+.state-badge { border: 1px solid currentColor; background: transparent; font-weight: 600; }
+.state-badge-neutral { color: var(--sm-neutral); }
+.state-badge-ok { color: var(--sm-ok); }
+.state-badge-info { color: var(--sm-info); }
+.state-badge-warning { color: var(--sm-warning); }
+.state-badge-danger { color: var(--sm-danger); }
+.state-row { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 2fr) minmax(7rem, 1fr) auto auto; gap: 0.5rem; align-items: end; margin-bottom: 0.5rem; }
+.transition-head, .transition-row { display: grid; grid-template-columns: minmax(14rem, 2fr) minmax(14rem, 1.4fr) minmax(14rem, 3fr) auto; gap: 0.5rem; align-items: start; }
+.transition-row { margin-bottom: 0.5rem; padding-bottom: 0.5rem; border-bottom: 1px dashed var(--app-border); }
+.transition-ends { display: flex; align-items: center; gap: 0.35rem; }
+.transition-detail { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.transition-detail > input { flex: 1 1 14rem; }
+.transition-seconds { width: 11rem; }
+@media (max-width: 767.98px) {
+  .state-row, .transition-head, .transition-row { grid-template-columns: 1fr; }
+  .transition-head { display: none; }
+}

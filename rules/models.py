@@ -6,8 +6,8 @@ Sebuah aturan (Rule) selalu punya MODEL rule engine (lihat docs/rule-engine-iot.
     ECA, Flow/rule chain, SQL streaming, CEP, Production rules, State machine
 
 Tahap 7 mengimplementasikan ECA (Event–Condition–Action), tahap 8 rule chain
-(Flow). Model lain sudah terdaftar sebagai pilihan (RuleModel) dan punya
-"kerangka" mesin di rules/engines/, tetapi belum bisa dipakai.
+(Flow), tahap 20 state machine. Model lain sudah terdaftar sebagai pilihan
+(RuleModel) dan punya "kerangka" mesin di rules/engines/, tetapi belum bisa dipakai.
 
 Struktur tabel:
 
@@ -19,7 +19,13 @@ Struktur tabel:
       FlowSpec      (1-1) isi rule chain: dari device mana pesan diterima
       FlowNode      (1-banyak) node graf: filter, enrichment, transformation, action
       FlowLink      (1-banyak) sambungan antar-node berlabel True/False/Success/Failure
-      RuleAction    (1-banyak) aksi ECA: set aktuator, kirim command, alarm, email
+      MachineSpec   (1-1) isi state machine (tahap 20): device yang diamati
+        MachineState      (1-banyak) keadaan bernama, mis. NORMAL, WARNING, CRITICAL
+        MachineTransition (1-banyak) panah antar-keadaan dengan pemicunya
+          MachineCondition (1-banyak) kondisi "key op ambang" sebuah transisi
+        MachineInstance   (1-banyak) keadaan SAAT INI, satu baris per device
+      RuleAction    (1-banyak) aksi ECA: set aktuator, kirim command, alarm, email;
+                    juga aksi "masuk/keluar keadaan" state machine
       RuleState     (1-1) keadaan aturan saat ini: IDLE / PENDING / ACTIVE
       RuleExecution (1-banyak) log setiap kali aturan aktif atau pulih (ECA),
                     atau setiap kali node aksi rule chain berjalan (Flow)
@@ -504,6 +510,165 @@ class FlowLink(models.Model):
         return f"{source} —{self.get_label_display()}→ {self.target.name}"
 
 
+# --- State machine (tahap 20) ------------------------------------------------------------
+#
+# Setiap DEVICE yang diamati berada di SATU keadaan bernama, mis.:
+#
+#     NORMAL ──temperature > 8 selama 120 s──► WARM ──600 s di WARM──► ALARM
+#        ▲                                      │                       │
+#        └──────────── temperature <= 7 ────────┴───────────────────────┘
+#
+# - MachineState      = satu keadaan. Tepat satu keadaan berlabel "initial".
+# - MachineTransition = satu panah dari keadaan asal (kosong = dari keadaan MANA PUN)
+#                       ke keadaan tujuan, dengan PEMICU: kondisi, waktu di keadaan,
+#                       device diam, device offline, atau tombol.
+# - Aksi (RuleAction dengan state + run_on ENTER/EXIT) berjalan saat masuk/keluar keadaan.
+# - MachineInstance   = keadaan SAAT INI sebuah device di aturan ini.
+# Cara mesin bekerja: rules/engines/state_machine.py dan docs/tahap-20-state-machine.md.
+
+
+class MachineSpec(models.Model):
+    """Device mana yang diamati sebuah state machine."""
+
+    rule = models.OneToOneField(Rule, on_delete=models.CASCADE, related_name="machine", primary_key=True)
+    device = models.ForeignKey(
+        Device, verbose_name="device", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="state_machines",
+        help_text="Blank = every device you own; each one gets its own current state.",
+    )
+    max_age_seconds = models.PositiveIntegerField(
+        "ignore values older than (seconds)", default=300,
+        help_text="A value older than this counts as unknown in conditions. 0 = no limit.",
+    )
+
+    class Meta:
+        verbose_name = "state machine specification"
+        verbose_name_plural = "state machine specifications"
+
+    def __str__(self):
+        return f"State machine of {self.rule}"
+
+
+class MachineState(models.Model):
+    class Tone(models.TextChoices):
+        """Warna keadaan di diagram dan lencana (tidak memengaruhi cara kerja)."""
+
+        NEUTRAL = "NEUTRAL", "Grey"
+        OK = "OK", "Green"
+        INFO = "INFO", "Blue"
+        WARNING = "WARNING", "Amber"
+        DANGER = "DANGER", "Red"
+
+    rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="machine_states")
+    name = models.CharField("name", max_length=30, help_text="e.g. NORMAL, WARNING, CRITICAL.")
+    description = models.CharField("meaning", max_length=120, blank=True)
+    tone = models.CharField("colour", max_length=8, choices=Tone.choices, default=Tone.NEUTRAL)
+    is_initial = models.BooleanField("initial state", default=False)
+    order = models.PositiveSmallIntegerField("order", default=0)
+
+    class Meta:
+        ordering = ["order", "pk"]
+        verbose_name = "state"
+        verbose_name_plural = "states"
+        constraints = [models.UniqueConstraint(fields=["rule", "name"], name="machine_state_unique_name")]
+
+    def __str__(self):
+        return self.name
+
+
+class MachineTransition(models.Model):
+    class Trigger(models.TextChoices):
+        CONDITION = "CONDITION", "When a condition holds"
+        TIMEOUT = "TIMEOUT", "After some time in the state"
+        SILENT = "SILENT", "Device sends no data"
+        OFFLINE = "OFFLINE", "Device goes offline"
+        MANUAL = "MANUAL", "Button (manual)"
+
+    rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="machine_transitions")
+    # Kosong = dari keadaan mana pun ("*"), mis. "* → OFFLINE bila device offline".
+    source = models.ForeignKey(
+        MachineState, verbose_name="from", null=True, blank=True, on_delete=models.CASCADE, related_name="outgoing",
+    )
+    target = models.ForeignKey(MachineState, verbose_name="to", on_delete=models.CASCADE, related_name="incoming")
+    trigger = models.CharField("trigger", max_length=10, choices=Trigger.choices, default=Trigger.CONDITION)
+    # CONDITION: kondisi harus bertahan selama ini (0 = langsung). TIMEOUT: lama di keadaan
+    # asal. SILENT: lama tanpa data. OFFLINE dan MANUAL tidak memakainya.
+    seconds = models.PositiveIntegerField("seconds", null=True, blank=True)
+    # MANUAL: teks tombol, mis. "Start defrost". Pemicu lain: nama panah (opsional).
+    label = models.CharField("label", max_length=40, blank=True)
+    order = models.PositiveSmallIntegerField("order", default=0)
+
+    class Meta:
+        ordering = ["order", "pk"]
+        verbose_name = "transition"
+        verbose_name_plural = "transitions"
+
+    def __str__(self):
+        return f"{self.source.name if self.source_id else '*'} → {self.target.name}"
+
+    def condition_groups(self):
+        """[[kondisi, kondisi], [kondisi]] = (A AND B) OR (C), memakai hasil prefetch bila ada."""
+        grouped = {}
+        for condition in self.conditions.all():
+            grouped.setdefault(condition.group, []).append(condition)
+        return [grouped[number] for number in sorted(grouped)]
+
+
+class MachineCondition(models.Model):
+    """Satu perbandingan dalam kondisi transisi: <key> <operator> <ambang>.
+
+    Berbeda dengan kondisi ECA (yang menunjuk satu VARIABEL tertentu), kondisi state
+    machine menunjuk KEY, mis. "temperature". Satu aturan bisa mengamati banyak device;
+    key itu dicari di device yang sedang dinilai. Grup sama = AND, grup beda = OR.
+    """
+
+    transition = models.ForeignKey(MachineTransition, on_delete=models.CASCADE, related_name="conditions")
+    group = models.PositiveSmallIntegerField("group", default=1)
+    order = models.PositiveSmallIntegerField("order", default=0)
+    key = models.CharField("key", max_length=50, validators=[key_validator])
+    operator = models.CharField("operator", max_length=2, choices=Operator.choices)
+    threshold = models.FloatField("threshold")
+
+    class Meta:
+        ordering = ["group", "order", "pk"]
+        verbose_name = "transition condition"
+        verbose_name_plural = "transition conditions"
+
+    def __str__(self):
+        return f"{self.key} {self.operator} {self.threshold:g}"
+
+    def test(self, value):
+        return compare(value, self.operator, self.threshold)
+
+
+class MachineInstance(models.Model):
+    """Keadaan SAAT INI satu device di satu state machine.
+
+    Dibuat saat device pertama kali mengirim data (atau, untuk aturan dengan satu device
+    tertentu, pada pemeriksaan berkala pertama), di keadaan awal, tanpa menjalankan aksi.
+    Dihapus semuanya saat aturan disimpan atau diaktifkan/dinonaktifkan: mulai dari awal.
+    """
+
+    rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="machine_instances")
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="machine_instances")
+    state = models.ForeignKey(MachineState, on_delete=models.CASCADE, related_name="instances")
+    entered_at = models.DateTimeField("in this state since", default=timezone.now)
+    # Kondisi yang sedang "ditunggu" (selama N detik): {"<id transisi>": "<waktu mulai ISO>"}.
+    pending = models.JSONField("waiting", default=dict, blank=True)
+    last_evaluated_at = models.DateTimeField("last evaluated", null=True, blank=True)
+    # Penilaian terakhir: nilai tiap key dan hasil tiap transisi (untuk halaman detail).
+    snapshot = models.JSONField("last evaluation", default=dict, blank=True)
+
+    class Meta:
+        ordering = ["device__name", "pk"]
+        verbose_name = "state machine instance"
+        verbose_name_plural = "state machine instances"
+        constraints = [models.UniqueConstraint(fields=["rule", "device"], name="machine_instance_unique")]
+
+    def __str__(self):
+        return f"{self.rule} · {self.device}: {self.state}"
+
+
 # --- Aksi -----------------------------------------------------------------------
 
 class RuleAction(models.Model):
@@ -513,12 +678,21 @@ class RuleAction(models.Model):
         ALARM = "ALARM", "Raise alarm"
         EMAIL = "EMAIL", "Send email"
         TELEGRAM = "TELEGRAM", "Send Telegram message"   # tahap 17, app notifications
+        CLEAR_ALARM = "CLEAR_ALARM", "Clear alarm"       # tahap 20, hanya state machine
 
     class RunOn(models.TextChoices):
         ACTIVATE = "ACTIVATE", "When the rule activates"
         CLEAR = "CLEAR", "When the rule clears"
+        # State machine (tahap 20): aksi milik satu keadaan.
+        ENTER = "ENTER", "When entering the state"
+        EXIT = "EXIT", "When leaving the state"
 
     rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="actions")
+    # State machine: keadaan pemilik aksi ini (aksi ENTER / EXIT). Kosong untuk ECA.
+    state = models.ForeignKey(
+        "MachineState", verbose_name="state", null=True, blank=True,
+        on_delete=models.CASCADE, related_name="actions",
+    )
     kind = models.CharField("action", max_length=15, choices=Kind.choices)
     run_on = models.CharField("run", max_length=10, choices=RunOn.choices, default=RunOn.ACTIVATE)
     order = models.PositiveSmallIntegerField("order", default=0)
@@ -606,6 +780,7 @@ class RuleExecution(models.Model):
         CLEAR = "CLEAR", "Cleared"
         RUN = "RUN", "Ran actions"     # rule chain: satu pesan menjalankan node aksi
         SKIPPED = "SKIPPED", "Skipped"  # jadwal tiba tetapi tidak dijalankan (tahap 14)
+        MOVE = "MOVE", "Changed state"  # state machine: sebuah device berpindah keadaan (tahap 20)
 
     rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="executions")
     transition = models.CharField("transition", max_length=10, choices=Transition.choices)
@@ -618,6 +793,11 @@ class RuleExecution(models.Model):
     # Rule chain: jalur pesan di graf, satu baris per node yang dilewati
     # (lihat rules/engines/flow.py). Kosong untuk ECA.
     trace = models.JSONField("trace", default=list, blank=True)
+    # State machine (tahap 20): device yang berpindah, dari keadaan apa ke keadaan apa.
+    # Nama keadaan disalin sebagai teks supaya log tetap terbaca walau keadaannya dihapus.
+    device = models.ForeignKey(Device, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    from_state = models.CharField("from", max_length=30, blank=True)
+    to_state = models.CharField("to", max_length=30, blank=True)
     created_at = models.DateTimeField("time", default=timezone.now)
 
     class Meta:
