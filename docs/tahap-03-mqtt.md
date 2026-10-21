@@ -140,7 +140,10 @@ lalu subscribe `<prefix>/#`.
 **ESP32:** `firmware/esp32_mqtt/esp32_mqtt.ino`. Isi Wi-Fi, `TOPIC_PREFIX`, dan
 `ACCESS_TOKEN`; pasang pustaka PubSubClient dan ArduinoJson 7. LED bawaan menjadi
 `lamp`. Berbeda dengan HTTP, ESP32 tidak perlu tahu alamat IP Mac Anda: keduanya
-bertemu di broker.
+bertemu di broker. Sketch yang sama juga dipakai di tahap berikutnya: status
+online/offline (tahap 16), pembaruan firmware OTA (tahap 9), dan MQTT TLS ke server
+produksi (`USE_TLS 1`, lihat `docs/deploy-lightsail.md` 11.2). Untuk tahap ini biarkan
+`USE_TLS 0`; fitur lain tidak mengganggu.
 
 **Jangan menjalankan `simulate_devices` bersamaan dengan `mqtt_bridge`** untuk device
 yang sama: keduanya akan "mengambil" command yang sama. Simulator tetap berguna untuk

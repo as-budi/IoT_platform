@@ -55,7 +55,7 @@ progres tampil langsung ◄── WebSocket (kabar "ota")
 | `coap_gateway/handlers.py` | `POST /api/v1/<token>/firmware` |
 | `devices/control.py` | jawaban command `ota` diteruskan ke `ota.services.command_finished` |
 | `scripts/fake_mqtt_device.py` | device tiruan kini bisa OTA, termasuk skenario gagal (`--ota-fail`) |
-| `firmware/esp32_mqtt_ota/` | contoh firmware ESP32 yang bisa memperbarui dirinya |
+| `firmware/esp32_mqtt/` | contoh firmware ESP32 yang bisa memperbarui dirinya (dulu folder terpisah `esp32_mqtt_ota/`, kini digabung dengan contoh MQTT) |
 | `ota/tests.py` | 28 tes: paket, mulai/batal, unduhan, laporan, tiga protokol, batas waktu, halaman, alur penuh |
 
 Migrasi: `devices/0016_device_firmware` dan `ota/0001_initial`.
@@ -269,13 +269,13 @@ dengan versi baru, laporan versinya tetap tercatat di `Device.firmware_version`.
 
    Lalu jalankan `python manage.py runall 0.0.0.0:8000`. Tanpa `ALLOWED_HOSTS`, Django menolak
    permintaan ESP32 dengan kode 400.
-2. **Firmware pertama lewat kabel.** Buka `firmware/esp32_mqtt_ota/esp32_mqtt_ota.ino`, isi
+2. **Firmware pertama lewat kabel.** Buka `firmware/esp32_mqtt/esp32_mqtt.ino`, isi
    Wi-Fi, prefix MQTT, dan access token, biarkan `FW_VERSION "1.0.0"`. Pilih **Tools →
    Partition Scheme** yang punya dua partisi aplikasi (mis. *Default 4MB with spiffs*), lalu
    upload lewat USB.
 3. **Firmware kedua.** Ubah `FW_VERSION` menjadi `"1.1.0"` dan ubah sesuatu yang terlihat (mis.
    `SEND_INTERVAL_MS`). Pilih **Sketch → Export Compiled Binary**. Arduino IDE membuat
-   `esp32_mqtt_ota.ino.bin` di folder sketch (atau folder `build/`). **Jangan** upload lewat
+   `esp32_mqtt.ino.bin` di folder sketch (atau folder `build/`). **Jangan** upload lewat
    USB.
 4. Unggah `.bin` itu di halaman Firmware: versi `1.1.0`, board ESP32.
 5. Di halaman device (board terisi otomatis dari laporan ESP32), pilih `1.1.0` → **Update

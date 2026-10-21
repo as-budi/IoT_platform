@@ -584,6 +584,7 @@ Uji dari laptop:
 
 ```bash
 curl -sI http://iot.contoh.my.id/ | head -2                  # 301 -> https://
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://iot.contoh.my.id/api/v1/x/telemetry   # 301 (bukan 401)
 curl -sI https://iot.contoh.my.id/accounts/login/ | grep -iE "HTTP/|strict-transport|x-frame"
 ```
 
@@ -592,7 +593,10 @@ Hasil:
 - konfigurasi TLS bisa dinilai di [SSL Labs](https://www.ssllabs.com/ssltest/); targetnya
   A atau A+;
 - permintaan yang memakai IP langsung (`http://203.0.113.10`) ditolak, karena pemindai
-  otomatis biasanya datang lewat IP.
+  otomatis biasanya datang lewat IP;
+- `http://` hanya dipakai untuk validasi certbot. Semua alamat lain, termasuk API device
+  `/api/`, dialihkan ke `https://`, sehingga access token dan password tidak pernah lewat
+  jaringan tanpa enkripsi. Device harus memakai `https://` atau MQTT TLS (bagian 11).
 
 ---
 
@@ -880,8 +884,10 @@ curl -X POST https://iot.contoh.my.id/api/v1/<TOKEN>/telemetry \
      -H "Content-Type: application/json" -d '{"temperature": 25.1}'
 ```
 
-Device lama yang memakai `http://` (mis. `firmware/esp32_telemetry`) masih diterima di
-`/api/`, tetapi token dan datanya tidak terenkripsi. Lihat bagian 16.
+Server hanya menerima `https://`. Permintaan ke `http://…/api/` dijawab `301` dan datanya
+**tidak** tersimpan. Untuk ESP32 lewat HTTP (`firmware/esp32_telemetry/esp32_telemetry.ino`):
+isi `SERVER = "https://iot.contoh.my.id"` dan tempel sertifikat **ISRG Root X1** ke
+`ROOT_CA` (lihat 11.2). Sketch otomatis memakai TLS bila `SERVER` diawali `https://`.
 
 ### 11.2 MQTT (TLS)
 
@@ -913,14 +919,16 @@ python scripts/fake_mqtt_device.py <TOKEN> --host iot.contoh.my.id --port 8883 -
        --username <TOKEN> --password <TOKEN> --prefix iot
 ```
 
-Untuk ESP32 (`firmware/esp32_mqtt_ota/esp32_mqtt_ota.ino`):
+Untuk ESP32 (`firmware/esp32_mqtt/esp32_mqtt.ino`, satu sketch untuk MQTT dan OTA):
 
 1. Set `#define USE_TLS 1`, `MQTT_HOST = "iot.contoh.my.id"`, `MQTT_PORT = 8883`, dan
    `TOPIC_PREFIX = "iot"`.
 2. Tempel sertifikat **ISRG Root X1** (PEM, dari letsencrypt.org/certificates) ke `ROOT_CA`.
 
 Sketch itu sudah login dengan access token dan memakai CA yang sama untuk unduhan OTA lewat
-`https://`.
+`https://`. Dengan `USE_TLS 1`, sketch **menolak** unduhan OTA lewat `http://` (laporan
+`FAILED: Refusing http:// download in TLS mode`); bila itu muncul, periksa `OTA_BASE_URL` di
+`.env` server.
 
 Uji ACL dari laptop: device A tidak bisa membaca topik device B. Untuk perintah di bawah,
 CA di macOS ada di `--cafile /etc/ssl/cert.pem`; di Linux pakai `--capath /etc/ssl/certs`.
@@ -1053,7 +1061,8 @@ Bila kode disalin dengan rsync (cara 2 di langkah 7.2), jalankan rsync lagi, lal
 ### 14.1 Dari tahap 18 ke versi terbaru (tahap 19–20)
 
 Tahap 19 (berbagi device) dan tahap 20 (state machine) hanya mengubah kode dan database.
-Tidak ada layanan systemd baru, perubahan Nginx, atau isian `.env` baru.
+Tidak ada layanan systemd baru atau isian `.env` baru. Konfigurasi Nginx terbaru (menutup
+`http://` untuk API device) dipasang terpisah setelah device pindah ke TLS; lihat 14.2.
 
 ```bash
 # 1. cadangan dulu: snapshot manual di konsol, dan backup database
@@ -1085,6 +1094,47 @@ sudo -u iot -H /srv/iot/venv/bin/pip list --outdated
 Perhatikan terutama Django: setiap rilis patch (5.2.x) berisi perbaikan keamanan. Naikkan
 versinya di `requirements.txt`, uji di laptop, lalu jalankan `update.sh`.
 
+### 14.2 Menutup `http://` untuk API device
+
+Versi terbaru `deploy/nginx/iot-platform.conf` tidak lagi meneruskan `http://…/api/` ke
+aplikasi; semua permintaan port 80 (kecuali certbot) dialihkan ke `https://`. Server yang
+dipasang dengan konfigurasi lama masih menerima API lewat `http://`. Urutan aman:
+
+1. **Pindahkan device dulu.** Semua firmware memakai `https://` (HTTP) atau MQTT TLS port
+   8883 (`firmware/esp32_mqtt` dengan `USE_TLS 1`). Cari device yang masih memakai
+   `http://`. Log Nginx tidak mencatat http/https, jadi intip langsung lalu lintas port 80
+   selama 10 menit (pasang dulu bila belum ada: `sudo apt install tcpdump`):
+
+   ```bash
+   sudo timeout 600 tcpdump -l -A -nn -i any 'tcp dst port 80' 2>/dev/null \
+        | grep -o 'POST /api/v1/[^/ ]*' | sort | uniq -c
+   ```
+
+   Setiap baris berisi access token device yang masih mengirim lewat `http://` (cocokkan
+   di halaman device). Keluaran kosong = aman untuk langkah 2. Perintah ini menampilkan
+   token, jadi jangan disalin ke tempat umum.
+
+2. **Ganti konfigurasi Nginx** (setelah `update.sh` menarik kode terbaru):
+
+   ```bash
+   sudo cp /etc/nginx/sites-available/iot-platform /root/iot-platform.nginx.bak
+   sudo cp /srv/iot/app/deploy/nginx/iot-platform.conf /etc/nginx/sites-available/iot-platform
+   sudo sed -i 's/iot.contoh.my.id/DOMAIN-ANDA/g' /etc/nginx/sites-available/iot-platform
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+3. **Periksa:**
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST http://DOMAIN-ANDA/api/v1/x/telemetry    # ✔ 301
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://DOMAIN-ANDA/api/v1/x/telemetry   # ✔ 401 (token salah)
+   sudo certbot renew --dry-run                                                             # ✔ tetap berhasil
+   ```
+
+Bila ada device yang ternyata belum pindah, kembalikan sementara dengan
+`sudo cp /root/iot-platform.nginx.bak /etc/nginx/sites-available/iot-platform` lalu
+`sudo nginx -t && sudo systemctl reload nginx`.
+
 ---
 
 ## 15. Pemantauan dan pemecahan masalah
@@ -1111,6 +1161,8 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | `mosquitto` gagal start (`status=13`), journal hanya menulis *Loading config file* | file akun atau sertifikat yang disebut `iot.conf` belum ada / izinnya salah | baca `sudo tail /var/log/mosquitto/mosquitto.log`; ulangi 9.1 atau 9.2; lalu `reset-failed` + `restart mosquitto` (langkah 9.3) |
 | `mosquitto` tetap `Unable to open pwfile` padahal file ada dan `sudo -u mosquitto cat` berhasil | profil AppArmor `mosquitto` menolak `/etc/mosquitto/iot/` | `sudo dmesg \| grep DENIED`; tambahkan izin di `/etc/apparmor.d/local/mosquitto`, lalu `apparmor_parser -r` (langkah 9.3) |
 | `iot-mqtt-accounts` gagal, `Failed to set up mount namespacing` | folder `/srv/iot/mosquitto` belum dibuat | `sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto`, ulangi 9.1 |
+| Device berhenti mengirim setelah konfigurasi Nginx baru, Serial Monitor `POST … -> 301` | firmware masih memakai `http://` | ganti ke `https://` + `ROOT_CA` (bagian 11.1) atau MQTT TLS; sementara bisa kembali ke cadangan (14.2) |
+| ESP32 `POST … -> -1` / MQTT `state -2` setelah pindah ke TLS | `ROOT_CA` salah/kosong, atau jam belum sinkron | tempel ISRG Root X1 lengkap dengan baris BEGIN/END; pastikan Wi-Fi terhubung ke internet |
 | `certbot` gagal *Timeout* / *Invalid response* | DNS belum mengarah ke server, port 80 tertutup, atau Nginx HTTP belum aktif | cek `dig +short DOMAIN`, firewall, `curl -sI http://DOMAIN` (langkah 8.3) |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |
 | `iot-mqtt` terus restart | `MQTT_USERNAME`/`MQTT_PASSWORD` di `.env` tidak sama dengan akun broker | jalankan ulang `iot-mqtt-accounts` setelah mengubah `.env` |
@@ -1130,7 +1182,6 @@ ditangani dan perlu diketahui:
 
 | Risiko | Mengapa masih ada | Langkah berikutnya |
 |---|---|---|
-| `http://…/api/` masih diterima | firmware contoh lama memakai HTTP biasa | ubah firmware ke `https://` / MQTT TLS, lalu hapus blok `location /api/` di server port 80 |
 | CoAP tanpa enkripsi | DTLS belum diimplementasikan | biarkan port 5683 tertutup kecuali saat dipakai |
 | Access token = password MQTT | satu rahasia per device | bocor satu token hanya membuka satu device; ganti tokennya (tombol *Generate new token*) |
 | Satu server untuk semua | paling praktis dan murah | untuk ketersediaan tinggi: database terkelola, beberapa instance, load balancer |

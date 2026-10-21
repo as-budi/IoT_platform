@@ -129,6 +129,8 @@ lalu muat ulang halaman device untuk melihat nilai dan chart bertambah.
 
 Contoh firmware: `firmware/esp32_telemetry/esp32_telemetry.ino` (Arduino IDE, board
 ESP32, tanpa pustaka tambahan). Isi nama/password Wi-Fi, `SERVER`, dan `ACCESS_TOKEN`.
+Di laptop `SERVER` diawali `http://`. Untuk server produksi isi `https://<domain>` dan
+`ROOT_CA`: server produksi hanya menerima HTTPS (lihat `docs/deploy-lightsail.md` 11.1).
 
 ESP32 berada di jaringan Wi-Fi, bukan di Mac Anda, sehingga tiga hal perlu disiapkan:
 

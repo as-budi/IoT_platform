@@ -230,7 +230,7 @@ Yang sudah disesuaikan:
 | `mqtt_bridge/topics.py`, `handlers.py` | bridge berlangganan `<prefix>/+/status`; isi `online`/`offline` (teks) atau `{"online": false}` |
 | `mqtt_bridge/.../mqtt_accounts.py` | ACL Mosquitto: `pattern write <prefix>/%u/status` (broker memeriksa izin topik wasiat saat CONNECT) |
 | `scripts/fake_mqtt_device.py` | Last Will + `online` saat tersambung + `offline` saat Ctrl+C; `--no-will` untuk membandingkan |
-| `firmware/esp32_mqtt_ota/esp32_mqtt_ota.ino` | `mqtt.connect(id, user, pass, topicStatus, 1, true, "offline")` lalu publish `online` |
+| `firmware/esp32_mqtt/esp32_mqtt.ino` | `mqtt.connect(id, user, pass, topicStatus, 1, true, "offline")` lalu publish `online` |
 | halaman device, tab MQTT | baris topik status |
 
 Mencoba dengan device tiruan:

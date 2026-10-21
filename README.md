@@ -20,28 +20,6 @@ Penjelasan konsep:
 - [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md) — dashboard real-time lewat WebSocket (Django Channels, Daphne, Redis)
 - [docs/tahap-04b-channels-daphne-redis.md](docs/tahap-04b-channels-daphne-redis.md) — peran Daphne, Channels, channels-redis, dan Redis
 - [docs/tahap-05-dashboard.md](docs/tahap-05-dashboard.md) — dashboard per lokasi & device, pengaturan tampil/sembunyi, side menu
-- [docs/tahap-06-coap.md](docs/tahap-06-coap.md) — komunikasi dua arah lewat CoAP (UDP, Observe, coap_server, ESP32)
-- [docs/rule-engine-iot.md](docs/rule-engine-iot.md) — rule engine pada platform IoT: mekanisme dan enam model
-- [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md) — rule engine ECA: aturan otomatis, alarm, worker rule_engine
-- [docs/contoh-data-dan-aturan.md](docs/contoh-data-dan-aturan.md) — pengguna, device, dan aturan ECA multi-variabel contoh, beserta skenario mencobanya
-- [docs/eca-mekanisme.md](docs/eca-mekanisme.md) — ECA lebih dalam: kondisi AND/OR, logika tiga nilai, alur eksekusi, query database, contoh linimasa
-- [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md) — rule engine model rule chain (Flow): graf node filter/enrichment/transformation/action
-- [docs/flow-mekanisme.md](docs/flow-mekanisme.md) — rule chain lebih dalam: penelusuran graf, cara kerja tiap node, query database, contoh jejak eksekusi
-- [docs/tahap-09-ota.md](docs/tahap-09-ota.md) — pembaruan firmware over-the-air (OTA): paket firmware, unduhan bertoken sekali pakai, status per langkah, ESP32 & device tiruan
-- [docs/rencana-ota.md](docs/rencana-ota.md) — rencana awal OTA (tahap 1 sudah dikerjakan; rollout & keamanan lanjutan masih rencana)
-- [docs/tahap-10-profil-dan-password.md](docs/tahap-10-profil-dan-password.md) — halaman profil milik sendiri dan ubah password (sesi lain ikut keluar)
-- [docs/tahap-11-verifikasi-email-dan-lupa-password.md](docs/tahap-11-verifikasi-email-dan-lupa-password.md) — aktivasi akun lewat email, konfirmasi email baru, lupa password, token bertanda tangan tanpa tabel
-- [docs/tahap-12-lokasi-milik-pengguna.md](docs/tahap-12-lokasi-milik-pengguna.md) — lokasi punya pemilik: dikelola sendiri, nama unik per pemilik, RESTRICT vs PROTECT, migrasi data lokasi bersama
-- [docs/tahap-13-ekspor-impor-aturan.md](docs/tahap-13-ekspor-impor-aturan.md) — ekspor/impor aturan ECA dan rule chain (FLOW) sebagai JSON: nama bukan id, impor lewat form yang sama, mengganti isi aturan
-- [docs/tahap-14-penjadwalan.md](docs/tahap-14-penjadwalan.md) — penjadwalan aturan: ECA event "On a schedule" dan rule chain Input terjadwal, next_run_at + klaim atomik, jadwal terlewat, clear otomatis
-- [docs/tahap-15-cache-busting-file-statis.md](docs/tahap-15-cache-busting-file-statis.md) — nama file statis ber-hash (ManifestStaticFilesStorage) supaya browser tidak memakai CSS/JS lama setelah update, cache Nginx setahun untuk file ber-hash
-- [docs/tahap-16-ringkasan-dan-status-device.md](docs/tahap-16-ringkasan-dan-status-device.md) — worker `housekeeping`: tabel ringkasan telemetri per menit/jam untuk chart periode panjang, status online/offline device (batas waktu tanpa data + MQTT Last Will), riwayat koneksi
-- [docs/tahap-17-notifikasi-telegram.md](docs/tahap-17-notifikasi-telegram.md) — notifikasi Telegram: satu bot platform, menyambungkan akun lewat deep link + getUpdates, aksi ECA dan node rule chain "Send Telegram message"
-- [docs/tahap-18-log-aktivitas-dan-pencarian-aturan.md](docs/tahap-18-log-aktivitas-dan-pencarian-aturan.md) — log aktivitas seluruh platform (owner vs pelaku, sinyal Django, Admin melihat semua), `activity_backfill`, dan pencarian aturan berdasarkan kata kunci
-- [docs/tahap-19-berbagi-device.md](docs/tahap-19-berbagi-device.md) — berbagi device ke pengguna atau grup dengan peran Viewer / Operator / Editor, satu tempat aturan akses (`sharing/access.py`), 404 vs 403, aturan yang memakai device bersama diperiksa ulang saat berjalan
-- [docs/tahap-20-state-machine.md](docs/tahap-20-state-machine.md) — model aturan state machine: keadaan bernama per device, transisi karena kondisi / waktu di keadaan / device diam / offline / tombol, aksi saat masuk dan keluar keadaan, diagram SVG, contoh "Cold room states"
-- [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: semua layanan dari satu terminal, dan pertimbangannya
-- [docs/deploy-lightsail.md](docs/deploy-lightsail.md) — deploy ke Amazon Lightsail: domain, server Ubuntu, Nginx + HTTPS, Mosquitto dengan akun per device, systemd, backup, dan daftar periksa keamanan
 
 ## Prasyarat
 
@@ -191,7 +169,8 @@ python scripts/fake_mqtt_device.py TOKEN      # device tiruan dua arah
 ```
 
 Topik setiap device ditampilkan di halaman device (bagian *Connect a device*).
-Contoh firmware ESP32: `firmware/esp32_mqtt/esp32_mqtt.ino`.
+Contoh firmware ESP32: `firmware/esp32_mqtt/esp32_mqtt.ino` (satu sketch untuk MQTT, TLS,
+status online/offline, dan OTA; `firmware/esp32_telemetry` untuk HTTP/HTTPS).
 Penjelasan lengkap: [docs/tahap-03-mqtt.md](docs/tahap-03-mqtt.md).
 
 ## Dashboard real-time (tahap 4)
@@ -208,77 +187,6 @@ Agar data dari `mqtt_bridge` juga tampil seketika, pasang Redis
 `REDIS_URL=redis://127.0.0.1:6379/0` di `.env`.
 Penjelasan lengkap: [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md).
 
-## Komunikasi CoAP (tahap 6)
-
-CoAP berjalan di atas UDP (port 5683) tanpa broker: device harus bisa menjangkau
-komputer ini secara langsung (satu jaringan, atau server dengan IP publik).
-
-```bash
-pip install aiocoap                           # sekali saja
-python manage.py migrate                      # kolom last_protocol & last_seen_at
-python manage.py coap_server                  # terminal terpisah dari runserver
-python scripts/fake_coap_device.py TOKEN      # device tiruan dua arah (Observe)
-```
-
-Isi `COAP_PUBLIC_HOST` di `.env` dengan IP komputer ini di Wi-Fi agar alamat di tab
-*CoAP* halaman device bisa dipakai ESP32. Contoh firmware: `firmware/esp32_coap/esp32_coap.ino`.
-Penjelasan lengkap: [docs/tahap-06-coap.md](docs/tahap-06-coap.md).
-
-## Menjalankan semua layanan sekaligus
-
-Web, MQTT, CoAP, dan rule engine bisa dijalankan dari satu terminal:
-
-```bash
-python manage.py runall                  # web di http://127.0.0.1:8000/
-python manage.py runall --skip coap      # tanpa CoAP
-python manage.py runall --only web,rules # hanya sebagian
-```
-
-Setiap layanan tetap berjalan sebagai proses sendiri; `runall` menggabungkan log-nya,
-menyalakan ulang yang crash, dan mematikan semuanya saat Ctrl+C. Hanya untuk
-pengembangan; lihat [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md).
-
-## Rule engine (tahap 7 dan 8)
-
-Dua model rule engine sudah bisa dipakai dari menu **Rules**; alarm tampil di menu **Alarms**:
-
-- **Event–Condition–Action** (tahap 7), mis. "bila soil_moisture < 20 selama 60 detik,
-  nyalakan pompa; pulih bila > 30".
-- **Flow-based rule chain** (tahap 8): graf node, mis. "hitung faktor daya = power ÷
-  (voltage × current); bila < 0.8, kirim email paling banyak tiap 10 menit".
-
-Empat model lain tersedia sebagai pilihan, belum diimplementasikan.
-
-```bash
-python manage.py migrate                      # tabel rules_*
-python manage.py seed_rules                   # 6 aturan ECA + 4 rule chain contoh (setelah seed_demo)
-python manage.py rule_engine                  # worker, terminal terpisah dari runserver
-python manage.py send_telemetry "Fish Pond Node" dissolved_oxygen=3.5   # kirim data tiruan
-```
-
-Dengan `REDIS_URL` terisi, data diteruskan ke worker lewat antrean Redis. Tanpa Redis
-aturan dinilai langsung saat data disimpan, tetapi worker tetap diperlukan untuk aturan
-berdurasi dan "device diam". Email aksi aturan dicetak di terminal bila `EMAIL_HOST`
-kosong. Penjelasan lengkap: [docs/tahap-07-rule-engine-eca.md](docs/tahap-07-rule-engine-eca.md)
-dan [docs/tahap-08-rule-chain.md](docs/tahap-08-rule-chain.md).
-
-## Pembaruan firmware OTA (tahap 9)
-
-Firmware device bisa diperbarui tanpa kabel: unggah file `.bin` di menu **Firmware**, lalu
-pilih versinya di halaman device dan klik **Update firmware**. Device menerima command `ota`
-(lewat MQTT atau CoAP), mengunduh file dari URL bertoken sekali pakai, melaporkan setiap
-langkah, lalu restart. Server menandai berhasil saat device melaporkan versi barunya.
-
-```bash
-python manage.py migrate                      # tabel ota_* dan kolom firmware di device
-python scripts/fake_mqtt_device.py <TOKEN> --firmware-version 1.0.0 --board sim   # coba tanpa ESP32
-```
-
-Untuk ESP32 sungguhan (`firmware/esp32_mqtt_ota/`), device harus bisa menjangkau komputer
-ini: isi `OTA_BASE_URL=http://<IP-Wi-Fi>:8000`, tambahkan IP itu ke `DJANGO_ALLOWED_HOSTS`,
-lalu jalankan `python manage.py runall 0.0.0.0:8000`. Penjelasan lengkap:
-[docs/tahap-09-ota.md](docs/tahap-09-ota.md).
-
 ## Struktur project
 
 ```
@@ -287,18 +195,7 @@ config/              pengaturan project (settings, URL utama, WSGI/ASGI)
 accounts/            app: model User + role, login, manajemen pengguna
 devices/             app: model Device & Telemetry, halaman device
   management/commands/seed_demo.py   perintah pengisi data contoh
-api/                 app: API HTTP untuk device (access token)
-mqtt_bridge/         app: komunikasi device lewat MQTT (manage.py mqtt_bridge)
-coap_gateway/        app: komunikasi device lewat CoAP (manage.py coap_server)
-realtime/            app: WebSocket (Django Channels)
-dashboard/           app: dashboard per lokasi & device
-rules/               app: rule engine & alarm (manage.py rule_engine)
-ota/                 app: paket firmware & pembaruan OTA
-firmware/            contoh firmware ESP32 (HTTP, MQTT, CoAP, MQTT + OTA)
-launcher/            app: manage.py runall (menjalankan semua layanan)
 templates/           template lintas-app (base.html, login, 403)
 static/              CSS
 docs/                catatan belajar per tahap
-deploy/              konfigurasi server produksi (Nginx, systemd, Mosquitto, skrip backup & update)
-private_media/       file firmware yang diunggah (tidak di-commit)
 ```
