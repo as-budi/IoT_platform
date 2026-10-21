@@ -87,7 +87,8 @@ ini, dan **jangan lanjut sebelum titik periksa (✔) sebuah langkah terpenuhi**:
  8.3  sertifikat → Nginx HTTPS → DJANGO_HTTPS=True  ✔ /etc/letsencrypt/live/DOMAIN ada
  9.1  akun & ACL Mosquitto          ✔ /etc/mosquitto/iot/passwd dan acl ada
  9.2  sertifikat untuk Mosquitto    ✔ /etc/mosquitto/certs/*.pem ada
- 9.3  iot.conf (PALING AKHIR)       ✔ mosquitto active, port 1883 (lokal) & 8883
+ 9.3  izin AppArmor, lalu iot.conf (PALING AKHIR)
+                                    ✔ mosquitto active, port 1883 (lokal) & 8883
  9.4  timer sinkron akun
  10   iot.target + backup + cleanup ✔ semua layanan active, juga setelah reboot
 ```
@@ -99,7 +100,7 @@ Layanan yang membutuhkan layanan lain:
 | `iot-web` (Daphne) | MySQL, Redis, `.env`, `migrate`, `collectstatic` |
 | `certbot` | DNS sudah mengarah ke server, port 80 terbuka, Nginx HTTP melayani `/var/www/certbot` |
 | `iot-mqtt-accounts` | `.env` (`MQTT_USERNAME`, `MQTT_PASSWORD`), MySQL, folder `/srv/iot/mosquitto`, program `mosquitto_passwd` |
-| Mosquitto + `iot.conf` | `/etc/mosquitto/iot/{passwd,acl}` dan `/etc/mosquitto/certs/{fullchain,privkey}.pem` |
+| Mosquitto + `iot.conf` | `/etc/mosquitto/iot/{passwd,acl}`, `/etc/mosquitto/certs/{fullchain,privkey}.pem`, dan izin AppArmor untuk kedua folder itu |
 | `iot-mqtt` (bridge) | Mosquitto dengan `iot.conf` dan akun `iot-bridge` |
 | `iot-rules`, `iot-housekeeping` | MySQL, Redis |
 
@@ -665,9 +666,58 @@ sudo /etc/letsencrypt/renewal-hooks/deploy/mosquitto.sh
 sudo ls -l /etc/mosquitto/certs          # ✔ fullchain.pem (644), privkey.pem (640), grup mosquitto
 ```
 
-### 9.3 Konfigurasi broker (paling akhir)
+### 9.3 Izin AppArmor, lalu konfigurasi broker (paling akhir)
 
-Periksa sekali lagi bahwa keempat file yang dibutuhkan `iot.conf` sudah ada. Baris ini
+**Izin AppArmor.** Ubuntu versi baru (dan paket Mosquitto dari PPA) memasang profil AppArmor
+`mosquitto`. Profil ini hanya mengizinkan Mosquitto membaca lokasi file tertentu, dan
+`/etc/mosquitto/iot/` serta `/etc/mosquitto/certs/` tidak termasuk. Akibatnya Mosquitto
+gagal (`status=13`, `Unable to open pwfile`) walaupun pemilik dan izin file sudah benar.
+Ciri khasnya: `sudo -u mosquitto cat /etc/mosquitto/iot/passwd` berhasil, tetapi kernel
+mencatat penolakan:
+
+```bash
+sudo dmesg | grep -i apparmor | grep -i mosquitto | tail -3
+# apparmor="DENIED" operation="open" profile="mosquitto" name="/etc/mosquitto/iot/passwd"
+```
+
+Cek dulu apakah profil itu ada:
+
+```bash
+ls /etc/apparmor.d/ | grep -i mosquitto        # kosong = tidak ada profil, lewati bagian ini
+grep -n "local" /etc/apparmor.d/mosquitto      # biasanya: include if exists <local/mosquitto>
+```
+
+Bila ada, tambahkan izin baca untuk kedua folder lewat **file lokal** profil. File lokal
+tidak ditimpa saat paket diperbarui:
+
+```bash
+sudo tee /etc/apparmor.d/local/mosquitto >/dev/null <<'EOF'
+# IoT platform: file akun/ACL (iot-mqtt-reload) dan sertifikat TLS (hook certbot)
+/etc/mosquitto/iot/ r,
+/etc/mosquitto/iot/** r,
+/etc/mosquitto/certs/ r,
+/etc/mosquitto/certs/** r,
+EOF
+```
+
+Bila perintah `grep` tadi **tidak** menemukan baris include lokal, sisipkan sendiri tepat
+sebelum kurung tutup `}` terakhir profil:
+
+```bash
+sudo sed -i '$ s/^}/  include if exists <local\/mosquitto>\n}/' /etc/apparmor.d/mosquitto
+grep -n "local/mosquitto" /etc/apparmor.d/mosquitto     # ✔ satu baris
+```
+
+Muat ulang profil:
+
+```bash
+sudo apparmor_parser -r /etc/apparmor.d/mosquitto       # ✔ tanpa pesan error
+```
+
+Nama profil (`mosquitto`) diambil dari `ls` di atas. Bila namanya lain, mis.
+`usr.sbin.mosquitto`, pakai nama itu untuk file lokal dan `apparmor_parser`.
+
+**Konfigurasi broker.** Periksa sekali lagi bahwa keempat file yang dibutuhkan `iot.conf` sudah ada. Baris ini
 menulis **SIAP** atau nama file yang masih kurang:
 
 ```bash
@@ -693,7 +743,8 @@ sudo tail -n 20 /var/log/mosquitto/mosquitto.log
 ```
 
 Contohnya `Unable to open pwfile "/etc/mosquitto/iot/passwd"` berarti langkah 9.1 belum
-berhasil. Perbaiki penyebabnya, lalu `sudo systemctl reset-failed mosquitto && sudo
+berhasil, atau, bila file itu sudah ada, AppArmor menolaknya (cek `dmesg`, lihat izin
+AppArmor di atas). Perbaiki penyebabnya, lalu `sudo systemctl reset-failed mosquitto && sudo
 systemctl restart mosquitto` (setelah 5 kali gagal, systemd berhenti mencoba sampai di-reset).
 Selama memperbaiki, broker bisa dijalankan dengan konfigurasi bawaan dulu:
 `sudo mv /etc/mosquitto/conf.d/iot.conf /root/iot.conf.bak && sudo systemctl restart mosquitto`.
@@ -1058,6 +1109,7 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | Halaman tanpa CSS, live update *Connecting...* | `/static/` dijawab 403 (`/srv/iot` mode 750) atau `collectstatic` belum dijalankan | `sudo chmod 711 /srv/iot`; jalankan `collectstatic`; cek `sudo tail /var/log/nginx/error.log` |
 | Live update tidak jalan | WebSocket diblokir proxy atau `REDIS_URL` salah | cek blok `/ws/` di Nginx dan `redis-cli ping` |
 | `mosquitto` gagal start (`status=13`), journal hanya menulis *Loading config file* | file akun atau sertifikat yang disebut `iot.conf` belum ada / izinnya salah | baca `sudo tail /var/log/mosquitto/mosquitto.log`; ulangi 9.1 atau 9.2; lalu `reset-failed` + `restart mosquitto` (langkah 9.3) |
+| `mosquitto` tetap `Unable to open pwfile` padahal file ada dan `sudo -u mosquitto cat` berhasil | profil AppArmor `mosquitto` menolak `/etc/mosquitto/iot/` | `sudo dmesg \| grep DENIED`; tambahkan izin di `/etc/apparmor.d/local/mosquitto`, lalu `apparmor_parser -r` (langkah 9.3) |
 | `iot-mqtt-accounts` gagal, `Failed to set up mount namespacing` | folder `/srv/iot/mosquitto` belum dibuat | `sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto`, ulangi 9.1 |
 | `certbot` gagal *Timeout* / *Invalid response* | DNS belum mengarah ke server, port 80 tertutup, atau Nginx HTTP belum aktif | cek `dig +short DOMAIN`, firewall, `curl -sI http://DOMAIN` (langkah 8.3) |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |

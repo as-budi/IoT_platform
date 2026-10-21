@@ -181,7 +181,24 @@
 </div>
 
 {# ---------- Tabel history ---------- #}
-<h2 class="h5 mb-3">Data history</h2>
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h2 class="h5 mb-0">Data history</h2>
+  {# Unduh: rentang chart yang sedang dipilih, atau seluruh data (devices/export.py). #}
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" class="me-1" style="vertical-align:-2px"><path fill="currentColor" d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>Download
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      <li><h6 class="dropdown-header">{% if chart.period == custom_period %}Chart range{% else %}Last {{ chart.label }}{% endif %} ({{ chart.rows }} row{{ chart.rows|pluralize }})</h6></li>
+      <li><a class="dropdown-item" href="{{ exports.period.csv }}" data-export="period-csv">CSV</a></li>
+      <li><a class="dropdown-item" href="{{ exports.period.xlsx }}" data-export="period-xlsx">Excel (XLSX)</a></li>
+      <li><hr class="dropdown-divider"></li>
+      <li><h6 class="dropdown-header">All data ({{ page_obj.paginator.count }} row{{ page_obj.paginator.count|pluralize }})</h6></li>
+      <li><a class="dropdown-item" href="{{ exports.all.csv }}" data-export="all-csv">CSV</a></li>
+      <li><a class="dropdown-item" href="{{ exports.all.xlsx }}" data-export="all-xlsx">Excel (XLSX)</a></li>
+    </ul>
+  </div>
+</div>
 
 <div class="card shadow-sm">
   <div class="table-responsive">

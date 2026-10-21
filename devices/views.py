@@ -8,7 +8,8 @@ from django.core.paginator import Paginator
 from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Subquery, Sum
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
+from django.utils.http import urlencode
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
@@ -491,6 +492,15 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         context["custom_start"] = self.request.GET.get("start") or timezone.localtime(start).strftime("%Y-%m-%dT%H:%M")
         context["custom_end"] = self.request.GET.get("end", "")
 
+        # Tombol unduh: rentang yang sama dengan chart, atau seluruh data.
+        params = {key: self.request.GET[key] for key in ("period", "start", "end") if self.request.GET.get(key)}
+        export_base = reverse("devices:variable_export", args=[self.get_device().pk, variable.pk, "FMT"])
+        context["exports"] = {
+            "period": {fmt: export_base.replace("FMT", fmt) + ("?" + urlencode(params) if params else "")
+                       for fmt in ("csv", "xlsx")},
+            "all": {fmt: export_base.replace("FMT", fmt) + "?range=all" for fmt in ("csv", "xlsx")},
+        }
+
         # 3) Tabel history. Paginator memotong data menjadi halaman-halaman
         # (?page=2, dst.) supaya ribuan baris tidak dimuat sekaligus.
         paginator = Paginator(variable.telemetry.all(), HISTORY_PAGE_SIZE)
@@ -519,6 +529,44 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
             "pageSize": HISTORY_PAGE_SIZE,
         }
         return context
+
+
+class VariableExportView(OwnedVariableMixin, View):
+    """GET /devices/<device>/variables/<pk>/export/<csv|xlsx>/ — unduh data history.
+
+    Rentang: sama dengan chart (?period=1d, ?period=custom&start=..&end=..), atau
+    ?range=all. Hak akses sama dengan melihat halaman variabel (Viewer ke atas).
+    Format file dijelaskan di devices/export.py.
+    """
+
+    http_method_names = ["get"]
+
+    def get(self, request, device_pk, pk, fmt):
+        from . import export
+
+        if fmt not in ("csv", "xlsx"):
+            raise Http404("Unknown format.")
+        variable = get_object_or_404(self.get_queryset().select_related("device"), pk=pk)
+        telemetry = variable.telemetry.all()
+        start = end = None
+        if request.GET.get("range") != "all":
+            _period, start, end = ChartPeriodForm(request.GET).get_window(timezone.now())
+            telemetry = telemetry.filter(ts__gte=start, ts__lte=end)
+        name = export.filename(variable, start, end, fmt)
+        if fmt == "csv":
+            response = StreamingHttpResponse(export.csv_lines(variable, telemetry),
+                                             content_type="text/csv; charset=utf-8")
+            response["Content-Disposition"] = f'attachment; filename="{name}"'
+            return response
+        total = telemetry.count()
+        if total > export.MAX_XLSX_ROWS:
+            messages.error(request, f"{total:,} rows are too many for an XLSX file (limit {export.MAX_XLSX_ROWS:,}). "
+                                    "Download CSV instead, or choose a shorter period.")
+            return redirect(reverse("devices:variable_detail", args=[device_pk, pk]))
+        return FileResponse(
+            export.xlsx_file(variable, telemetry), as_attachment=True, filename=name,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
 
 
 class VariableFormMixin(OwnedVariableMixin, SuccessMessageMixin):

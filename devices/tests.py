@@ -859,3 +859,94 @@ class AutoRefreshTests(TestCase):
             response, f'data-version="{data_version(self.device, self.temperature)}"'
         )
 
+
+class ExportTests(TestCase):
+    """Unduh data history variabel sebagai CSV / XLSX (devices/export.py)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.siti = User.objects.create_user("siti", password="rahasia-12345")
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.siti, name="Greenhouse Node")
+        cls.temp = Variable.objects.create(device=cls.device, key="temperature", unit="°C")
+        cls.pump = Variable.objects.create(device=cls.device, key="pump", kind=Variable.Kind.ACTUATOR,
+                                           value_type=Variable.ValueType.BOOLEAN)
+        now = timezone.now().replace(microsecond=0)
+        cls.now = now
+        Telemetry.objects.bulk_create([
+            Telemetry(variable=cls.temp, value=20.5, ts=now - timedelta(days=3)),
+            Telemetry(variable=cls.temp, value=25.25, ts=now - timedelta(hours=2)),
+            Telemetry(variable=cls.temp, value=26, ts=now - timedelta(minutes=5)),
+            Telemetry(variable=cls.pump, value=1, ts=now - timedelta(minutes=1)),
+        ])
+
+    def url(self, variable, fmt, query=""):
+        return reverse("devices:variable_export", args=[self.device.pk, variable.pk, fmt]) + query
+
+    def csv_rows(self, response):
+        import csv
+
+        text = b"".join(response.streaming_content).decode("utf-8")
+        self.assertTrue(text.startswith("\ufeff"), "BOM for Excel")
+        return list(csv.reader(io.StringIO(text.lstrip("\ufeff"))))
+
+    def test_csv_period_and_all(self):
+        self.client.force_login(self.siti)
+        response = self.client.get(self.url(self.temp, "csv", "?period=1d"))
+        self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
+        self.assertIn('filename="greenhouse-node_temperature_', response["Content-Disposition"])
+        rows = self.csv_rows(response)
+        self.assertEqual(rows[0], ["time", "time_utc", "value (°C)"])
+        self.assertEqual([r[2] for r in rows[1:]], ["25.25", "26"], "last day only, oldest first")
+        self.assertEqual(rows[2][0], timezone.localtime(self.now - timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S"))
+        self.assertTrue(rows[2][1].endswith("Z"))
+        everything = self.csv_rows(self.client.get(self.url(self.temp, "csv", "?range=all")))
+        self.assertEqual(len(everything), 4)
+        self.assertIn("_all.csv", self.client.get(self.url(self.temp, "csv", "?range=all"))["Content-Disposition"])
+
+    def test_boolean_has_state_column(self):
+        self.client.force_login(self.siti)
+        rows = self.csv_rows(self.client.get(self.url(self.pump, "csv", "?range=all")))
+        self.assertEqual(rows[0], ["time", "time_utc", "value", "state"])
+        self.assertEqual(rows[1][2:], ["1", "ON"])
+
+    def test_xlsx_is_a_valid_workbook(self):
+        import re
+        import zipfile
+
+        self.client.force_login(self.siti)
+        response = self.client.get(self.url(self.temp, "xlsx", "?range=all"))
+        self.assertEqual(response["Content-Type"],
+                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        data = b"".join(response.streaming_content)
+        book = zipfile.ZipFile(io.BytesIO(data))
+        self.assertIn("xl/worksheets/sheet1.xml", book.namelist())
+        sheet = book.read("xl/worksheets/sheet1.xml").decode()
+        self.assertEqual(len(re.findall(r"<row ", sheet)), 4, "header + 3 rows")
+        self.assertIn("<t>value (°C)</t>", sheet)
+        self.assertIn('<c r="C4"><v>26.0</v></c>', sheet)
+        # A2 = tanggal Excel (angka hari sejak 1899-12-30) dengan gaya tanggal-waktu.
+        serial = float(re.search(r'<c r="A2" s="1"><v>([\d.]+)</v>', sheet).group(1))
+        self.assertGreater(serial, 45000)
+        from xml.dom import minidom
+        for name in book.namelist():
+            minidom.parseString(book.read(name))     # setiap bagian XML valid
+
+    def test_xlsx_row_limit(self):
+        from . import export
+
+        self.client.force_login(self.siti)
+        with mock.patch.object(export, "MAX_XLSX_ROWS", 2):
+            response = self.client.get(self.url(self.temp, "xlsx", "?range=all"), follow=True)
+        self.assertContains(response, "too many for an XLSX file")
+
+    def test_access_and_buttons(self):
+        self.client.force_login(self.budi)
+        self.assertEqual(self.client.get(self.url(self.temp, "csv")).status_code, 404)
+        self.client.force_login(self.siti)
+        self.assertEqual(self.client.get(self.url(self.temp, "pdf")).status_code, 404)
+        page = self.client.get(reverse("devices:variable_detail", args=[self.device.pk, self.temp.pk]) + "?period=1w")
+        self.assertContains(page, self.url(self.temp, "csv", "?period=1w"))
+        self.assertContains(page, self.url(self.temp, "xlsx", "?range=all"))
+        self.assertContains(page, "All data (3 rows)")

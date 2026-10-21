@@ -22,6 +22,9 @@ urlpatterns = [
     path("<int:device_pk>/variables/<int:pk>/", views.VariableDetailView.as_view(), name="variable_detail"),
     path("<int:device_pk>/variables/<int:pk>/edit/", views.VariableUpdateView.as_view(), name="variable_edit"),
     path("<int:device_pk>/variables/<int:pk>/delete/", views.VariableDeleteView.as_view(), name="variable_delete"),
+    # Unduh data history sebagai CSV atau XLSX (rentang = chart, atau ?range=all).
+    path("<int:device_pk>/variables/<int:pk>/export/<str:fmt>/", views.VariableExportView.as_view(),
+         name="variable_export"),
     # Kontrol (hanya POST):
     #   pola 1 — ubah desired state sebuah aktuator
     path("<int:device_pk>/variables/<int:pk>/set/", views.SetDesiredView.as_view(), name="variable_set"),
