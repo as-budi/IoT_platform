@@ -14,8 +14,12 @@ from django.views.generic import RedirectView
 urlpatterns = [
     # Situs admin bawaan Django (alat internal untuk mengelola data mentah).
     path("admin/", admin.site.urls),
+    # /accounts/apps/ -> Profile -> Connected apps (tahap 22)
+    path("accounts/apps/", include("oauth.urls_apps")),
     # /accounts/...  -> login, logout, manajemen pengguna
     path("accounts/", include("accounts.urls")),
+    # /o/...         -> OAuth 2.0 / OpenID Connect: login untuk aplikasi lain (tahap 22)
+    path("o/", include("oauth.urls")),
     # /dashboard/... -> ringkasan semua variabel, dikelompokkan per lokasi & device
     path("dashboard/", include("dashboard.urls")),
     # /devices/...   -> daftar & detail device

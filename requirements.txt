@@ -6,3 +6,7 @@ channels>=4.1
 daphne>=4.1
 channels-redis>=4.2
 aiocoap>=0.4.7
+# Login untuk aplikasi lain: OAuth 2.0 / OpenID Connect (tahap 22)
+django-oauth-toolkit>=3.4.1,<4
+oauthlib>=3.3.1,<4
+jwcrypto>=1.5.6,<2

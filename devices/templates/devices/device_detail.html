@@ -183,6 +183,10 @@
             <tr><th class="fw-normal text-muted pe-3">Port</th><td><code>{{ mqtt.port }}</code></td></tr>
             <tr><th class="fw-normal text-muted pe-3">TLS</th><td>{% if mqtt.tls %}yes, the broker uses a Let's Encrypt certificate (CA: ISRG Root X1){% else %}no{% endif %}</td></tr>
             <tr><th class="fw-normal text-muted pe-3">Username / password</th><td>{% if mqtt.login %}the access token, for both{% else %}none{% endif %}</td></tr>
+            {% if mqtt.ws_url %}
+            {# Tahap 21: alamat untuk browser dan aplikasi web (MQTT over WebSocket). #}
+            <tr><th class="fw-normal text-muted pe-3">WebSocket</th><td><code>{{ mqtt.ws_url }}</code> <span class="text-muted">for browsers and web apps (same account and topics)</span></td></tr>
+            {% endif %}
           </tbody>
         </table>
         <p class="small text-muted mb-2">
@@ -220,6 +224,17 @@
         {% endif %}
           <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-sub-example">Copy</button>
         </div>
+        {% if mqtt.ws_url %}
+        {# Contoh MQTT.js (pustaka MQTT untuk browser/Node.js) lewat WebSocket. #}
+        <label class="form-label small mb-1" for="mqtt-ws-example">Connect from a web page with MQTT.js</label>
+        <div class="input-group mb-3">
+          <textarea class="form-control font-monospace small" id="mqtt-ws-example" rows="4" readonly>const client = mqtt.connect("{{ mqtt.ws_url }}"{% if mqtt.login %}, { username: "{{ device.access_token }}", password: "{{ device.access_token }}" }{% endif %});
+client.on("connect", () => {
+  client.publish("{{ mqtt.telemetry }}", JSON.stringify({ temperature: 25.1 }));
+});</textarea>
+          <button type="button" class="btn btn-outline-secondary" data-copy-target="mqtt-ws-example">Copy</button>
+        </div>
+        {% endif %}
       </div>
 
       {# ---------- CoAP: server UDP milik platform sendiri (coap_server) ---------- #}

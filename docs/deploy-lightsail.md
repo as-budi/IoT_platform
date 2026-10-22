@@ -81,14 +81,14 @@ ini, dan **jangan lanjut sebelum titik periksa (✔) sebuah langkah terpenuhi**:
  4    amankan OS, swap             ✔ ufw: 22, 80, 443, 8883 terbuka
  5    paket (MySQL, Redis, Nginx, Mosquitto bawaan, certbot)
  6    database + user MySQL
- 7    kode, venv, .env, migrate     ✔ manage.py check tanpa error
+ 7    kode, venv, .env, migrate, kunci OIDC   ✔ manage.py check tanpa error
  8.1  salin unit systemd, start HANYA iot-web       ✔ curl 127.0.0.1:8001 → 200
  8.2  Nginx HTTP                    ✔ http://DOMAIN tampil
  8.3  sertifikat → Nginx HTTPS → DJANGO_HTTPS=True  ✔ /etc/letsencrypt/live/DOMAIN ada
  9.1  akun & ACL Mosquitto          ✔ /etc/mosquitto/iot/passwd dan acl ada
  9.2  sertifikat untuk Mosquitto    ✔ /etc/mosquitto/certs/*.pem ada
  9.3  izin AppArmor, lalu iot.conf (PALING AKHIR)
-                                    ✔ mosquitto active, port 1883 (lokal) & 8883
+                                    ✔ mosquitto active, port 1883 & 9001 (lokal), 8883
  9.4  timer sinkron akun
  10   iot.target + backup + cleanup ✔ semua layanan active, juga setelah reboot
 ```
@@ -452,6 +452,8 @@ Yang **wajib** diubah:
 | `DB_PASSWORD` | password MySQL dari langkah 6 |
 | `MQTT_PASSWORD` | acak, untuk akun `iot-bridge` di broker |
 | `COAP_PUBLIC_HOST`, `OTA_BASE_URL`, `MQTT_PUBLIC_HOST` | domain Anda |
+| `MQTT_PUBLIC_WS_URL` | `wss://iot.contoh.my.id/mqtt` (broker untuk browser, tahap 21) |
+| `OIDC_ISSUER` | `https://iot.contoh.my.id/o` (login untuk aplikasi lain, tahap 22) |
 
 `DJANGO_DEBUG=False` dan `DJANGO_ALLOW_SIGNUP=False` sudah terisi di contoh:
 
@@ -473,7 +475,12 @@ sudo -u iot -H /srv/iot/venv/bin/python manage.py createsuperuser
 sudo -u iot -H /srv/iot/venv/bin/python manage.py collectstatic --noinput
 sudo install -d -o iot -g iot -m 750 /srv/iot/app/private_media
 sudo chmod 711 /srv/iot     # Nginx (www-data) boleh MELEWATI folder ini menuju staticfiles
+# kunci RSA penanda tangan id_token (login untuk aplikasi lain, tahap 22); sekali saja
+sudo -u iot -H /srv/iot/venv/bin/python manage.py oidc_key
 ```
+
+- Kunci OIDC tersimpan di `private_media/oidc/private.pem` (izin 600) dan ikut backup.
+  Tanpa kunci ini, `check --deploy` gagal dengan `oauth.E001`.
 
 - `/srv/iot` dibuat dengan mode `750`, sehingga Nginx (user `www-data`) tidak bisa
   masuk dan semua `/static/...` dijawab `403`: halaman tampil tanpa CSS dan live update
@@ -736,7 +743,7 @@ Hanya bila **SIAP**:
 sudo cp /srv/iot/app/deploy/mosquitto/iot.conf /etc/mosquitto/conf.d/iot.conf
 sudo systemctl restart mosquitto
 sudo systemctl status mosquitto --no-pager   # ✔ active (running)
-sudo ss -tlpn | grep mosquitto               # ✔ 127.0.0.1:1883 dan *:8883
+sudo ss -tlpn | grep mosquitto               # ✔ 127.0.0.1:1883, 127.0.0.1:9001 dan *:8883
 ```
 
 Bila Mosquitto gagal start: pesan aslinya **tidak** ada di `journalctl`, karena konfigurasi
@@ -930,6 +937,10 @@ Sketch itu sudah login dengan access token dan memakai CA yang sama untuk unduha
 `FAILED: Refusing http:// download in TLS mode`); bila itu muncul, periksa `OTA_BASE_URL` di
 `.env` server.
 
+Untuk **browser** (aplikasi web, MQTTX Web, MQTT.js) alamatnya `wss://iot.contoh.my.id/mqtt`
+(port 443, path `/mqtt`), dengan akun dan topik yang sama. Penjelasan:
+`docs/tahap-21-mqtt-websocket.md`.
+
 Uji ACL dari laptop: device A tidak bisa membaca topik device B. Untuk perintah di bawah,
 CA di macOS ada di `--cafile /etc/ssl/cert.pem`; di Linux pakai `--capath /etc/ssl/certs`.
 
@@ -955,6 +966,25 @@ Setelah praktikum selesai, tutup lagi.
 `OTA_BASE_URL=https://iot.contoh.my.id` membuat device mengunduh firmware lewat HTTPS.
 File firmware disimpan di `/srv/iot/app/private_media` (tidak publik), dan hanya
 `iot-web.service` yang boleh menulis ke sana.
+
+### 11.5 Aplikasi lain yang login dengan akun platform (tahap 22)
+
+Aplikasi seperti MQTT client web didaftarkan sekali oleh Admin:
+
+```bash
+cd /srv/iot/app
+sudo -u iot -H /srv/iot/venv/bin/python manage.py oauth_client "MQTT Client" \
+     --redirect-uri https://mqtt.contoh.my.id/oidc/callback/ --logout-uri https://mqtt.contoh.my.id/
+```
+
+`client_secret` hanya dicetak **sekali**. Salin langsung ke `.env` aplikasi itu, jangan ke
+chat atau dokumen. Bila hilang atau bocor, jalankan perintah yang sama dengan
+`--rotate-secret`.
+
+Alamat yang dibutuhkan aplikasi klien ada di
+`https://iot.contoh.my.id/o/.well-known/openid-configuration`. Pengguna melihat dan mencabut
+izin aplikasi di **My profile → Connected apps**. Penjelasan:
+`docs/tahap-22-login-untuk-aplikasi-lain.md`.
 
 ---
 
@@ -1135,6 +1165,73 @@ Bila ada device yang ternyata belum pindah, kembalikan sementara dengan
 `sudo cp /root/iot-platform.nginx.bak /etc/nginx/sites-available/iot-platform` lalu
 `sudo nginx -t && sudo systemctl reload nginx`.
 
+### 14.3 Tahap 21–22: broker untuk browser dan login untuk aplikasi lain
+
+Tahap 21 menambah listener WebSocket Mosquitto dan `location = /mqtt` di Nginx. Tahap 22
+menambah paket `django-oauth-toolkit`, tabel baru, kunci RSA, dan isian `.env` baru. Urutan ini
+penting: `update.sh` menjalankan `check --deploy`, yang **berhenti** bila kunci atau issuer
+belum ada (`oauth.E001`, `oauth.E002`).
+
+```bash
+# 1. cadangan
+sudo systemctl start iot-backup.service
+sudo cp /etc/nginx/sites-available/iot-platform /root/iot-platform.nginx.bak
+sudo cp /etc/mosquitto/conf.d/iot.conf /root/iot.conf.bak
+
+# 2. ambil kode dan paket baru dulu (tanpa restart), supaya perintah oidc_key tersedia
+cd /srv/iot/app
+sudo -u iot -H git -C /srv/iot/app pull --ff-only
+sudo -u iot -H /srv/iot/venv/bin/pip install --quiet -r requirements.txt
+
+# 3. kunci RSA (sekali saja)
+sudo -u iot -H /srv/iot/venv/bin/python manage.py oidc_key
+sudo ls -l /srv/iot/app/private_media/oidc/      # ✔ private.pem, -rw------- iot
+
+# 4. isian .env baru (ganti domain)
+sudo -u iot tee -a /srv/iot/app/.env >/dev/null <<'EOF'
+MQTT_PUBLIC_WS_URL=wss://DOMAIN-ANDA/mqtt
+OIDC_ISSUER=https://DOMAIN-ANDA/o
+EOF
+
+# 5. pembaruan biasa: check --deploy, migrate (oauth2_provider 0001–0022, oauth 0001), restart
+sudo /srv/iot/app/deploy/scripts/update.sh
+```
+
+Lalu broker dan Nginx:
+
+```bash
+# 6. Mosquitto: listener WebSocket di 127.0.0.1:9001. Device tersambung ulang sendiri.
+sudo cp /srv/iot/app/deploy/mosquitto/iot.conf /etc/mosquitto/conf.d/iot.conf
+sudo systemctl restart mosquitto
+sudo ss -tlpn | grep mosquitto        # ✔ 127.0.0.1:9001 muncul
+
+# 7. Nginx: /mqtt (WebSocket) dan /o/ (batas laju). Bila file di server pernah Anda ubah
+#    sendiri, bandingkan dulu: diff /root/iot-platform.nginx.bak <file baru>
+sudo cp /srv/iot/app/deploy/nginx/iot-platform.conf /etc/nginx/sites-available/iot-platform
+sudo sed -i 's/iot.contoh.my.id/DOMAIN-ANDA/g' /etc/nginx/sites-available/iot-platform
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Periksa:
+
+```bash
+# broker WebSocket: jabat tangan berhasil
+curl -si --http1.1 https://DOMAIN-ANDA/mqtt -H "Connection: Upgrade" -H "Upgrade: websocket" \
+     -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+     -H "Sec-WebSocket-Protocol: mqtt" | head -1                   # ✔ HTTP/1.1 101 Switching Protocols
+# OpenID Connect
+curl -s https://DOMAIN-ANDA/o/.well-known/openid-configuration | head -c 200; echo   # ✔ "issuer":"https://DOMAIN-ANDA/o"
+curl -s -o /dev/null -w '%{http_code}\n' https://DOMAIN-ANDA/api/v2/me             # ✔ 401 (tanpa token)
+systemctl is-active iot-web iot-mqtt iot-rules iot-housekeeping mosquitto
+```
+
+Di halaman device, tab **MQTT** kini memuat baris **WebSocket**, dan di **My profile** ada kartu
+**Connected apps**. Aplikasi klien didaftarkan nanti, saat aplikasinya siap (langkah 11.5).
+
+Bila Mosquitto gagal start dan `/var/log/mosquitto/mosquitto.log` menyebut *websockets* tidak
+didukung, paket Mosquitto di server dibuat tanpa dukungan WebSocket. Kembalikan `/root/iot.conf.bak`, lalu pasang paket Mosquitto
+dari PPA resmi (`ppa:mosquitto-dev/mosquitto-ppa`), yang selalu menyertakannya.
+
 ---
 
 ## 15. Pemantauan dan pemecahan masalah
@@ -1163,6 +1260,9 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | `iot-mqtt-accounts` gagal, `Failed to set up mount namespacing` | folder `/srv/iot/mosquitto` belum dibuat | `sudo install -d -o iot -g iot -m 700 /srv/iot/mosquitto`, ulangi 9.1 |
 | Device berhenti mengirim setelah konfigurasi Nginx baru, Serial Monitor `POST … -> 301` | firmware masih memakai `http://` | ganti ke `https://` + `ROOT_CA` (bagian 11.1) atau MQTT TLS; sementara bisa kembali ke cadangan (14.2) |
 | ESP32 `POST … -> -1` / MQTT `state -2` setelah pindah ke TLS | `ROOT_CA` salah/kosong, atau jam belum sinkron | tempel ISRG Root X1 lengkap dengan baris BEGIN/END; pastikan Wi-Fi terhubung ke internet |
+| `update.sh` berhenti di `check --deploy` dengan `oauth.E001` / `oauth.E002` | kunci OIDC atau `OIDC_ISSUER` belum ada | langkah 14.3 nomor 3 dan 4, lalu jalankan `update.sh` lagi |
+| Aplikasi lain: `invalid_request ... redirect_uri` saat login | alamat callback tidak sama persis dengan yang didaftarkan | `manage.py oauth_client "<nama>" --redirect-uri <alamat persis>` |
+| Browser gagal ke `wss://…/mqtt` (MQTT.js: *connection closed*) | Nginx belum punya `location = /mqtt` atau listener 9001 belum ada | `curl` jabat tangan di 14.3 harus `101`; `ss -tlpn \| grep 9001` |
 | `certbot` gagal *Timeout* / *Invalid response* | DNS belum mengarah ke server, port 80 tertutup, atau Nginx HTTP belum aktif | cek `dig +short DOMAIN`, firewall, `curl -sI http://DOMAIN` (langkah 8.3) |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |
 | `iot-mqtt` terus restart | `MQTT_USERNAME`/`MQTT_PASSWORD` di `.env` tidak sama dengan akun broker | jalankan ulang `iot-mqtt-accounts` setelah mengubah `.env` |

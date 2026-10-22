@@ -12,10 +12,12 @@
         <form method="post">
           {% csrf_token %}
           {% include "includes/form_fields.html" %}
+          {# Tujuan setelah akun aktif, mis. kembali ke aplikasi lain (tahap 22). #}
+          {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
           <button type="submit" class="btn btn-primary w-100">Sign up</button>
         </form>
         <p class="text-center mt-3 mb-0">
-          Already have an account? <a href="{% url 'accounts:login' %}">Log in</a>
+          Already have an account? <a href="{{ login_url }}">Log in</a>
         </p>
       </div>
     </div>

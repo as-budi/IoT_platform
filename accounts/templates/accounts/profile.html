@@ -77,6 +77,17 @@
       </div>
     </div>
 
+    {# Aplikasi lain yang login dengan akun ini (tahap 22). #}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h2 class="h5 mb-1">Connected apps</h2>
+          <p class="small text-muted mb-0">{% if connected_app_count %}{{ connected_app_count }} app{{ connected_app_count|pluralize }} can sign you in with this account.{% else %}Apps that sign you in with your IoT Platform account appear here.{% endif %}</p>
+        </div>
+        <a class="btn btn-outline-primary" href="{% url 'oauth:connected_apps' %}">Manage</a>
+      </div>
+    </div>
+
     <div class="card shadow-sm">
       <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>

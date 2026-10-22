@@ -18,7 +18,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
+from django.utils.http import urlencode, urlsafe_base64_encode
 
 from .tokens import activation_token, email_change_token
 
@@ -44,10 +44,14 @@ def _send(template, recipient, context):
     return True
 
 
-def send_activation_email(request, user):
+def send_activation_email(request, user, next_url=""):
+    """`next_url`: halaman tujuan setelah aktivasi (mis. kembali ke aplikasi lain, tahap 22)."""
+    link = _link(request, "accounts:activate", user, activation_token)
+    if next_url:
+        link += "?" + urlencode({"next": next_url})
     context = {
         "user": user,
-        "link": _link(request, "accounts:activate", user, activation_token),
+        "link": link,
         "hours": settings.PASSWORD_RESET_TIMEOUT // 3600,
     }
     return _send("activation", user.email, context)

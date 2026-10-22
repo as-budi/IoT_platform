@@ -25,7 +25,7 @@
         </p>
         {% if allow_signup %}
         <p class="text-center mt-2 mb-0">
-          Don't have an account? <a href="{% url 'accounts:register' %}">Sign up</a>
+          Don't have an account? <a href="{{ signup_url }}">Sign up</a>
         </p>
         {% endif %}
       </div>

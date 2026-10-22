@@ -20,6 +20,8 @@ Penjelasan konsep:
 - [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md) — dashboard real-time lewat WebSocket (Django Channels, Daphne, Redis)
 - [docs/tahap-04b-channels-daphne-redis.md](docs/tahap-04b-channels-daphne-redis.md) — peran Daphne, Channels, channels-redis, dan Redis
 - [docs/tahap-05-dashboard.md](docs/tahap-05-dashboard.md) — dashboard per lokasi & device, pengaturan tampil/sembunyi, side menu
+- [docs/tahap-21-mqtt-websocket.md](docs/tahap-21-mqtt-websocket.md) — broker MQTT untuk browser (MQTT over WebSocket, `wss://…/mqtt`)
+- [docs/tahap-22-login-untuk-aplikasi-lain.md](docs/tahap-22-login-untuk-aplikasi-lain.md) — platform sebagai penyedia login (OAuth 2.0 / OpenID Connect) dan API v2
 
 ## Prasyarat
 
@@ -186,6 +188,19 @@ Agar data dari `mqtt_bridge` juga tampil seketika, pasang Redis
 (`brew install redis && brew services start redis`) lalu isi
 `REDIS_URL=redis://127.0.0.1:6379/0` di `.env`.
 Penjelasan lengkap: [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md).
+
+## Login untuk aplikasi lain (tahap 22)
+
+Aplikasi lain (mis. MQTT client web, repo `mqtt_client`) bisa login dengan akun platform.
+Setelah `pip install -r requirements.txt` dan `migrate`, buat kunci penanda tangan sekali:
+
+```bash
+python manage.py oidc_key
+python manage.py oauth_client "MQTT Client (dev)" --redirect-uri http://127.0.0.1:9000/oidc/callback/
+```
+
+Perintah kedua mencetak `client_id` dan `client_secret` untuk `.env` aplikasi itu.
+Penjelasan lengkap: [docs/tahap-22-login-untuk-aplikasi-lain.md](docs/tahap-22-login-untuk-aplikasi-lain.md).
 
 ## Struktur project
 

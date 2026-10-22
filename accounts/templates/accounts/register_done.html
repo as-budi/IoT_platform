@@ -12,7 +12,7 @@
           The link expires in {{ hours }} hours.</p>
         <p class="small text-muted">No email after a few minutes? Check the spam folder, or
           <a href="{% url 'accounts:activation_resend' %}">send the link again</a>.</p>
-        <a class="btn btn-outline-primary w-100" href="{% url 'accounts:login' %}">Back to log in</a>
+        <a class="btn btn-outline-primary w-100" href="{{ login_url }}">Back to log in</a>
       </div>
     </div>
   </div>

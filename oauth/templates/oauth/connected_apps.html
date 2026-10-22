@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Connected apps · IoT Platform{% endblock %}
+
+{% block content %}
+{# Aplikasi luar yang diberi izin memakai akun ini (tahap 22). #}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <nav aria-label="breadcrumb"><ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'accounts:profile' %}">My profile</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Connected apps</li>
+    </ol></nav>
+    <h1 class="h3 mb-1">Connected apps</h1>
+    <p class="text-muted">Apps that sign you in with your IoT Platform account. They never see your password.</p>
+    {% for consent in consents %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+          <div>
+            <h2 class="h5 mb-1">{{ consent.application.name }}</h2>
+            <p class="small text-muted mb-2">Allowed {{ consent.granted_at|date:"j M Y, H:i" }}
+              · last used {{ consent.last_used_at|date:"j M Y, H:i"|default:"never" }}</p>
+          </div>
+          {# Mencabut izin tidak menghapus data apa pun: cukup login dan setujui lagi untuk memakai aplikasinya. #}
+          <form method="post" action="{% url 'oauth:revoke' consent.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-danger">Revoke access</button>
+          </form>
+        </div>
+        <ul class="small mb-0">
+          {% for text in consent.scope_descriptions %}<li>{{ text }}</li>{% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% empty %}
+    <div class="alert alert-light border">No apps are connected to your account.</div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

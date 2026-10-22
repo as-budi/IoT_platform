@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Allow access · IoT Platform{% endblock %}
+
+{% block content %}
+{# Halaman persetujuan OAuth (tahap 22, oauth/views.py PlatformAuthorizationView). #}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        {% if not error %}
+        <h1 class="h4 mb-1">Allow {{ application.name }}?</h1>
+        <form method="post" action="{% url 'accounts:logout' %}" class="text-muted small mb-3">{% csrf_token %}
+          {# Logout lalu kembali ke sini: halaman login muncul untuk akun lain. #}
+          <input type="hidden" name="next" value="{{ request.get_full_path }}">
+          Signed in as <strong>{{ user.username }}</strong>.
+          <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">Not you?</button>
+        </form>
+        <p class="mb-2"><strong>{{ application.name }}</strong> wants to:</p>
+        <ul class="list-group mb-3">
+          {% for scope in scope_items %}
+          <li class="list-group-item small{% if scope.sensitive %} list-group-item-warning{% endif %}">
+            {% if scope.sensitive %}<strong>{{ scope.text }}</strong>{% else %}{{ scope.text }}{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="small text-muted">{{ application.name }} never sees your password. You can remove its access
+          at any time in <em>My profile → Connected apps</em>.</p>
+        <form method="post">
+          {% csrf_token %}
+          {# Data permintaan (client_id, redirect_uri, state, PKCE, ...) dibawa sebagai isian tersembunyi. #}
+          {% for field in form %}{% if field.is_hidden %}{{ field }}{% endif %}{% endfor %}
+          {% if form.non_field_errors %}<div class="alert alert-danger small">{{ form.non_field_errors }}</div>{% endif %}
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-outline-secondary flex-fill">Cancel</button>
+            <button type="submit" class="btn btn-primary flex-fill" name="allow" value="Authorize">Allow</button>
+          </div>
+        </form>
+        {% else %}
+        <h1 class="h4 mb-2">This sign-in request cannot be completed</h1>
+        <p class="mb-1"><code>{{ error.error }}</code></p>
+        <p class="small text-muted">{{ error.description }}</p>
+        <a class="btn btn-outline-primary" href="{% url 'dashboard:index' %}">Go to the dashboard</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,9 +1,13 @@
-"""URL API untuk device. Semua diawali /api/ (lihat config/urls.py)."""
+"""URL API. Semua diawali /api/ (lihat config/urls.py).
+
+    /api/v1/...  untuk DEVICE (access token device di URL)
+    /api/v2/...  untuk APLIKASI LUAR yang login atas nama pengguna (token OAuth, tahap 22)
+"""
 from django.urls import path
 
 from ota import views as ota_views
 
-from . import views
+from . import v2, views
 
 app_name = "api"
 
@@ -19,4 +23,7 @@ urlpatterns = [
     # Unduhan file firmware. Token di sini BUKAN access token device, melainkan
     # token unduhan sekali pakai milik satu pembaruan (lihat ota/services.py).
     path("v1/ota/<str:token>.bin", ota_views.download, name="ota_download"),
+    # Tahap 22: aplikasi luar (mis. MQTT client web), lihat api/v2.py.
+    path("v2/me", v2.me, name="v2_me"),
+    path("v2/me/devices", v2.my_devices, name="v2_devices"),
 ]

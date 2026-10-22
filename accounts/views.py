@@ -14,9 +14,9 @@ from django.http import Http404
 from django.contrib.messages.views import SuccessMessageMixin
 from django.db.models import Count
 from django.shortcuts import redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.utils.encoding import force_str
-from django.utils.http import urlsafe_base64_decode
+from django.utils.http import url_has_allowed_host_and_scheme, urlencode, urlsafe_base64_decode
 from django.views import View
 from django.views.generic import CreateView, DeleteView, FormView, ListView, TemplateView, UpdateView
 
@@ -40,6 +40,26 @@ from .tokens import activation_token, email_change_token
 LINK_HOURS = settings.PASSWORD_RESET_TIMEOUT // 3600
 
 
+def safe_next(request):
+    """Alamat `next` (GET atau POST) bila aman, else "".
+
+    `next` = halaman tujuan setelah login/aktivasi, mis. /o/authorize/?... saat pengguna
+    datang dari aplikasi lain (tahap 22). Hanya alamat di situs INI yang diterima;
+    tanpa pemeriksaan ini, tautan seperti ?next=https://situs-palsu.com bisa dipakai
+    untuk mengirim pengguna ke situs penipu setelah login ("open redirect").
+    """
+    url = request.POST.get("next") or request.GET.get("next") or ""
+    if url and url_has_allowed_host_and_scheme(url, allowed_hosts={request.get_host()},
+                                               require_https=request.is_secure()):
+        return url
+    return ""
+
+
+def with_next(url, next_url):
+    """Tambahkan ?next=... ke `url` bila ada."""
+    return f"{url}?{urlencode({'next': next_url})}" if next_url else url
+
+
 def user_from_uidb64(uidb64):
     """Pengguna dari bagian <uidb64> tautan email, atau None bila tidak valid."""
     try:
@@ -50,11 +70,16 @@ def user_from_uidb64(uidb64):
 
 
 class LoginView(auth_views.LoginView):
-    """Login bawaan Django, ditambah informasi apakah tautan "Sign up" ditampilkan."""
+    """Login bawaan Django, ditambah informasi apakah tautan "Sign up" ditampilkan.
+
+    Tautan Sign up membawa `next` yang sama, supaya pengguna baru yang datang dari
+    aplikasi lain (tahap 22) kembali ke aplikasi itu setelah akunnya aktif.
+    """
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context["allow_signup"] = settings.ALLOW_SIGNUP
+        context["signup_url"] = with_next(reverse("accounts:register"), safe_next(self.request))
         return context
 
 
@@ -71,14 +96,22 @@ class RegisterView(CreateView):
 
     def dispatch(self, request, *args, **kwargs):
         # dispatch() adalah method pertama yang dijalankan sebuah view.
+        # Tujuan setelah akun aktif, mis. kembali ke aplikasi lain (tahap 22).
+        self.next_url = safe_next(request)
         # Pengguna yang sudah login tidak perlu mendaftar lagi.
         if request.user.is_authenticated:
-            return redirect("dashboard:index")
+            return redirect(self.next_url or "dashboard:index")
         # Di server publik pendaftaran bisa ditutup (DJANGO_ALLOW_SIGNUP=False):
         # akun hanya dibuat oleh Admin lewat halaman Users.
         if not settings.ALLOW_SIGNUP:
             raise Http404("Sign-up is closed.")
         return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next"] = self.next_url
+        context["login_url"] = with_next(reverse("accounts:login"), self.next_url)
+        return context
 
     def form_valid(self, form):
         # form_valid() dipanggil bila semua isian lolos validasi.
@@ -89,13 +122,13 @@ class RegisterView(CreateView):
         user.activation_pending = True
         user.save()
         self.object = user
-        if not send_activation_email(self.request, user):
+        if not send_activation_email(self.request, user, next_url=self.next_url):
             messages.error(
                 self.request,
                 "Your account was created, but we could not send the activation email. "
                 "Try again in a few minutes with \"Resend activation link\".",
             )
-        return redirect(self.success_url)
+        return redirect(with_next(self.success_url, self.next_url))
 
 
 class RegisterDoneView(TemplateView):
@@ -103,6 +136,11 @@ class RegisterDoneView(TemplateView):
 
     template_name = "accounts/register_done.html"
     extra_context = {"hours": LINK_HOURS}
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["login_url"] = with_next(reverse("accounts:login"), safe_next(self.request))
+        return context
 
 
 class ActivateView(View):
@@ -135,7 +173,9 @@ class ActivateView(View):
         user.save(update_fields=["is_active", "activation_pending"])
         login(request, user)
         messages.success(request, f"Welcome, {user.username}! Your account is active.")
-        return redirect("dashboard:index")
+        # Tautan aktivasi bisa membawa ?next=... (Sign up dari aplikasi lain, tahap 22).
+        # Form di halaman ini mengirim POST ke alamat yang sama, jadi ?next ikut terbawa.
+        return redirect(safe_next(request) or "dashboard:index")
 
 
 class ResendActivationView(FormView):
@@ -241,6 +281,7 @@ class ProfileView(LoginRequiredMixin, UpdateView):
 
         context["telegram_enabled"] = telegram.enabled()
         context["telegram_link"] = TelegramLink.objects.filter(user=self.request.user).first()
+        context["connected_app_count"] = self.request.user.oauth_consents.count()   # tahap 22
         return context
 
 

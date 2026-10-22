@@ -305,6 +305,24 @@ class MqttConnectionInfoTests(TestCase):
         response = self.page()
         self.assertEqual(response.context["mqtt"]["options"], "-h broker.emqx.io -p 1883")
         self.assertContains(response, f'-t "demo/{self.device.access_token}/#"')
+        # Tanpa MQTT_PUBLIC_WS_URL tidak ada alamat WebSocket (tahap 21).
+        self.assertEqual(response.context["mqtt"]["ws_url"], "")
+        self.assertNotContains(response, "mqtt-ws-example")
+
+    @override_settings(MQTT_PUBLIC_HOST="iot.example.org", MQTT_PUBLIC_PORT=8883, MQTT_PUBLIC_TLS=True,
+                       MQTT_DEVICE_LOGIN=True, MQTT_TOPIC_PREFIX="iot",
+                       MQTT_PUBLIC_WS_URL="wss://iot.example.org/mqtt")
+    def test_websocket_address_for_browsers(self):
+        """Tahap 21: alamat MQTT over WebSocket + contoh MQTT.js dengan login token."""
+        response = self.page()
+        token = self.device.access_token
+        self.assertEqual(response.context["mqtt"]["ws_url"], "wss://iot.example.org/mqtt")
+        self.assertContains(response, "<code>wss://iot.example.org/mqtt</code>")
+        self.assertContains(
+            response,
+            f'mqtt.connect("wss://iot.example.org/mqtt", {{ username: "{token}", password: "{token}" }})',
+        )
+        self.assertContains(response, f'client.publish("iot/{token}/telemetry"')
 
 
 class DesiredStateTests(TestCase):

@@ -64,6 +64,11 @@ INSTALLED_APPS = [
     "notifications",  # notifikasi Telegram untuk aksi aturan (tahap 17)
     "activity",       # log aktivitas seluruh platform (tahap 18)
     "sharing",        # berbagi device antar-pengguna dan grup (tahap 19)
+    # Login untuk aplikasi lain lewat OAuth 2.0 / OpenID Connect (tahap 22).
+    # "oauth" (milik project) SEBELUM "oauth2_provider" (paket django-oauth-toolkit),
+    # supaya template halaman izin milik kita yang dipakai.
+    "oauth",
+    "oauth2_provider",
 ]
 
 # Middleware = lapisan yang dilewati setiap request sebelum sampai ke view
@@ -156,6 +161,85 @@ ALLOW_SIGNUP = os.getenv("DJANGO_ALLOW_SIGNUP", "True") == "True"
 PASSWORD_RESET_TIMEOUT = int(os.getenv("DJANGO_EMAIL_LINK_HOURS", "24")) * 3600
 
 
+# --- Login untuk aplikasi lain: OAuth 2.0 / OpenID Connect (tahap 22) ---------------
+# Platform menjadi "penyedia identitas" (seperti "Sign in with Google") untuk aplikasi
+# lain, mis. aplikasi MQTT client web. Paket: django-oauth-toolkit (oauth2_provider).
+# Penjelasan: docs/tahap-22-login-untuk-aplikasi-lain.md.
+
+# Kunci RSA privat untuk menandatangani id_token (JWT). File PEM, dibuat sekali dengan
+# `python manage.py oidc_key` (atau openssl di server). RAHASIA: jangan di-commit.
+# Folder private_media sudah ada di .gitignore dan ikut backup.
+OIDC_RSA_PRIVATE_KEY_FILE = Path(
+    os.getenv("OIDC_RSA_PRIVATE_KEY_FILE", "") or BASE_DIR / "private_media" / "oidc" / "private.pem"
+)
+try:
+    OIDC_RSA_PRIVATE_KEY = OIDC_RSA_PRIVATE_KEY_FILE.read_text()
+except OSError:
+    OIDC_RSA_PRIVATE_KEY = ""   # belum dibuat; `check --deploy` akan mengingatkan (oauth/checks.py)
+
+# Alamat "issuer": awal semua alamat OpenID Connect platform ini, mis.
+# https://iot.domain-anda/o . Harus sama persis dengan yang dikenal aplikasi klien.
+# Kosong = dihitung dari alamat request (cukup di laptop).
+OIDC_ISSUER = os.getenv("OIDC_ISSUER", "").rstrip("/")
+
+# Izin (scope) yang bisa diminta aplikasi luar. Teksnya tampil di halaman persetujuan.
+OAUTH_SCOPES = {
+    "openid": "Sign you in with your IoT Platform account",
+    "profile": "See your username and name",
+    "email": "See your email address",
+    "devices:read": "See your devices and the devices shared with you, including the access "
+                    "tokens of devices you can edit (anyone with a token can act as that device)",
+}
+
+# Model aplikasi klien bawaan paket (ditulis eksplisit karena oauth.Consent merujuknya).
+OAUTH2_PROVIDER_APPLICATION_MODEL = "oauth2_provider.Application"
+
+OAUTH2_PROVIDER = {
+    "OIDC_ENABLED": True,
+    "OIDC_RSA_PRIVATE_KEY": OIDC_RSA_PRIVATE_KEY,
+    "OIDC_ISS_ENDPOINT": OIDC_ISSUER,
+    # Hanya alur "authorization code" (yang paling aman untuk aplikasi web).
+    "OIDC_RESPONSE_TYPES_SUPPORTED": ["code"],
+    "OAUTH2_VALIDATOR_CLASS": "oauth.validators.PlatformOAuth2Validator",
+    "SCOPES": OAUTH_SCOPES,
+    "DEFAULT_SCOPES": ["openid"],
+    # PKCE wajib: kode otorisasi yang dicuri di tengah jalan tidak bisa ditukar.
+    "PKCE_REQUIRED": True,
+    # Umur token. Access token pendek (10 menit); aplikasi memperbaruinya dengan
+    # refresh token, yang BERGANTI setiap dipakai dan bisa dicabut pengguna.
+    "AUTHORIZATION_CODE_EXPIRE_SECONDS": 60,
+    "ACCESS_TOKEN_EXPIRE_SECONDS": int(os.getenv("OAUTH_ACCESS_TOKEN_SECONDS", "600")),
+    "ID_TOKEN_EXPIRE_SECONDS": int(os.getenv("OAUTH_ACCESS_TOKEN_SECONDS", "600")),
+    "REFRESH_TOKEN_EXPIRE_SECONDS": int(os.getenv("OAUTH_REFRESH_TOKEN_DAYS", "14")) * 86400,
+    "ROTATE_REFRESH_TOKEN": True,
+    # Refresh token lama dipakai lagi (tanda dicuri) -> seluruh "keluarga" token dicabut.
+    "REFRESH_TOKEN_REUSE_PROTECTION": True,
+    "REFRESH_TOKEN_GRACE_PERIOD_SECONDS": 0,   # wajib 0 bila token disimpan sebagai hash
+    # Alamat kembali (redirect URI) harus https; http hanya di laptop (DEBUG).
+    "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "http"] if DEBUG else ["https"],
+    # Halaman persetujuan diatur sendiri (oauth/views.py): sekali disetujui, tidak
+    # ditanya lagi sampai izinnya dicabut di Profile -> Connected apps.
+    "REQUEST_APPROVAL_PROMPT": "force",
+    # "Create account" dari aplikasi klien (prompt=create) -> halaman Sign up platform.
+    "OIDC_RP_INITIATED_REGISTRATION_ENABLED": ALLOW_SIGNUP,
+    "OIDC_RP_INITIATED_REGISTRATION_URL": "accounts:register",
+    # Logout dari aplikasi klien sekaligus dari platform (dengan konfirmasi).
+    "OIDC_RP_INITIATED_LOGOUT_ENABLED": True,
+    # Rekomendasi keamanan OAuth terbaru (RFC 9700): tolak implicit/password grant,
+    # PKCE "plain", token di URL; simpan token sebagai hash; sertakan `iss` di redirect.
+    "COMPLIANT_BCP_RFC9700_IMPLICIT_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PASSWORD_GRANT": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_METHOD": True,
+    "COMPLIANT_BCP_RFC9700_ACCESS_TOKEN_TRANSPORT": True,
+    "COMPLIANT_BCP_RFC9700_AUTHZ_RESPONSE_ISS": True,
+    "COMPLIANT_BCP_RFC9700_TOKEN_STORAGE": True,
+    "COMPLIANT_BCP_RFC9700_REFRESH_TOKEN": True,
+    "COMPLIANT_BCP_RFC9700_REDIRECT_URI_SCHEME": True,
+    "COMPLIANT_BCP_RFC9700_REDIRECT_URI_MATCHING": True,
+    "COMPLIANT_BCP_RFC9700_PKCE_REQUIRED": True,
+}
+
+
 # --- Bahasa & zona waktu ----------------------------------------------------
 
 LANGUAGE_CODE = "en-us"
@@ -218,6 +302,11 @@ MQTT_PUBLIC_TLS = (os.getenv("MQTT_PUBLIC_TLS", "") or str(MQTT_TLS)) == "True"
 # True = broker meminta device login dengan username = password = access token
 # (broker sendiri + `python manage.py mqtt_accounts`, lihat docs/deploy-lightsail.md).
 MQTT_DEVICE_LOGIN = os.getenv("MQTT_DEVICE_LOGIN", "False") == "True"
+# Alamat MQTT over WebSocket untuk BROWSER (tahap 21), mis. wss://iot.domain-anda/mqtt:
+# listener WebSocket Mosquitto di belakang Nginx (deploy/mosquitto/iot.conf). Browser
+# tidak bisa membuka TCP 1883/8883, hanya WebSocket. Dipakai aplikasi MQTT client web
+# dan ditampilkan di tab MQTT halaman device. Kosong = tidak ada, tidak ditampilkan.
+MQTT_PUBLIC_WS_URL = os.getenv("MQTT_PUBLIC_WS_URL", "").strip()
 
 
 # --- CoAP ---------------------------------------------------------------------
@@ -369,9 +458,8 @@ if not DEBUG:
         # (mis. 3600), naikkan ke 31536000 setelah yakin HTTPS berjalan baik.
         SECURE_HSTS_SECONDS = int(os.getenv("DJANGO_HSTS_SECONDS", "3600"))
         SECURE_HSTS_INCLUDE_SUBDOMAINS = False
-        # Pengalihan http -> https dilakukan Nginx, KECUALI /api/ untuk device
-        # tanpa TLS (lihat deploy/nginx/iot-platform.conf). Karena itu Django
-        # sendiri tidak mengalihkan.
+        # Pengalihan http -> https dilakukan Nginx untuk SEMUA alamat (lihat
+        # deploy/nginx/iot-platform.conf). Karena itu Django sendiri tidak mengalihkan.
         SECURE_SSL_REDIRECT = False
         # Peringatan `check --deploy` yang SENGAJA dibungkam, beserta alasannya:
         #   W008  pengalihan ke https dikerjakan Nginx, bukan Django (lihat di atas)

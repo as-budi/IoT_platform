@@ -335,6 +335,8 @@ def mqtt_info(device):
         "tls": settings.MQTT_PUBLIC_TLS,
         "login": settings.MQTT_DEVICE_LOGIN,
         "options": options,
+        # MQTT over WebSocket untuk browser (tahap 21), mis. wss://iot.domain/mqtt.
+        "ws_url": settings.MQTT_PUBLIC_WS_URL,
         # Bridge berjalan sebagai service di server (DEBUG=False); di laptop, manual.
         "show_bridge_hint": settings.DEBUG,
     }
