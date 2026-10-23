@@ -14,6 +14,8 @@ from django.views.generic import RedirectView
 urlpatterns = [
     # Situs admin bawaan Django (alat internal untuk mengelola data mentah).
     path("admin/", admin.site.urls),
+    # /accounts/sandbox/ -> akun MQTT sandbox (tahap 23)
+    path("accounts/sandbox/", include("mqtt_bridge.urls")),
     # /accounts/apps/ -> Profile -> Connected apps (tahap 22)
     path("accounts/apps/", include("oauth.urls_apps")),
     # /accounts/...  -> login, logout, manajemen pengguna

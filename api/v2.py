@@ -3,6 +3,7 @@ API v2: untuk APLIKASI LUAR yang login atas nama pengguna (tahap 22).
 
     GET /api/v2/me            scope "profile"       profil pengguna pemilik token
     GET /api/v2/me/devices    scope "devices:read"  device milik + yang dibagikan kepadanya
+    GET /api/v2/me/sandbox    scope "mqtt:sandbox"  akun MQTT sandbox (tahap 23)
 
 Bedanya dengan API v1 (untuk device):
 
@@ -132,3 +133,19 @@ def my_devices(request):
             ],
         })
     return JsonResponse({"broker": broker_info(), "devices": items})
+
+
+@require_GET
+@oauth_required("mqtt:sandbox")
+def my_sandbox(request):
+    """Akun MQTT sandbox pengguna (tahap 23). Akun dibuat/di-reset di halaman My profile platform."""
+    from mqtt_bridge.models import SHARED_ROOT, SandboxAccount
+
+    data = {"available": settings.MQTT_SANDBOX_ENABLED, "enabled": False, "broker": broker_info(),
+            "manage_url": request.build_absolute_uri(reverse("accounts:profile")) + "#mqtt-sandbox"}
+    account = SandboxAccount.objects.filter(user=request.oauth_user).first() if data["available"] else None
+    if account:
+        data.update(enabled=True, username=account.username, password=account.password,
+                    topic_root=account.topic_root, shared_root=SHARED_ROOT,
+                    password_changed_at=_iso(account.password_changed_at))
+    return JsonResponse(data)

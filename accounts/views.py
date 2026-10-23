@@ -282,6 +282,9 @@ class ProfileView(LoginRequiredMixin, UpdateView):
         context["telegram_enabled"] = telegram.enabled()
         context["telegram_link"] = TelegramLink.objects.filter(user=self.request.user).first()
         context["connected_app_count"] = self.request.user.oauth_consents.count()   # tahap 22
+        from mqtt_bridge.views import sandbox_context   # tahap 23
+
+        context.update(sandbox_context(self.request.user))
         return context
 
 

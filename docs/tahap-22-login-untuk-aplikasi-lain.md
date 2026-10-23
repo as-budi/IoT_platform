@@ -205,7 +205,7 @@ Di laptop (`DEBUG=True`) redirect URI `http://` diizinkan. Di server hanya `http
 
 ## 9. Di server
 
-Lihat `docs/deploy-lightsail.md` bagian 14.3. Ringkasnya: tarik kode dan paket baru, buat
+Lihat `docs/deploy-vps.md` bagian 14.3. Ringkasnya: tarik kode dan paket baru, buat
 kunci dengan `manage.py oidc_key` sebagai user `iot`, isi `OIDC_ISSUER` di `.env`, lalu
 `update.sh`. `check --deploy` di `update.sh`
 berhenti bila kunci atau issuer belum diatur (`oauth.E001`, `oauth.E002`).

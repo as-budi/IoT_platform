@@ -1,6 +1,6 @@
 # Berkas deploy
 
-Contoh konfigurasi server produksi untuk panduan [docs/deploy-lightsail.md](../docs/deploy-lightsail.md).
+Contoh konfigurasi server produksi untuk panduan [docs/deploy-vps.md](../docs/deploy-vps.md).
 Semua berkas memakai jalur dan nama berikut; ubah bila berbeda:
 
 | Hal | Nilai |

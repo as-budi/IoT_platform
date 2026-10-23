@@ -4,7 +4,7 @@
 #   - file firmware yang diunggah (private_media)
 # Disimpan di /srv/iot/backups, yang lebih tua dari 14 hari dihapus.
 # Backup di server yang SAMA tidak menolong bila servernya hilang: aktifkan juga
-# snapshot otomatis Lightsail, dan sesekali unduh backup ke komputer Anda.
+# snapshot otomatis di penyedia VPS, dan sesekali unduh backup ke komputer Anda.
 set -euo pipefail
 APP=/srv/iot/app
 DEST=/srv/iot/backups

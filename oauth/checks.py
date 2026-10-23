@@ -15,7 +15,7 @@ def oidc_configuration(app_configs, **kwargs):
     if "PRIVATE KEY" not in key:
         errors.append(checks.Error(
             f"The OpenID Connect signing key was not found at {settings.OIDC_RSA_PRIVATE_KEY_FILE}.",
-            hint="Create it once with `python manage.py oidc_key` (see docs/deploy-lightsail.md, 14.3).",
+            hint="Create it once with `python manage.py oidc_key` (see docs/deploy-vps.md, 14.3).",
             id="oauth.E001",
         ))
     issuer = settings.OIDC_ISSUER

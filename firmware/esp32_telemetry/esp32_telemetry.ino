@@ -10,7 +10,7 @@
  *
  * Dua mode, dipilih otomatis dari awalan SERVER:
  *   - "http://192.168.1.10:8000"   server Django di komputer sendiri (belajar).
- *   - "https://iot.contoh.my.id"   server produksi (docs/deploy-lightsail.md).
+ *   - "https://iot.contoh.my.id"   server produksi (docs/deploy-vps.md).
  *     Isi juga ROOT_CA. Server produksi hanya menerima https://; permintaan
  *     http:// dijawab 301 (pengalihan) dan telemetri TIDAK tersimpan.
  *

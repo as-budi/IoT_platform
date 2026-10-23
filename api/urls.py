@@ -26,4 +26,5 @@ urlpatterns = [
     # Tahap 22: aplikasi luar (mis. MQTT client web), lihat api/v2.py.
     path("v2/me", v2.me, name="v2_me"),
     path("v2/me/devices", v2.my_devices, name="v2_devices"),
+    path("v2/me/sandbox", v2.my_sandbox, name="v2_sandbox"),
 ]

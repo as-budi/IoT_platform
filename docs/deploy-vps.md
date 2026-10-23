@@ -1,6 +1,8 @@
-# Deploy ke Amazon Lightsail (dengan pengamanan server)
+# Deploy ke VPS (dengan pengamanan server)
 
-Panduan ini memasang seluruh platform di **satu server Lightsail**:
+Panduan ini memasang seluruh platform di **satu VPS Ubuntu**, dari penyedia mana pun
+(Amazon Lightsail, DigitalOcean, Vultr, Hetzner, IDCloudHost, Biznet Gio, server kampus, dan
+lainnya):
 
 - web, API HTTP, dan WebSocket,
 - MQTT dengan broker sendiri,
@@ -9,14 +11,17 @@ Panduan ini memasang seluruh platform di **satu server Lightsail**:
 - MySQL dan Redis.
 
 Setiap langkah disertai alasan keamanannya. Semua berkas konfigurasi yang dirujuk ada di
-folder [`deploy/`](../deploy/README.md).
+folder [`deploy/`](../deploy/README.md). Langkah yang bergantung pada penyedia (membuat
+server, IP tetap, firewall di panel, snapshot) dijelaskan secara umum di bagian 2, dengan
+contoh konkret di [Lampiran A (Amazon Lightsail)](#lampiran-a-contoh-amazon-lightsail) dan
+[Lampiran B (penyedia lain)](#lampiran-b-catatan-untuk-penyedia-lain).
 
 ```
                          Internet
                             │
-             ┌──────────────┼──────────────────────┐
-             │  Firewall Lightsail + ufw di server │  hanya 22 (IP Anda), 80, 443, 8883
-             └──────────────┼──────────────────────┘
+             ┌──────────────┼──────────────────────────┐
+             │ firewall penyedia (bila ada) + ufw      │  hanya 22 (IP Anda), 80, 443, 8883
+             └──────────────┼──────────────────────────┘
                             │
    ┌──────── server Ubuntu 24.04 ──────────────────────────────────────────┐
    │  Nginx :80/:443  (HTTPS Let's Encrypt, batas laju login & API)       │
@@ -37,14 +42,14 @@ Prinsip yang dipakai di seluruh panduan:
    root. Unit systemd membuat sistem berkas read-only bagi proses aplikasi.
 3. **Semua lalu lintas dienkripsi.** HTTPS untuk browser, MQTT TLS untuk device.
 4. **Rahasia tidak ada di kode.** Semua rahasia ada di `.env` dengan izin `600`.
-5. **Bisa dipulihkan.** Ada snapshot harian Lightsail dan backup database harian.
+5. **Bisa dipulihkan.** Ada snapshot server dari penyedia dan backup database harian.
 
 Perkiraan waktu: 2–3 jam untuk pertama kali.
 
 Daftar isi:
 
 1. [Mendapatkan domain](#1-mendapatkan-domain)
-2. [Membuat server di Lightsail](#2-membuat-server-di-lightsail)
+2. [Menyiapkan VPS](#2-menyiapkan-vps)
 3. [Mengarahkan domain ke server](#3-mengarahkan-domain-ke-server)
 4. [Masuk lewat SSH dan mengamankan sistem operasi](#4-masuk-lewat-ssh-dan-mengamankan-sistem-operasi)
 5. [Memasang paket](#5-memasang-paket)
@@ -59,15 +64,19 @@ Daftar isi:
 14. [Memperbarui aplikasi](#14-memperbarui-aplikasi)
 15. [Pemantauan dan pemecahan masalah](#15-pemantauan-dan-pemecahan-masalah)
 16. [Risiko yang masih ada](#16-risiko-yang-masih-ada)
-17. [Perkiraan biaya](#17-perkiraan-biaya)
+17. [Ukuran server dan biaya](#17-ukuran-server-dan-biaya)
+- [Lampiran A: contoh Amazon Lightsail](#lampiran-a-contoh-amazon-lightsail)
+- [Lampiran B: catatan untuk penyedia lain](#lampiran-b-catatan-untuk-penyedia-lain)
 
 Di seluruh panduan, ganti nilai contoh berikut dengan milik Anda:
 
 | Contoh | Arti |
 |---|---|
 | `iot.contoh.my.id` | nama domain server |
-| `203.0.113.10` | static IP server dari Lightsail |
+| `203.0.113.10` | IP publik (tetap) server |
 | `198.51.100.7` | IP publik internet Anda (cek di whatismyip.com) |
+| `~/.ssh/iot-server` | kunci SSH privat di laptop untuk masuk ke server (langkah 4) |
+| `ubuntu` | user admin di server yang punya `sudo` (langkah 4.0) |
 
 ### Urutan pemasangan dan titik periksa
 
@@ -78,7 +87,7 @@ ini, dan **jangan lanjut sebelum titik periksa (✔) sebuah langkah terpenuhi**:
 
 ```
  1–3  domain + server + DNS        ✔ dig +short DOMAIN  = IP server
- 4    amankan OS, swap             ✔ ufw: 22, 80, 443, 8883 terbuka
+ 4    user admin, amankan OS, swap ✔ ufw: 22, 80, 443, 8883 terbuka
  5    paket (MySQL, Redis, Nginx, Mosquitto bawaan, certbot)
  6    database + user MySQL
  7    kode, venv, .env, migrate, kunci OIDC   ✔ manage.py check tanpa error
@@ -104,10 +113,6 @@ Layanan yang membutuhkan layanan lain:
 | `iot-mqtt` (bridge) | Mosquitto dengan `iot.conf` dan akun `iot-bridge` |
 | `iot-rules`, `iot-housekeeping` | MySQL, Redis |
 
-**Server selain Lightsail** (VPS lain, sering login langsung sebagai `root`): semua langkah
-sama, kecuali bagian khusus konsol Lightsail (static IP, firewall, snapshot). Atur firewall di
-panel penyedia VPS dengan port yang sama seperti tabel 2.4, dan pastikan IP server tetap.
-
 ---
 
 ## 1. Mendapatkan domain
@@ -118,8 +123,8 @@ mudah diingat device. Pilih **salah satu** cara berikut.
 ### Pilihan A — Subdomain kampus (gratis, paling meyakinkan)
 
 Minta ke unit TIK universitas atau fakultas sebuah subdomain, mis. `iot.filkom.ub.ac.id`,
-yang diarahkan ke static IP server (langkah 2). Biasanya cukup mengirim permohonan berisi
-nama subdomain, IP tujuan, dan kegunaannya. Kebijakan dan prosedurnya mengikuti kampus
+yang diarahkan ke IP server (langkah 2). Biasanya cukup mengirim permohonan berisi nama
+subdomain, IP tujuan, dan kegunaannya. Kebijakan dan prosedurnya mengikuti kampus
 masing-masing. Cara ini juga paling cocok untuk platform praktikum yang dipakai mahasiswa.
 
 ### Pilihan B — Domain .id dari registrar Indonesia (murah)
@@ -138,27 +143,20 @@ Langkahnya:
 1. Cari nama yang tersedia di situs registrar, lalu bayar.
 2. Buka **panel DNS** domain itu di registrar. Pengisiannya di langkah 3.
 
-### Pilihan C — Langsung di Lightsail (Route 53)
+### Pilihan C — Registrar internasional atau penyedia VPS
 
-Di konsol Lightsail pilih **Domains & DNS → Register domain**.
+Domain `.com`, `.net`, dan sejenisnya bisa dibeli di registrar internasional, dan sebagian
+penyedia VPS juga menjual domain atau menyediakan pengelola DNS gratis (contoh Lightsail di
+Lampiran A). Hal yang perlu diperhatikan di mana pun:
 
-1. Ketik nama, lalu **Check availability**.
-2. Isi data kontak sesuai identitas resmi dan aktifkan **privacy protection**.
-3. Setujui perjanjian registrasi.
-
-Setelah itu ada dua hal penting:
-
-- **Klik tautan verifikasi** di email registrant. Domain yang tidak diverifikasi akan
-  ditangguhkan.
-- Lightsail otomatis membuat zona DNS gratis.
-
-Nama domain **tidak bisa diubah** setelah terdaftar, jadi periksa ejaannya sebelum membayar.
-Tarif mengikuti Route 53; sejak Juli 2026 `.com` sekitar US$16 per tahun. Domain geografis
-seperti `.id` tidak bisa didaftarkan dari Lightsail.
+- isi data kontak sesuai identitas resmi dan aktifkan **privacy protection** bila tersedia;
+- **klik tautan verifikasi** di email registrant, karena domain yang tidak diverifikasi akan
+  ditangguhkan;
+- nama domain **tidak bisa diubah** setelah terdaftar, jadi periksa ejaannya sebelum membayar.
 
 ### Tanpa domain?
 
-Aplikasi bisa dicoba lewat `http://<static-IP>`, tetapi:
+Aplikasi bisa dicoba lewat `http://<IP-server>`, tetapi:
 
 - tanpa HTTPS, password login dan access token terkirim tanpa enkripsi;
 - MQTT TLS juga butuh nama domain untuk sertifikatnya.
@@ -169,99 +167,184 @@ Untuk server yang dipakai orang lain, gunakan domain.
 
 ---
 
-## 2. Membuat server di Lightsail
+## 2. Menyiapkan VPS
 
-### 2.1 Amankan akun AWS dulu
+Nama menu berbeda di setiap penyedia, tetapi yang perlu disiapkan selalu sama. Contoh
+langkah per menu ada di Lampiran A dan B.
 
-1. Aktifkan **MFA** untuk akun root AWS (*Security credentials → Assign MFA device*).
-2. Untuk pekerjaan sehari-hari, buat user IAM dengan izin Lightsail, bukan memakai root.
-3. Pasang batas biaya: **Billing → Budgets → Create budget**, misalnya US$20 per bulan dengan
-   peringatan email.
-
-### 2.2 Buat instance
-
-Di [konsol Lightsail](https://lightsail.aws.amazon.com/) pilih **Create instance**:
+### 2.1 Spesifikasi server
 
 | Pilihan | Nilai | Alasan |
 |---|---|---|
-| Region | **Singapore** atau **Jakarta** | dekat dengan device di Indonesia. Kuota transfer region Jakarta hanya setengah dari region lain, tetapi lalu lintas IoT kecil |
-| Platform | Linux/Unix | |
-| Blueprint | **OS Only → Ubuntu 24.04 LTS** | Python 3.12 bawaan sama dengan lingkungan pengembangan; dukungan keamanan sampai 2029 |
-| SSH key | buat key pair baru, lalu **unduh dan simpan** file `.pem` | satu-satunya cara masuk; jangan dibagikan |
-| Network type | Dual-stack (IPv4 + IPv6) | ESP32 dan kebanyakan jaringan masih butuh IPv4 |
-| Plan | **2 GB RAM, 2 vCPU, 60 GB SSD** (US$12 per bulan dengan IPv4) | MySQL, Redis, Mosquitto, dan empat proses Python cukup lega. Paket 1 GB bisa untuk percobaan, dengan swap (langkah 4) |
-| Nama | `iot-platform` | |
+| Sistem operasi | **Ubuntu 24.04 LTS**, image bersih (tanpa panel hosting seperti cPanel/Plesk) | Python 3.12 bawaan sama dengan lingkungan pengembangan; dukungan keamanan sampai 2029. Seluruh perintah panduan ini untuk Ubuntu |
+| Virtualisasi | **KVM** (atau VM penuh lain), bukan OpenVZ/LXC | kontainer seperti OpenVZ/LXC sering tidak mengizinkan AppArmor, sandbox systemd, swap, atau ufw yang dipakai panduan ini |
+| Memori | **2 GB** (minimal 1 GB untuk percobaan, dengan swap di langkah 4.5) | MySQL, Redis, Mosquitto, dan empat proses Python cukup lega di 2 GB |
+| CPU | 1–2 vCPU | |
+| Disk | 25 GB SSD atau lebih | OS, database, log, backup 14 hari, file firmware |
+| Jaringan | **IPv4 publik**; IPv6 boleh sebagai tambahan | ESP32 dan kebanyakan jaringan masih butuh IPv4 |
+| Lokasi (region) | dekat dengan device, mis. **Jakarta** atau **Singapura** | latensi kecil untuk MQTT dan dashboard |
+| Login | **kunci SSH** (langkah 4), bukan password | |
 
-Pengguna Lightsail baru mendapat masa gratis untuk beberapa paket kecil (termasuk yang
-US$12, sampai 3 bulan). Perhatikan juga bahwa **instance yang di-stop tetap ditagih**; hanya
-instance yang dihapus yang berhenti ditagih.
+Bila penyedia meminta kunci SSH saat membuat server, buat dulu di laptop lalu tempelkan isi
+kunci **publik**-nya:
 
-### 2.3 Static IP
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/iot-server -C "iot-server"
+cat ~/.ssh/iot-server.pub          # yang ditempel di panel penyedia: HANYA file .pub
+```
 
-Tanpa static IP, alamat server berubah setiap kali instance di-stop lalu dinyalakan lagi.
+Kunci privat (`~/.ssh/iot-server`, tanpa `.pub`) tidak pernah dikirim ke mana pun. Bila
+penyedia membuatkan kunci dan Anda mengunduh file `.pem`, simpan di `~/.ssh/iot-server` dan
+pakai jalur itu di seluruh panduan.
 
-1. Buka **Networking → Create static IP**, lalu sambungkan ke `iot-platform`.
-2. Catat alamatnya (contoh di panduan ini: `203.0.113.10`).
+### 2.2 Amankan akun penyedia dulu
 
-Static IP gratis selama tersambung ke instance yang berjalan.
+Siapa pun yang masuk ke akun penyedia bisa menghapus atau mengambil alih server, jadi akun ini
+dijaga lebih ketat daripada server itu sendiri:
 
-### 2.4 Firewall Lightsail
+1. Aktifkan **MFA / verifikasi dua langkah**.
+2. Pakai email yang aman dan tidak dipakai bersama.
+3. Pasang **batas atau peringatan biaya** bila tersedia, mis. peringatan email di US$20 per
+   bulan.
 
-Buka instance → tab **Networking → IPv4 Firewall**. Hapus aturan bawaan yang tidak perlu,
-lalu isi:
+### 2.3 IP publik yang tetap
 
-| Application | Protocol | Port | Batasi ke IP |
+Device dan DNS menunjuk ke satu alamat, jadi alamat server **tidak boleh berubah**.
+
+- Di kebanyakan VPS, IP tetap selama server tidak dihapus. Periksa dokumentasi penyedia:
+  sebagian mengubah IP bila server dimatikan lalu dinyalakan (contoh Lightsail tanpa static
+  IP).
+- Bila penyedia punya fitur IP yang bisa dipindah (*Static IP*, *Reserved IP*, *Floating
+  IP*, *Primary IP*), pakai fitur itu. Saat server diganti (mis. dipulihkan dari snapshot),
+  IP cukup dipindah ke server baru tanpa mengubah DNS.
+
+Catat alamatnya (contoh di panduan ini: `203.0.113.10`).
+
+### 2.4 Firewall di panel penyedia
+
+Banyak penyedia punya firewall di luar server (*Firewall*, *Cloud Firewall*, *Security
+group*, *Firewall group*). Bila ada, isi aturan **masuk** berikut dan tolak sisanya:
+
+| Layanan | Protokol | Port | Sumber |
 |---|---|---|---|
-| SSH | TCP | 22 | **Ya**: `198.51.100.7` (IP Anda), dan centang **Allow Lightsail browser SSH** |
-| HTTP | TCP | 80 | tidak (dibutuhkan Let's Encrypt dan pengalihan ke HTTPS) |
-| HTTPS | TCP | 443 | tidak |
-| Custom | TCP | 8883 | tidak (MQTT TLS untuk device) |
+| SSH | TCP | 22 | **hanya IP Anda**: `198.51.100.7` (atau rentang IP kampus/kantor) |
+| HTTP | TCP | 80 | semua (dibutuhkan Let's Encrypt dan pengalihan ke HTTPS) |
+| HTTPS | TCP | 443 | semua |
+| MQTT TLS | TCP | 8883 | semua (device) |
 
 **Jangan** membuka 3306 (MySQL), 6379 (Redis), 1883 (MQTT tanpa TLS), atau 8001 (Daphne).
 UDP 5683 (CoAP) baru dibuka bila CoAP memang dipakai (bagian 11.3).
 
-Bila IPv6 aktif, isi **IPv6 Firewall** dengan aturan yang sama. Firewall IPv4 dan IPv6
-terpisah, dan yang terlupa menjadi celah.
-
-IP rumah atau kantor bisa berubah. Bila SSH tiba-tiba ditolak, masuk lewat **Connect using
-SSH** di konsol (browser SSH), lalu perbarui aturan port 22.
+- Bila IPv6 aktif, pastikan aturan IPv6 sama. Di sebagian panel, firewall IPv4 dan IPv6
+  diatur terpisah, dan yang terlupa menjadi celah.
+- Bila penyedia **tidak** punya firewall di panel, `ufw` di langkah 4.3 menjadi satu-satunya
+  firewall. Panduan tetap aman, tetapi kerjakan 4.3 dengan teliti.
+- IP rumah atau kantor bisa berubah. Ketahui cara masuk ke **konsol darurat** penyedia
+  (*web console*, *VNC*, *browser SSH*, *recovery console*) supaya tetap bisa memperbarui
+  aturan port 22 bila SSH tiba-tiba ditolak. Konsol ini biasanya meminta password user,
+  jadi siapkan dulu (langkah 4.0).
 
 ### 2.5 Snapshot otomatis
 
-Buka instance → tab **Snapshots → Automatic snapshots → Enable**, lalu pilih jam sepi
-(mis. 03:00). Lightsail menyimpan 7 snapshot harian terakhir, sehingga seluruh server bisa
-dipulihkan ke kondisi kemarin.
+Aktifkan **snapshot / backup otomatis** di panel penyedia bila tersedia, harian bila bisa,
+di jam sepi (mis. 03:00). Snapshot menyimpan seluruh disk, sehingga server bisa dipulihkan ke
+kondisi kemarin. Fitur ini biasanya berbayar kecil, dan tidak menggantikan backup database
+di bagian 13.
+
+Bila penyedia tidak punya snapshot, backup database harian (bagian 13) tetap jalan; salin
+hasilnya secara rutin ke luar server.
 
 ---
 
 ## 3. Mengarahkan domain ke server
 
-Buat **satu record A** di panel DNS: registrar (Pilihan B), TIK kampus (Pilihan A), atau
-**Domains & DNS** di Lightsail (Pilihan C).
+Buat **satu record A** di panel DNS: registrar (Pilihan B/C), TIK kampus (Pilihan A), atau
+pengelola DNS penyedia VPS.
 
 | Type | Name | Value | TTL |
 |---|---|---|---|
 | A | `iot` (atau `@` untuk domain utama) | `203.0.113.10` | 300 |
 
-Periksa dari laptop. Hasilnya harus static IP Anda; perubahan DNS bisa butuh beberapa menit
+Bila server punya IPv6 dan firewall IPv6 sudah diatur (2.4), boleh tambahkan record `AAAA`
+dengan alamat IPv6-nya. Bila ragu, cukup record A.
+
+Periksa dari laptop. Hasilnya harus IP server Anda; perubahan DNS bisa butuh beberapa menit
 sampai beberapa jam.
 
 ```bash
 dig +short iot.contoh.my.id
 ```
 
+Bila memakai Cloudflare sebagai DNS, set record ini ke **DNS only** (awan abu-abu). Proxy
+Cloudflare tidak meneruskan MQTT di port 8883.
+
 ---
 
 ## 4. Masuk lewat SSH dan mengamankan sistem operasi
 
+Seluruh panduan memakai user admin bernama **`ubuntu`** yang punya `sudo`, dan login dengan
+kunci SSH `~/.ssh/iot-server`. Image Ubuntu di sebagian penyedia sudah membuat user itu
+(mis. Lightsail); di banyak penyedia lain Anda hanya mendapat `root`.
+
+### 4.0 User admin (bila penyedia hanya memberi `root`)
+
+Lewati bagian ini bila `ssh -i ~/.ssh/iot-server ubuntu@203.0.113.10` sudah bisa masuk.
+
+Masuk sebagai root (dengan kunci SSH, atau password dari email/panel penyedia):
+
+```bash
+ssh -i ~/.ssh/iot-server root@203.0.113.10
+# bila penyedia memberi password root: ssh root@203.0.113.10
+```
+
+Di server, sebagai root:
+
+```bash
+id ubuntu 2>/dev/null || adduser --gecos "" ubuntu     # buat user; isi password kuat (untuk sudo & konsol darurat)
+usermod -aG sudo ubuntu
+install -d -m 700 -o ubuntu -g ubuntu /home/ubuntu/.ssh
+# salin kunci yang dipakai root; bila root masuk dengan password, isi file ini dengan isi ~/.ssh/iot-server.pub dari laptop
+cp /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys
+chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys && chmod 600 /home/ubuntu/.ssh/authorized_keys
+```
+
+Bila root masuk dengan password dan belum ada kunci, kirim kunci publik dari **laptop** lalu
+ulangi baris `cp` di atas:
+
+```bash
+ssh-copy-id -i ~/.ssh/iot-server.pub root@203.0.113.10
+```
+
+Dari terminal **baru** di laptop, pastikan user `ubuntu` bisa masuk dan memakai `sudo`
+sebelum lanjut. Login root akan dimatikan di 4.2:
+
+```bash
+ssh -i ~/.ssh/iot-server ubuntu@203.0.113.10
+sudo whoami          # ✔ root
+```
+
+Bila Anda memakai nama user lain, ganti `ubuntu` di seluruh panduan dengan nama itu.
+
+### Masuk sebagai `ubuntu`
+
 Dari laptop:
 
 ```bash
-chmod 400 ~/Downloads/iot-platform-key.pem          # wajib: SSH menolak key yang bisa dibaca orang lain
-ssh -i ~/Downloads/iot-platform-key.pem ubuntu@203.0.113.10
+chmod 600 ~/.ssh/iot-server          # wajib: SSH menolak kunci yang bisa dibaca orang lain
+ssh -i ~/.ssh/iot-server ubuntu@203.0.113.10
 ```
 
-Semua perintah di bawah dijalankan di server sebagai user `ubuntu` (punya `sudo`).
+Supaya lebih singkat, tambahkan ke `~/.ssh/config` di laptop:
+
+```
+Host iot-server
+    HostName 203.0.113.10
+    User ubuntu
+    IdentityFile ~/.ssh/iot-server
+```
+
+lalu cukup `ssh iot-server`. Semua perintah di bawah dijalankan di server sebagai user
+`ubuntu`.
 
 ### 4.1 Pembaruan keamanan otomatis
 
@@ -278,11 +361,11 @@ seperti kernel, baru berlaku setelah reboot. Cek sesekali dengan
 
 ### 4.2 Perketat SSH
 
-Lightsail sudah mematikan login dengan password. Pengaturan berikut membuatnya eksplisit,
-supaya tidak terbuka kembali tanpa sengaja:
+Matikan login dengan password dan login root. Sebagian image sudah melakukannya, sebagian
+tidak; pengaturan berikut membuatnya eksplisit di semua penyedia:
 
 ```bash
-sudo tee /etc/ssh/sshd_config.d/99-hardening.conf >/dev/null <<'EOF'
+sudo tee /etc/ssh/sshd_config.d/00-hardening.conf >/dev/null <<'EOF'
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitRootLogin no
@@ -292,15 +375,30 @@ EOF
 sudo sshd -t && sudo systemctl reload ssh
 ```
 
+Berkas diberi awalan `00-` dengan sengaja. Untuk SSH, nilai **pertama** yang terbaca yang
+berlaku, dan berkas di `/etc/ssh/sshd_config.d/` dibaca menurut abjad. Sebagian image
+menaruh `PasswordAuthentication yes` di berkas lain (mis. `50-cloud-init.conf`) yang akan
+mengalahkan berkas bernama `99-…`. Periksa hasil akhirnya:
+
+```bash
+sudo sshd -T | grep -E "^(passwordauthentication|permitrootlogin|kbdinteractiveauthentication)"
+# ✔ passwordauthentication no, permitrootlogin no, kbdinteractiveauthentication no
+```
+
+Server yang dulu dipasang dengan `99-hardening.conf` cukup mengganti namanya:
+`sudo mv /etc/ssh/sshd_config.d/99-hardening.conf /etc/ssh/sshd_config.d/00-hardening.conf`.
+
 **Jangan tutup** sesi SSH yang sedang terbuka. Buka terminal baru dan coba masuk sekali
 lagi. Bila gagal, perbaiki dari sesi lama.
 
 ### 4.3 Firewall di dalam server (ufw)
 
-Ini lapisan kedua di belakang firewall Lightsail. Bila suatu saat aturan Lightsail terbuka
-tanpa sengaja, port internal tetap tertutup.
+Ini lapisan kedua di belakang firewall penyedia (2.4), atau satu-satunya firewall bila
+penyedia tidak punya. Bila suatu saat aturan di panel terbuka tanpa sengaja, port internal
+tetap tertutup.
 
 ```bash
+sudo apt install -y ufw
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow OpenSSH          # IZINKAN SSH DULU, sebelum enable, agar tidak terkunci di luar
@@ -310,6 +408,11 @@ sudo ufw allow 8883/tcp
 sudo ufw enable
 sudo ufw status verbose
 ```
+
+Bila tidak ada firewall di panel penyedia, batasi SSH ke IP Anda di sini:
+`sudo ufw allow from 198.51.100.7 to any port 22 proto tcp`, lalu `sudo ufw delete allow
+OpenSSH`. Pastikan dulu konsol darurat penyedia bisa dipakai (2.4), karena IP rumah bisa
+berubah.
 
 ### 4.4 fail2ban
 
@@ -321,11 +424,13 @@ sudo systemctl enable --now fail2ban
 sudo fail2ban-client status sshd
 ```
 
-### 4.5 Swap (penting untuk paket 1–2 GB)
+### 4.5 Swap (penting untuk server 1–2 GB)
 
-Saat memori habis, sistem tidak langsung mematikan MySQL; swap memberi cadangan:
+Saat memori habis, sistem tidak langsung mematikan MySQL; swap memberi cadangan. Periksa
+dulu, karena sebagian image sudah punya swap:
 
 ```bash
+swapon --show                     # kosong = belum ada swap
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
 sudo mkswap /swapfile && sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
@@ -416,7 +521,7 @@ sudo -u iot -H git clone git@github.com:NAMA/IoT_platform.git /srv/iot/app
 ```bash
 # di Mac, dari folder project:
 rsync -av --exclude .env --exclude .git --exclude private_media --exclude __pycache__ \
-      --exclude "Claude outputs" -e "ssh -i ~/Downloads/iot-platform-key.pem" \
+      --exclude "Claude outputs" -e "ssh -i ~/.ssh/iot-server" \
       ./ ubuntu@203.0.113.10:/tmp/iot-app/
 # di server:
 sudo mv /tmp/iot-app /srv/iot/app && sudo chown -R iot:iot /srv/iot/app
@@ -839,7 +944,7 @@ EMAIL_USE_TLS=True
 DEFAULT_FROM_EMAIL=IoT Platform <akun.anda@gmail.com>
 ```
 
-- Port **587** (STARTTLS). Lightsail memblokir port 25 keluar, jadi jangan memakai 25.
+- Port **587** (STARTTLS). Banyak penyedia VPS memblokir port 25 keluar, jadi jangan memakai 25.
 - Untuk Gmail, `DEFAULT_FROM_EMAIL` harus alamat Gmail itu sendiri; alamat lain akan
   ditulis ulang oleh Gmail. Untuk Brevo/SES, pakai alamat di domain yang sudah diverifikasi.
 - `.env` tetap mode 600: password SMTP sama sensitifnya dengan password database.
@@ -956,7 +1061,8 @@ CoAP di project ini berjalan di atas UDP **tanpa enkripsi** (DTLS belum dikerjak
 token terlihat di jaringan. Aktifkan hanya bila memang dibutuhkan, misalnya untuk praktikum
 CoAP:
 
-1. Buka UDP 5683 di firewall Lightsail (IPv4 dan IPv6), lalu `sudo ufw allow 5683/udp`.
+1. Buka UDP 5683 di firewall penyedia (IPv4 dan IPv6, bila ada; bagian 2.4), lalu
+   `sudo ufw allow 5683/udp`.
 2. Jalankan `sudo systemctl enable --now iot-coap`.
 
 Setelah praktikum selesai, tutup lagi.
@@ -986,6 +1092,9 @@ Alamat yang dibutuhkan aplikasi klien ada di
 izin aplikasi di **My profile → Connected apps**. Penjelasan:
 `docs/tahap-22-login-untuk-aplikasi-lain.md`.
 
+MQTT Client (`mqtt.contoh.my.id`) dipasang di VPS yang sama dengan panduan tersendiri:
+`mqtt_client/docs/deploy.md` di repo `mqtt_client`.
+
 ---
 
 ## 12. Daftar periksa keamanan
@@ -995,8 +1104,8 @@ pengaturan masih berlaku.
 
 | # | Lapisan | Tindakan | Cara cek |
 |---|---|---|---|
-| 1 | Akun AWS | MFA di akun root, user IAM untuk pekerjaan harian, budget alarm | konsol IAM: *MFA: Assigned* |
-| 2 | Jaringan | Firewall Lightsail: 22 hanya IP Anda; 80, 443, 8883; IPv6 sama | tab Networking |
+| 1 | Akun penyedia | MFA, peringatan biaya (bagian 2.2) | pengaturan keamanan akun penyedia |
+| 2 | Jaringan | Firewall penyedia (bila ada): 22 hanya IP Anda; 80, 443, 8883; IPv6 sama | menu firewall di panel penyedia; dari luar: `nc -zv 203.0.113.10 3306` harus gagal |
 | 3 | Jaringan | ufw aktif dengan aturan yang sama | `sudo ufw status` |
 | 4 | Jaringan | Hanya Nginx, Mosquitto 8883, dan SSH yang mendengarkan alamat publik | `sudo ss -tulpn` (MySQL, Redis, 1883, 8001 harus `127.0.0.1`/`::1`) |
 | 5 | SSH | Key saja, tanpa root, `MaxAuthTries 3`, fail2ban | `sudo sshd -T \| grep -E "passwordauth\|permitroot"` |
@@ -1010,8 +1119,8 @@ pengaturan masih berlaku.
 | 13 | Database | User MySQL khusus, hanya `localhost`, hanya satu database | `sudo mysql -e "SELECT user,host FROM mysql.user"` |
 | 14 | MQTT | Tanpa tamu, akun per device, ACL per token, TLS | `mosquitto_sub` tanpa akun → *not authorised* |
 | 15 | OTA | File firmware di luar folder publik; link unduhan sekali pakai | `curl https://…/private_media/` → 404 |
-| 16 | Backup | Snapshot Lightsail harian + dump database harian | `sudo ls /srv/iot/backups`, tab Snapshots |
-| 17 | Pemantauan | Alarm metrik Lightsail (CPU, status check) ke email | tab Metrics → Add alarm |
+| 16 | Backup | Snapshot penyedia (bila ada) + dump database harian + salinan di luar server | `sudo ls /srv/iot/backups`, menu snapshot di panel |
+| 17 | Pemantauan | Alarm dari penyedia dan/atau pemantau uptime luar ke email | uji dengan mematikan `nginx` sebentar |
 
 ---
 
@@ -1019,9 +1128,10 @@ pengaturan masih berlaku.
 
 Ada dua lapis backup:
 
-1. **Snapshot otomatis Lightsail** (langkah 2.5). Isinya seluruh disk, disimpan 7 hari, dan
-   memulihkan server utuh. Pemulihan: tab Snapshots → snapshot → **Create new instance**,
-   lalu pindahkan static IP ke instance baru.
+1. **Snapshot penyedia** (langkah 2.5), bila ada. Isinya seluruh disk dan memulihkan server
+   utuh. Pemulihan biasanya berupa membuat server baru dari snapshot, lalu memindahkan IP
+   tetap (2.3) ke server baru; bila IP tidak bisa dipindah, perbarui record DNS (bagian 3)
+   dan tunggu propagasinya. Contoh Lightsail: Lampiran A.5.
 2. **`iot-backup.timer`** (pukul 02:30). Isinya dump MySQL dan file firmware, disimpan 14
    hari di `/srv/iot/backups`. Berguna untuk mengembalikan data tanpa mengembalikan seluruh
    server, atau untuk memindahkan data ke server lain.
@@ -1039,7 +1149,7 @@ sudo sh -c 'mkdir -p /tmp/iot-backup && cp /srv/iot/backups/db-*.sql.gz /tmp/iot
 Lalu dari laptop:
 
 ```bash
-scp -i ~/Downloads/iot-platform-key.pem "ubuntu@203.0.113.10:/tmp/iot-backup/*" ~/Backups/iot/
+scp -i ~/.ssh/iot-server "ubuntu@203.0.113.10:/tmp/iot-backup/*" ~/Backups/iot/
 ```
 
 Setelah selesai, hapus salinannya di server dengan `rm -r /tmp/iot-backup`.
@@ -1052,7 +1162,7 @@ sudo sh -c 'gunzip < /srv/iot/backups/db-20261015-0230.sql.gz | mysql iot_platfo
 sudo systemctl start iot.target
 ```
 
-Uji pemulihan sekali, misalnya ke instance percobaan dari snapshot. Backup yang belum pernah
+Uji pemulihan sekali, misalnya ke server percobaan dari snapshot. Backup yang belum pernah
 diuji belum bisa dianggap backup.
 
 ---
@@ -1083,7 +1193,7 @@ Perubahan `deploy/nginx/iot-platform.conf` **tidak** ikut diterapkan oleh skrip 
 file itu berubah, salin ulang seperti di langkah 8.3 (buat cadangan dulu).
 
 Bila satu langkah gagal, skrip berhenti dan layanan lama tetap berjalan. Untuk perubahan
-besar, buat snapshot manual dulu (tab Snapshots → **Create snapshot**).
+besar, buat snapshot manual dulu di panel penyedia.
 
 Bila kode disalin dengan rsync (cara 2 di langkah 7.2), jalankan rsync lagi, lalu baris
 `pip install` sampai `restart` dari skrip secara manual.
@@ -1095,7 +1205,7 @@ Tidak ada layanan systemd baru atau isian `.env` baru. Konfigurasi Nginx terbaru
 `http://` untuk API device) dipasang terpisah setelah device pindah ke TLS; lihat 14.2.
 
 ```bash
-# 1. cadangan dulu: snapshot manual di konsol, dan backup database
+# 1. cadangan dulu: snapshot manual di panel penyedia, dan backup database
 sudo systemctl start iot-backup.service
 sudo ls -lt /srv/iot/backups | head -3          # ✔ file backup terbaru hari ini
 
@@ -1215,15 +1325,40 @@ sudo nginx -t && sudo systemctl reload nginx
 Periksa:
 
 ```bash
-# broker WebSocket: jabat tangan berhasil
-curl -si --http1.1 https://DOMAIN-ANDA/mqtt -H "Connection: Upgrade" -H "Upgrade: websocket" \
-     -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-     -H "Sec-WebSocket-Protocol: mqtt" | head -1                   # ✔ HTTP/1.1 101 Switching Protocols
+# broker WebSocket: jabat tangan berhasil (-v menulis header ke layar; --max-time karena
+# koneksi WebSocket yang berhasil memang tetap terbuka)
+curl -sv --http1.1 -N --max-time 5 -o /dev/null https://DOMAIN-ANDA/mqtt \
+     -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Protocol: mqtt" \
+     2>&1 | grep -E "^< HTTP|Could not|Failed"                     # ✔ < HTTP/1.1 101 Switching Protocols
 # OpenID Connect
 curl -s https://DOMAIN-ANDA/o/.well-known/openid-configuration | head -c 200; echo   # ✔ "issuer":"https://DOMAIN-ANDA/o"
 curl -s -o /dev/null -w '%{http_code}\n' https://DOMAIN-ANDA/api/v2/me             # ✔ 401 (tanpa token)
 systemctl is-active iot-web iot-mqtt iot-rules iot-housekeeping mosquitto
 ```
+
+Pemeriksaan WebSocket tidak menampilkan apa pun? Pastikan `DOMAIN-ANDA` sudah diganti; `-s`
+menyembunyikan pesan *Could not resolve host*. Bila hasilnya bukan 101, periksa bagian demi
+bagian dari dalam server:
+
+```bash
+# a. listener WebSocket Mosquitto aktif?
+sudo ss -tlpn | grep 9001                       # ✔ 127.0.0.1:9001 ... mosquitto
+# b. langsung ke Mosquitto, tanpa Nginx
+curl -sv --http1.1 -N --max-time 3 -o /dev/null http://127.0.0.1:9001/mqtt \
+     -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Protocol: mqtt" \
+     2>&1 | grep -E "^< HTTP|Could not|Failed"  # ✔ < HTTP/1.1 101 Switching Protocols
+# c. Nginx sudah memakai konfigurasi baru?
+sudo grep -n "location = /mqtt" /etc/nginx/sites-available/iot-platform
+```
+
+| Hasil | Penyebab | Perbaikan |
+|---|---|---|
+| a kosong, atau b `Failed to connect` | listener 9001 belum aktif | salin ulang `iot.conf` (langkah 6), `sudo systemctl restart mosquitto`, lihat `sudo tail -n 20 /var/log/mosquitto/mosquitto.log` |
+| b 101, lewat domain tidak | Nginx belum memakai blok `/mqtt` | c harus menemukan baris itu; salin ulang konfigurasi (langkah 7), `sudo nginx -t && sudo systemctl reload nginx` |
+| lewat domain `404` | blok `/mqtt` ada di file lain atau di server block lain | pastikan file yang aktif: `ls -l /etc/nginx/sites-enabled/` |
+| lewat domain `502` | Nginx tidak bisa menghubungi 127.0.0.1:9001 | kembali ke a dan b |
 
 Di halaman device, tab **MQTT** kini memuat baris **WebSocket**, dan di **My profile** ada kartu
 **Connected apps**. Aplikasi klien didaftarkan nanti, saat aplikasinya siap (langkah 11.5).
@@ -1231,6 +1366,37 @@ Di halaman device, tab **MQTT** kini memuat baris **WebSocket**, dan di **My pro
 Bila Mosquitto gagal start dan `/var/log/mosquitto/mosquitto.log` menyebut *websockets* tidak
 didukung, paket Mosquitto di server dibuat tanpa dukungan WebSocket. Kembalikan `/root/iot.conf.bak`, lalu pasang paket Mosquitto
 dari PPA resmi (`ppa:mosquitto-dev/mosquitto-ppa`), yang selalu menyertakannya.
+
+### 14.4 Tahap 23: akun MQTT sandbox
+
+Tahap 23 hanya menambah kode, satu tabel (`mqtt_bridge 0001`), dan scope OAuth `mqtt:sandbox`.
+Tidak ada paket, layanan systemd, atau konfigurasi Nginx/Mosquitto baru: akun sandbox ditulis
+`iot-mqtt-accounts.timer` yang sudah berjalan sejak tahap 18.
+
+```bash
+sudo systemctl start iot-backup.service                 # cadangan dulu
+sudo /srv/iot/app/deploy/scripts/update.sh              # pull, migrate (mqtt_bridge 0001), restart
+```
+
+Sandbox aktif otomatis karena `MQTT_DEVICE_LOGIN=True`. Untuk mematikannya, tambahkan
+`MQTT_SANDBOX_ENABLED=False` di `.env` lalu `sudo systemctl restart iot.target`.
+
+Periksa:
+
+```bash
+# 1. My profile -> MQTT sandbox -> Create sandbox account. Tunggu sampai timer berjalan (<= 2 menit):
+sudo systemctl start iot-mqtt-accounts.service          # atau jalankan sekarang juga
+journalctl -u iot-mqtt-accounts -n 3 --no-pager         # ✔ "... 1 sandbox account(s) ..."
+# 2. dari laptop (ganti nilai dari kartu MQTT sandbox):
+mosquitto_sub -h iot.contoh.my.id -p 8883 --capath /etc/ssl/certs -u sbx-5 -P 'PASSWORD' -t 'sandbox/#' -v -C 1 &
+mosquitto_pub -h iot.contoh.my.id -p 8883 --capath /etc/ssl/certs -u sbx-5 -P 'PASSWORD' -t sandbox/USERNAME/hello -m hi
+# ✔ sandbox/USERNAME/hello hi
+```
+
+Di macOS, `--capath /etc/ssl/certs` diganti `--cafile /etc/ssl/cert.pem`.
+
+Aplikasi yang sudah login sebelum tahap ini (MQTT Client) belum memegang scope
+`mqtt:sandbox`; pengguna cukup logout lalu login lagi dan menyetujui izin baru.
 
 ---
 
@@ -1262,16 +1428,22 @@ sudo fail2ban-client status sshd             # IP yang sedang diblokir
 | ESP32 `POST … -> -1` / MQTT `state -2` setelah pindah ke TLS | `ROOT_CA` salah/kosong, atau jam belum sinkron | tempel ISRG Root X1 lengkap dengan baris BEGIN/END; pastikan Wi-Fi terhubung ke internet |
 | `update.sh` berhenti di `check --deploy` dengan `oauth.E001` / `oauth.E002` | kunci OIDC atau `OIDC_ISSUER` belum ada | langkah 14.3 nomor 3 dan 4, lalu jalankan `update.sh` lagi |
 | Aplikasi lain: `invalid_request ... redirect_uri` saat login | alamat callback tidak sama persis dengan yang didaftarkan | `manage.py oauth_client "<nama>" --redirect-uri <alamat persis>` |
-| Browser gagal ke `wss://…/mqtt` (MQTT.js: *connection closed*) | Nginx belum punya `location = /mqtt` atau listener 9001 belum ada | `curl` jabat tangan di 14.3 harus `101`; `ss -tlpn \| grep 9001` |
+| Browser gagal ke `wss://…/mqtt` (MQTT.js: *connection closed*) | Nginx belum punya `location = /mqtt` atau listener 9001 belum ada | `curl` jabat tangan di 14.3 harus `101`, ke Nginx dan langsung ke `http://127.0.0.1:9001/mqtt`; `ss -tlpn \| grep 9001` |
 | `certbot` gagal *Timeout* / *Invalid response* | DNS belum mengarah ke server, port 80 tertutup, atau Nginx HTTP belum aktif | cek `dig +short DOMAIN`, firewall, `curl -sI http://DOMAIN` (langkah 8.3) |
 | Device MQTT ditolak *not authorised* | akun belum dibuat (tunggu 2 menit) atau device nonaktif | `sudo systemctl start iot-mqtt-accounts iot-mqtt-reload`; cek `journalctl -u mosquitto` |
 | `iot-mqtt` terus restart | `MQTT_USERNAME`/`MQTT_PASSWORD` di `.env` tidak sama dengan akun broker | jalankan ulang `iot-mqtt-accounts` setelah mengubah `.env` |
 | ESP32 gagal TLS | `ROOT_CA` salah atau jam ESP32 belum sinkron | tempel ulang ISRG Root X1; tunggu NTP |
-| SSH ditolak tiba-tiba | IP rumah berubah atau diblokir fail2ban | browser SSH di konsol → perbarui firewall / `fail2ban-client unban <ip>` |
+| SSH ditolak tiba-tiba | IP rumah berubah atau diblokir fail2ban | konsol darurat penyedia (2.4) → perbarui firewall / `fail2ban-client unban <ip>` |
 | Server lambat, MySQL mati | memori habis | cek `free -h`; pastikan swap aktif; naikkan paket |
 
-Aktifkan juga **alarm metrik** Lightsail: tab Metrics → *CPU utilization* dan *Status check
-failures* → kirim email. Status check gagal berarti server tidak menjawab sama sekali.
+Aktifkan juga pemantauan dari luar server, karena server yang mati tidak bisa melaporkan
+dirinya sendiri:
+
+- **alarm penyedia** bila tersedia (CPU, status server) ke email; contoh Lightsail di
+  Lampiran A.8;
+- **pemantau uptime** gratis (mis. UptimeRobot, Better Stack) yang memeriksa
+  `https://iot.contoh.my.id/accounts/login/` setiap beberapa menit dan mengirim email bila
+  gagal.
 
 ---
 
@@ -1291,19 +1463,135 @@ ditangani dan perlu diketahui:
 
 ---
 
-## 17. Perkiraan biaya
+## 17. Ukuran server dan biaya
 
-Harga Lightsail per Oktober 2026; cek ulang di halaman harga resmi sebelum membuat server.
+Harga berubah-ubah dan berbeda antarpenyedia; cek halaman harga resmi sebelum membuat
+server. Komponen yang perlu dihitung:
+
+| Komponen | Catatan |
+|---|---|
+| VPS 2 GB RAM, IPv4 | biaya terbesar. Pilih paket dengan kuota transfer cukup; telemetri IoT jauh di bawah kuota paket terkecil sekalipun |
+| IPv4 publik / IP tetap | di sebagian penyedia termasuk paket, di sebagian lain ditagih terpisah |
+| Snapshot / backup otomatis | biasanya persentase dari harga server atau per GB per bulan |
+| Domain | `.my.id` mulai sekitar Rp17 ribu per tahun; `.com` belasan dolar per tahun; subdomain kampus gratis |
+| Let's Encrypt | gratis |
+
+Contoh angka konkret untuk Lightsail ada di Lampiran A.
+
+Hal yang sering terlupa: di banyak penyedia, server yang di-*stop* (dimatikan) **tetap
+ditagih**. Untuk menghentikan biaya, buat snapshot lalu **hapus** server.
+
+---
+
+## Lampiran A: contoh Amazon Lightsail
+
+Platform ini pertama kali dipasang di Lightsail. Bagian ini mencatat langkah per menu di
+konsol Lightsail untuk bagian 1–3, 10.1, 13, dan 15 di atas.
+
+### A.1 Akun AWS (bagian 2.2)
+
+1. Aktifkan **MFA** untuk akun root AWS (*Security credentials → Assign MFA device*).
+2. Untuk pekerjaan sehari-hari, buat user IAM dengan izin Lightsail, bukan memakai root.
+3. Pasang batas biaya: **Billing → Budgets → Create budget**, misalnya US$20 per bulan dengan
+   peringatan email.
+
+### A.2 Membuat instance (bagian 2.1)
+
+Di [konsol Lightsail](https://lightsail.aws.amazon.com/) pilih **Create instance**:
+
+| Pilihan | Nilai | Catatan |
+|---|---|---|
+| Region | **Singapore** atau **Jakarta** | kuota transfer region Jakarta hanya setengah dari region lain, tetapi lalu lintas IoT kecil |
+| Platform | Linux/Unix | |
+| Blueprint | **OS Only → Ubuntu 24.04 LTS** | user `ubuntu` sudah ada, jadi langkah 4.0 dilewati |
+| SSH key | unggah `~/.ssh/iot-server.pub`, atau buat key pair baru lalu **unduh** `.pem`-nya dan simpan sebagai `~/.ssh/iot-server` | |
+| Network type | Dual-stack (IPv4 + IPv6) | |
+| Plan | **2 GB RAM, 2 vCPU, 60 GB SSD** | |
+| Nama | `iot-platform` | |
+
+### A.3 Static IP (bagian 2.3)
+
+Tanpa static IP, alamat instance Lightsail berubah setiap kali instance di-stop lalu
+dinyalakan lagi.
+
+1. Buka **Networking → Create static IP**, lalu sambungkan ke `iot-platform`.
+2. Catat alamatnya. Static IP gratis selama tersambung ke instance yang berjalan.
+
+### A.4 Firewall (bagian 2.4)
+
+Buka instance → tab **Networking → IPv4 Firewall**. Hapus aturan bawaan yang tidak perlu,
+lalu isi sesuai tabel 2.4. Untuk SSH, batasi ke IP Anda dan centang **Allow Lightsail
+browser SSH**, supaya **Connect using SSH** di konsol tetap bisa dipakai sebagai konsol
+darurat. Isi juga **IPv6 Firewall** dengan aturan yang sama.
+
+### A.5 Snapshot otomatis (bagian 2.5 dan 13)
+
+Buka instance → tab **Snapshots → Automatic snapshots → Enable**, pilih jam sepi (mis.
+03:00). Lightsail menyimpan 7 snapshot harian terakhir.
+
+- Pemulihan: tab Snapshots → snapshot → **Create new instance**, lalu pindahkan static IP ke
+  instance baru.
+- Snapshot manual sebelum pembaruan besar: tab Snapshots → **Create snapshot**.
+
+### A.6 Domain dan DNS (bagian 1 dan 3)
+
+Domain bisa didaftarkan langsung di **Domains & DNS → Register domain** (tarif Route 53;
+sejak Juli 2026 `.com` sekitar US$16 per tahun). Domain `.id` tidak bisa didaftarkan dari
+Lightsail. Lightsail otomatis membuat zona DNS gratis; record A dibuat di menu yang sama.
+
+### A.7 Email (bagian 10.1)
+
+Lightsail memblokir port 25 keluar. Pakai port 587 seperti di 10.1.
+
+### A.8 Pemantauan (bagian 15)
+
+Tab **Metrics** → *CPU utilization* dan *Status check failures* → **Add alarm** → kirim
+email. Status check gagal berarti server tidak menjawab sama sekali.
+
+### A.9 Biaya (per Oktober 2026)
 
 | Komponen | Biaya |
 |---|---|
 | Instance 2 GB, IPv4 (Singapore) | US$12 per bulan (gratis 3 bulan pertama untuk pengguna Lightsail baru, untuk paket tertentu) |
 | Static IP | gratis selama tersambung ke instance yang berjalan |
 | Snapshot otomatis | US$0,05 per GB per bulan (inkremental; biasanya US$1–3) |
-| Transfer data | termasuk 3 TB per bulan (setengahnya di Jakarta). Telemetri IoT jauh di bawahnya |
-| Domain | `.my.id` mulai sekitar Rp17 ribu per tahun; `.com` di Route 53 sekitar US$16 per tahun; subdomain kampus gratis |
-| Let's Encrypt | gratis |
+| Transfer data | termasuk 3 TB per bulan (setengahnya di Jakarta) |
 | **Total** | **sekitar US$13–15 per bulan**, ditambah domain |
 
-Ingat: instance yang di-*stop* tetap ditagih penuh. Untuk menghentikan biaya, buat snapshot
-lalu **hapus** instance.
+Instance Lightsail yang di-*stop* tetap ditagih penuh.
+
+---
+
+## Lampiran B: catatan untuk penyedia lain
+
+Langkah bagian 2 dipetakan ke menu masing-masing penyedia. Nama menu bisa berubah; bila
+berbeda, cari padanannya di dokumentasi penyedia.
+
+| Kebutuhan (bagian) | Yang dicari di panel penyedia |
+|---|---|
+| Server Ubuntu 24.04, KVM (2.1) | *Create server / Droplet / Instance / VM*, image **Ubuntu 24.04 LTS** tanpa aplikasi tambahan |
+| Kunci SSH (2.1, 4) | *SSH keys*: tempel `~/.ssh/iot-server.pub` sebelum server dibuat |
+| IP tetap (2.3) | *Reserved IP*, *Floating IP*, *Primary IP*, *Static IP*, atau keterangan bahwa IP tetap selama server tidak dihapus |
+| Firewall (2.4) | *Firewall*, *Cloud Firewall*, *Firewall group*, *Security group* |
+| Konsol darurat (2.4) | *Console*, *VNC*, *Web console*, *Recovery* |
+| Snapshot (2.5) | *Snapshots*, *Backups*, *Automatic backups* |
+
+Hal yang sering berbeda dari Lightsail:
+
+- **Login awal sebagai `root`**, kadang dengan password yang dikirim lewat email atau
+  ditampilkan di panel. Kerjakan langkah 4.0, lalu 4.2 mematikan login root dan password.
+  Ganti password root yang dikirim lewat email itu (`sudo passwd root`) atau kunci
+  (`sudo passwd -l root`), karena email bukan tempat aman untuk password.
+- **Tanpa firewall di panel.** `ufw` (4.3) menjadi satu-satunya firewall; batasi SSH ke IP
+  Anda di sana.
+- **Port 25 keluar** diblokir di banyak penyedia (kadang hanya untuk akun baru). Panduan ini
+  memakai 587 (10.1), jadi tidak terpengaruh.
+- **VPS lokal Indonesia** (mis. IDCloudHost, Biznet Gio, Dewaweb, Jagoan Hosting): pastikan
+  paketnya **VPS/cloud server KVM** dengan akses root, bukan *shared hosting* atau paket
+  OpenVZ. Region Jakarta memberi latensi kecil ke device di Indonesia.
+- **Server kampus / VM di jaringan sendiri**: minta ke pengelola jaringan IP publik tetap,
+  dan port 22 (dibatasi), 80, 443, 8883 yang diteruskan ke VM. Bila VM berada di belakang
+  NAT, sertifikat Let's Encrypt tetap bisa diambil asalkan port 80 dari internet diteruskan
+  ke VM itu.
+- **Snapshot berbayar atau mingguan saja.** Backup database harian (bagian 13) tetap berjalan;
+  salin hasilnya ke luar server secara rutin.

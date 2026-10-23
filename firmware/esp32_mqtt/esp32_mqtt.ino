@@ -1,7 +1,7 @@
 /*
  * Contoh firmware ESP32: komunikasi dua arah dengan platform lewat MQTT,
  * lengkap dengan TLS dan pembaruan over-the-air (OTA). Satu sketch ini dipakai
- * dari tahap 3 (MQTT) sampai produksi (docs/deploy-lightsail.md).
+ * dari tahap 3 (MQTT) sampai produksi (docs/deploy-vps.md).
  *
  *   - Telemetri setiap 10 detik: suhu chip, kekuatan sinyal Wi-Fi, keadaan lampu.
  *   - Desired state "lamp" -> LED menyala/padam -> melapor balik (tahap 3).
@@ -67,7 +67,7 @@ const uint16_t MQTT_PORT  = 1883;
 const char* TOPIC_PREFIX  = "paste-MQTT_TOPIC_PREFIX-here";
 const char* ACCESS_TOKEN  = "paste-the-device-access-token-here";
 
-// ---- server produksi (docs/deploy-lightsail.md) -------------------------------------
+// ---- server produksi (docs/deploy-vps.md) -------------------------------------
 // USE_TLS 1: MQTT terenkripsi ke broker Mosquitto milik server (port 8883), dan unduhan
 // OTA lewat https://. Isi juga MQTT_HOST = domain server, MQTT_PORT = 8883, dan ROOT_CA.
 // USE_TLS 0: broker publik/lokal tanpa enkripsi (port 1883), hanya untuk belajar.

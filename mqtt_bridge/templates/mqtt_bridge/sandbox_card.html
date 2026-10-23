@@ -1,0 +1,41 @@
+{# Kartu "MQTT sandbox" di My profile (tahap 23, mqtt_bridge/views.py). #}
+{% if sandbox_available %}
+<div class="card shadow-sm mb-3" id="mqtt-sandbox">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
+      <div>
+        <h2 class="h5 mb-1">MQTT sandbox</h2>
+        <p class="small text-muted mb-2">Practice publish and subscribe on the platform broker without a device.
+          Messages here are not stored by IoT Platform.</p>
+      </div>
+      {% if not sandbox %}
+      <form method="post" action="{% url 'sandbox:enable' %}">{% csrf_token %}
+        <button type="submit" class="btn btn-outline-primary">Create sandbox account</button></form>
+      {% endif %}
+    </div>
+    {% if sandbox %}
+    <table class="table table-sm small w-auto mb-2">
+      <tbody>
+        <tr><th class="fw-normal text-muted pe-3">Broker</th><td><code>{{ sandbox_broker.host }}:{{ sandbox_broker.port }}</code>{% if sandbox_broker.tls %} (TLS){% endif %}{% if sandbox_broker.ws_url %}, <code>{{ sandbox_broker.ws_url }}</code>{% endif %}</td></tr>
+        <tr><th class="fw-normal text-muted pe-3">Username</th><td><code>{{ sandbox.username }}</code></td></tr>
+        <tr><th class="fw-normal text-muted pe-3">Password</th>
+          <td><div class="input-group input-group-sm" style="max-width: 22rem">
+            <input type="password" class="form-control font-monospace" id="sandbox-password" value="{{ sandbox.password }}" readonly>
+            <button type="button" class="btn btn-outline-secondary" data-copy-target="sandbox-password">Copy</button>
+          </div></td></tr>
+        <tr><th class="fw-normal text-muted pe-3">Your topics</th><td><code>{{ sandbox.topic_root }}/#</code> (read and write)</td></tr>
+        <tr><th class="fw-normal text-muted pe-3">Shared topics</th><td><code>{{ sandbox_shared_root }}/#</code> (all sandbox users)</td></tr>
+      </tbody>
+    </table>
+    <p class="small text-muted">A new or reset password works on the broker within about 2 minutes. Treat it like a
+      password: anyone who has it can use your sandbox topics.</p>
+    <div class="d-flex flex-wrap gap-2">
+      <form method="post" action="{% url 'sandbox:reset' %}">{% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-secondary">New password</button></form>
+      <form method="post" action="{% url 'sandbox:disable' %}">{% csrf_token %}
+        <button type="submit" class="btn btn-sm btn-outline-danger">Remove sandbox account</button></form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

@@ -77,6 +77,8 @@
       </div>
     </div>
 
+    {% include "mqtt_bridge/sandbox_card.html" %}
+
     {# Aplikasi lain yang login dengan akun ini (tahap 22). #}
     <div class="card shadow-sm mb-3">
       <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -99,4 +101,24 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Tombol "Copy" (kartu sandbox, tahap 23): salin isi elemen yang id-nya ditulis di data-copy-target.
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const field = document.getElementById(button.dataset.copyTarget);
+      try {
+        await navigator.clipboard.writeText(field.value);
+        button.textContent = "Copied";
+      } catch (err) {
+        field.type = "text";
+        field.select();
+        button.textContent = "Press Ctrl+C";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 2000);
+    });
+  });
+</script>
 {% endblock %}

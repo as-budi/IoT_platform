@@ -1,11 +1,13 @@
 """
 Perintah kustom:  python manage.py mqtt_accounts --passwd-file PATH --acl-file PATH
 
-Menyusun akun broker Mosquitto SENDIRI (server produksi, docs/deploy-lightsail.md)
+Menyusun akun broker Mosquitto SENDIRI (server produksi, docs/deploy-vps.md)
 dari isi database:
 
     akun platform (mqtt_bridge)   username/password = MQTT_USERNAME / MQTT_PASSWORD (.env)
     satu akun per device AKTIF    username = password = access token device
+    akun sandbox per pengguna     username sbx-<id>, password acak (tahap 23, bila
+                                  MQTT_SANDBOX_ENABLED); hanya topik sandbox/...
 
 lalu menulis dua file yang dibaca Mosquitto:
 
@@ -40,6 +42,18 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
 from devices.models import Device
+from mqtt_bridge.models import SHARED_ROOT, SandboxAccount
+
+
+def sandbox_acl(sandboxes):
+    """Aturan per akun sandbox: topik miliknya sendiri + area bersama."""
+    if not sandboxes:
+        return ""
+    lines = ["", "# Akun sandbox pengguna (tahap 23): hanya di bawah sandbox/, tidak menyentuh topik device."]
+    for account in sandboxes:
+        lines += [f"user {account.username}", f"topic readwrite {account.topic_root}/#",
+                  f"topic readwrite {SHARED_ROOT}/#"]
+    return "\n".join(lines) + "\n"
 
 
 def acl_text(prefix, bridge_user):
@@ -83,8 +97,12 @@ class Command(BaseCommand):
         tokens = list(Device.objects.filter(is_active=True).order_by("pk").values_list("access_token", flat=True))
         if bridge_user in tokens:
             raise CommandError("MQTT_USERNAME must not equal a device access token.")
+        sandboxes = []
+        if settings.MQTT_SANDBOX_ENABLED:
+            sandboxes = list(SandboxAccount.objects.filter(user__is_active=True).select_related("user").order_by("pk"))
         accounts = [(bridge_user, bridge_password)] + [(token, token) for token in tokens]
-        acl = acl_text(prefix, bridge_user)
+        accounts += [(account.username, account.password) for account in sandboxes]
+        acl = acl_text(prefix, bridge_user) + sandbox_acl(sandboxes)
 
         passwd_path, acl_path = Path(options["passwd_file"]), Path(options["acl_file"])
         # Sidik jari isi (akun + ACL). Hash password memakai salt acak, jadi file
@@ -92,7 +110,7 @@ class Command(BaseCommand):
         fingerprint = hashlib.sha256(repr((accounts, acl)).encode()).hexdigest()
         stamp = passwd_path.with_name(passwd_path.name + ".sha256")
         if passwd_path.exists() and acl_path.exists() and stamp.exists() and stamp.read_text().strip() == fingerprint:
-            self.stdout.write(f"No changes ({len(tokens)} device account(s)).")
+            self.stdout.write(f"No changes ({len(tokens)} device account(s), {len(sandboxes)} sandbox account(s)).")
             return
 
         program = shutil.which(options["mosquitto_passwd"])
@@ -123,5 +141,6 @@ class Command(BaseCommand):
         os.replace(temp_name, acl_path)
         stamp.write_text(fingerprint + "\n")
         self.stdout.write(self.style.SUCCESS(
-            f"Wrote {len(tokens)} device account(s) + platform account '{bridge_user}' to {passwd_path}; ACL to {acl_path}."
+            f"Wrote {len(tokens)} device account(s), {len(sandboxes)} sandbox account(s) + platform account "
+            f"'{bridge_user}' to {passwd_path}; ACL to {acl_path}."
         ))

@@ -22,6 +22,8 @@ Penjelasan konsep:
 - [docs/tahap-05-dashboard.md](docs/tahap-05-dashboard.md) — dashboard per lokasi & device, pengaturan tampil/sembunyi, side menu
 - [docs/tahap-21-mqtt-websocket.md](docs/tahap-21-mqtt-websocket.md) — broker MQTT untuk browser (MQTT over WebSocket, `wss://…/mqtt`)
 - [docs/tahap-22-login-untuk-aplikasi-lain.md](docs/tahap-22-login-untuk-aplikasi-lain.md) — platform sebagai penyedia login (OAuth 2.0 / OpenID Connect) dan API v2
+- [docs/tahap-23-mqtt-sandbox.md](docs/tahap-23-mqtt-sandbox.md) — akun MQTT sandbox per pengguna: belajar MQTT di broker platform tanpa device
+- [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat
 

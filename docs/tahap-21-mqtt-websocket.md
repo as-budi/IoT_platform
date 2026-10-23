@@ -54,18 +54,34 @@ access token, dan setiap device hanya boleh memakai topiknya sendiri.
 
 ## 4. Mencoba
 
-**Di server.** Langkahnya ada di `docs/deploy-lightsail.md` bagian 9.5 dan 14.3.
+**Di server.** Langkahnya ada di `docs/deploy-vps.md` bagian 9.3 dan 14.3.
 
 Cek jabat tangan WebSocket. Jawaban `101 Switching Protocols` berarti Nginx dan Mosquitto
 tersambung:
 
 ```bash
-curl -si --http1.1 https://iot.domain-anda/mqtt \
-     -H "Connection: Upgrade" -H "Upgrade: websocket" \
-     -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-     -H "Sec-WebSocket-Protocol: mqtt" | head -1
-# HTTP/1.1 101 Switching Protocols
+curl -sv --http1.1 -N --max-time 5 -o /dev/null https://iot.domain-anda/mqtt \
+     -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Protocol: mqtt" \
+     2>&1 | grep -E "^< HTTP|Could not|Failed"
+# < HTTP/1.1 101 Switching Protocols
 ```
+
+Header dibaca dari keluaran `-v` (stderr), bukan dari `-i | head`. Setelah 101, koneksi
+WebSocket memang tetap terbuka, sehingga `curl -i` tidak pernah selesai dan isinya tertahan di
+buffer pipa. `--max-time 5` menutupnya setelah 5 detik.
+
+Bila tidak ada 101, uji langsung ke Mosquitto di server (melewati Nginx):
+
+```bash
+curl -sv --http1.1 -N --max-time 3 -o /dev/null http://127.0.0.1:9001/mqtt \
+     -H "Connection: Upgrade" -H "Upgrade: websocket" -H "Sec-WebSocket-Version: 13" \
+     -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Protocol: mqtt" \
+     2>&1 | grep -E "^< HTTP|Could not|Failed"
+```
+
+101 di sini tetapi tidak lewat domain berarti masalahnya di Nginx. `Failed to connect` berarti
+listener 9001 belum aktif.
 
 **Dengan pustaka paho-mqtt (Python)**, yang juga mendukung WebSocket:
 

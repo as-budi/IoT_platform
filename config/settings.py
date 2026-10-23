@@ -189,6 +189,7 @@ OAUTH_SCOPES = {
     "email": "See your email address",
     "devices:read": "See your devices and the devices shared with you, including the access "
                     "tokens of devices you can edit (anyone with a token can act as that device)",
+    "mqtt:sandbox": "Use your MQTT sandbox account (topics under sandbox/), including its password",
 }
 
 # Model aplikasi klien bawaan paket (ditulis eksplisit karena oauth.Consent merujuknya).
@@ -300,13 +301,17 @@ MQTT_PUBLIC_HOST = os.getenv("MQTT_PUBLIC_HOST", "") or MQTT_HOST
 MQTT_PUBLIC_PORT = int(os.getenv("MQTT_PUBLIC_PORT", "") or MQTT_PORT)
 MQTT_PUBLIC_TLS = (os.getenv("MQTT_PUBLIC_TLS", "") or str(MQTT_TLS)) == "True"
 # True = broker meminta device login dengan username = password = access token
-# (broker sendiri + `python manage.py mqtt_accounts`, lihat docs/deploy-lightsail.md).
+# (broker sendiri + `python manage.py mqtt_accounts`, lihat docs/deploy-vps.md).
 MQTT_DEVICE_LOGIN = os.getenv("MQTT_DEVICE_LOGIN", "False") == "True"
 # Alamat MQTT over WebSocket untuk BROWSER (tahap 21), mis. wss://iot.domain-anda/mqtt:
 # listener WebSocket Mosquitto di belakang Nginx (deploy/mosquitto/iot.conf). Browser
 # tidak bisa membuka TCP 1883/8883, hanya WebSocket. Dipakai aplikasi MQTT client web
 # dan ditampilkan di tab MQTT halaman device. Kosong = tidak ada, tidak ditampilkan.
 MQTT_PUBLIC_WS_URL = os.getenv("MQTT_PUBLIC_WS_URL", "").strip()
+# Akun MQTT sandbox per pengguna (tahap 23): belajar publish/subscribe di sandbox/<username>/#
+# tanpa device. Hanya bermakna di broker sendiri yang memakai akun (MQTT_DEVICE_LOGIN=True).
+MQTT_SANDBOX_ENABLED = os.getenv("MQTT_SANDBOX_ENABLED", "") == "True" or (
+    os.getenv("MQTT_SANDBOX_ENABLED", "") == "" and MQTT_DEVICE_LOGIN)
 
 
 # --- CoAP ---------------------------------------------------------------------
@@ -429,7 +434,7 @@ OTA_DOWNLOAD_TTL = int(os.getenv("OTA_DOWNLOAD_TTL", "1800"))    # link unduhan 
 OTA_UPDATE_TIMEOUT = int(os.getenv("OTA_UPDATE_TIMEOUT", "900")) # seluruh update harus selesai dalam 15 menit
 
 
-# --- Produksi (lihat docs/deploy-lightsail.md) ----------------------------------------
+# --- Produksi (lihat docs/deploy-vps.md) ----------------------------------------
 # Semua di bawah hanya berlaku bila DJANGO_DEBUG=False. Di laptop (DEBUG=True)
 # tidak ada yang berubah.
 
