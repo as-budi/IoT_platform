@@ -1,0 +1,48 @@
+<h2 id="add">Adding a device</h2>
+<p>Devices → <em>Add device</em>. Only the name is required:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Name</th><td>How the device is shown everywhere, e.g. "Greenhouse node".</td></tr>
+    <tr><th class="text-nowrap">Type</th><td>Free text such as "temperature sensor" or "power meter".</td></tr>
+    <tr><th class="text-nowrap">Location</th><td>One of your locations (see <a href="#locations">Locations</a>).</td></tr>
+    <tr><th class="text-nowrap">Board</th><td>The microcontroller, e.g. ESP32 or ESP32-S3. Firmware updates use it to refuse firmware built for another board. The device can also report it by itself.</td></tr>
+    <tr><th class="text-nowrap">Description</th><td>Notes for yourself and the people you share the device with.</td></tr>
+    <tr><th class="text-nowrap">Active</th><td>An inactive device is kept with all its data, but the platform rejects new data from it.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="token">Access token</h2>
+<p>Every device gets a secret <strong>access token</strong>, shown in the <em>Connect a device</em> section of the device page.
+The device puts it in every request (HTTP and CoAP) or uses it as its MQTT username and password.</p>
+<ul>
+  <li>Treat it like a password: anyone who has it can send data as this device.</li>
+  <li><em>Generate new token</em> replaces it at once. The old token stops working immediately, so update the device afterwards.</li>
+  <li>Only the owner and users with the Editor role can see the token (<a href="{% url 'userdocs:page' 'sharing' %}">Sharing devices</a>).</li>
+</ul>
+
+<h2 id="device-page">The device page</h2>
+<p>Open a device from the device list or the dashboard. From top to bottom you find:</p>
+<ul>
+  <li><strong>Status</strong>: Online/Offline, the time of the last data and the protocol it came through.</li>
+  <li><strong>Active alarms</strong> of this device.</li>
+  <li><strong>Controls</strong> (actuators) and <strong>Sensors</strong>, with their latest values (<a href="{% url 'userdocs:page' 'control' %}">Controlling devices</a>).</li>
+  <li><strong>Firmware</strong>: running version, board, MAC address and over-the-air updates (<a href="{% url 'userdocs:page' 'firmware-updates' %}">Firmware updates</a>).</li>
+  <li><strong>Connect a device</strong>: the access token, plus addresses, topics and ready-to-copy examples for HTTP, MQTT and CoAP.</li>
+  <li><strong>Commands</strong> sent to the device and their results.</li>
+  <li><strong>State machines</strong> the device takes part in, <strong>Sharing</strong> and <strong>Connection history</strong>.</li>
+</ul>
+
+<h2 id="status">Online and offline</h2>
+<p>A device is <strong>online</strong> while it sends data, and becomes <strong>offline</strong> after {{ limits.offline_seconds }} seconds without data.
+An MQTT device that announces its session (see <a href="{% url 'userdocs:page' 'device-api' %}#mqtt-status">status topic</a>) stays online while
+the connection is open, even without data, and goes offline at once when the connection is lost.
+Every change is listed under <em>Connection history</em> with its reason and also appears in the activity log.</p>
+
+<h2 id="locations">Locations</h2>
+<p>Locations → <em>Add location</em>. Type the latitude and longitude, or click the map (you can drag the marker).
+Then choose the location when you add or edit a device. The dashboard groups devices by location, and the location
+page shows its devices on a map. A location that is still used by a device cannot be deleted: move those devices first.</p>
+
+<h2 id="delete">Deleting a device</h2>
+<p><em>Delete</em> on the device page removes the device with all its variables and data. Only the owner (or an administrator) can delete a device.
+If you only want to stop it from sending, make it inactive instead.</p>

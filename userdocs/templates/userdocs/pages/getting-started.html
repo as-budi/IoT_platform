@@ -1,0 +1,48 @@
+<p>IoT Platform collects data from your devices (for example an ESP32 with sensors), shows it on a dashboard,
+lets you switch actuators such as pumps and lamps, and reacts automatically with rules, alarms and notifications.</p>
+
+<h2 id="concepts">Main ideas</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Device</th><td>One physical board, e.g. "Greenhouse node". Every device has a secret <strong>access token</strong> that it uses to send data.</td></tr>
+    <tr><th class="text-nowrap">Variable</th><td>One value of a device, identified by a <strong>key</strong> such as <code>temperature</code>. A <em>sensor</em> variable is only read; an <em>actuator</em> variable can also be switched or set from the platform.</td></tr>
+    <tr><th class="text-nowrap">Telemetry</th><td>The readings a device sends, e.g. <code>{"temperature": 25.1, "humidity": 60}</code>. Each reading is stored with its time.</td></tr>
+    <tr><th class="text-nowrap">Location</th><td>A place on the map that groups devices, e.g. "Lab 3" or "Greenhouse A".</td></tr>
+    <tr><th class="text-nowrap">Rule</th><td>An automation, e.g. "if soil moisture is below 20 % for one minute, switch the pump on and raise an alarm".</td></tr>
+    <tr><th class="text-nowrap">Alarm</th><td>A problem raised by a rule. Someone acknowledges it; it clears when the cause is gone.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="first-device">Your first device in five steps</h2>
+<ol>
+  <li><strong>Create an account</strong> and activate it with the link in the email (<a href="{% url 'userdocs:page' 'account' %}">Your account</a>).</li>
+  <li><strong>Add a device</strong>: Devices → <em>Add device</em>. Give it a name; type, location and description are optional.</li>
+  <li><strong>Send data.</strong> Open the device page and copy its access token. The quickest test is a single command from a computer:
+<pre>curl -X POST {{ http.telemetry }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</pre>
+    Replace <code>&lt;token&gt;</code> with the access token. For a real board, follow <a href="{% url 'userdocs:page' 'connect-esp32' %}">Connect an ESP32</a>.</li>
+  <li><strong>Watch the data.</strong> The variable <code>temperature</code> is created automatically and appears on the device page and the dashboard (<a href="{% url 'userdocs:page' 'dashboard' %}">Dashboard, charts and history</a>).</li>
+  <li><strong>Automate.</strong> Create a rule that reacts to the data (<a href="{% url 'userdocs:page' 'rules' %}">Rules overview</a>).</li>
+</ol>
+
+<h2 id="menu">Where to find things</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Menu</th><th>What it is for</th></tr></thead>
+  <tbody>
+    <tr><td>Dashboard</td><td>Every variable of every device, grouped by location, updated live.</td></tr>
+    <tr><td>Devices</td><td>Your devices and devices shared with you; each device page has its data, controls, commands, firmware and connection details.</td></tr>
+    <tr><td>Locations</td><td>Places on a map that group devices.</td></tr>
+    <tr><td>Sharing groups</td><td>Lists of users you share devices with, e.g. a class team.</td></tr>
+    <tr><td>Activity log</td><td>What happened to your devices, rules and account.</td></tr>
+    <tr><td>Rules, Alarms</td><td>Automation and the problems it reports.</td></tr>
+    <tr><td>Firmware</td><td>Firmware files for updating devices over the air.</td></tr>
+    <tr><td>Documentation</td><td>These pages. Use the search box to find any topic.</td></tr>
+    <tr><td>My profile</td><td>Your name, email, password, Telegram, MQTT sandbox and connected apps (click your name at the bottom of the menu).</td></tr>
+  </tbody>
+</table>
+<p>Most pages also have a <strong>Help</strong> button that opens the matching chapter.</p>
+<p>On a large screen, the button next to <em>IoT Platform</em> at the top of the menu hides the menu to give the page more room;
+the button in the top-left corner shows it again. Your choice is remembered in this browser. On a small screen the menu opens from the ☰ button.</p>
+
+<h2 id="live">Live updates</h2>
+<p>Pages with data update by themselves. The switch <em>Live updates</em> at the top of those pages shows the state of the
+connection and can pause updates. While you type in a form, the page waits until you are done, so nothing you typed is lost.</p>

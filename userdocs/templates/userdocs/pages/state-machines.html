@@ -1,0 +1,46 @@
+<p>In a state machine every watched device is in <strong>one named state</strong> at a time, e.g. NORMAL, WARNING or CRITICAL.
+Transitions move a device to another state; actions run when a device enters or leaves a state.</p>
+<pre>NORMAL —(temperature &gt; 35)→ WARNING —(temperature &gt; 45)→ CRITICAL —(temperature &lt; 30)→ NORMAL
+     * —(device goes offline)→ OFFLINE</pre>
+
+<h2 id="devices">1. Devices to watch</h2>
+<p>One device, or every device you own. Conditions name a <strong>key</strong> such as <code>temperature</code>, not one variable,
+so the same machine works for every device that sends that key, and each device has its own current state.</p>
+
+<h2 id="states">2. States</h2>
+<p>Give each state a name, a meaning and a colour (the colour is only for the diagram). Exactly one state is the <strong>initial state</strong>:
+a device starts there the first time the rule sees it, without running any actions.</p>
+
+<h2 id="transitions">3. Transitions</h2>
+<p>From the device's current state, transitions are checked from top to bottom, and the first whose trigger holds moves the device.
+<code>*</code> as the source means "from any state".</p>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Trigger</th><th>Holds when</th></tr></thead>
+  <tbody>
+    <tr><td>When a condition holds</td><td>the condition is true; with "for N s" it must stay true that long</td></tr>
+    <tr><td>After some time in the state</td><td>the device has been N seconds in the source state; a transition back to the same state repeats its actions every N seconds</td></tr>
+    <tr><td>Device sends no data</td><td>no data for N seconds</td></tr>
+    <tr><td>Device goes offline</td><td>the device's status turns offline</td></tr>
+    <tr><td>Button (manual)</td><td>someone presses the button shown on the rule page for that device (needs the Operator role on the device)</td></tr>
+  </tbody>
+</table>
+<h3 id="condition-syntax">Writing conditions</h3>
+<p>Comparisons joined with <code>and</code> / <code>or</code>; <code>and</code> binds first. On/off values may be written as ON and OFF. Examples:</p>
+<pre>temperature &gt; 35
+temperature &gt; 35 and humidity &lt; 40 or temperature &gt; 45
+pump = ON</pre>
+
+<h2 id="actions">4. Actions on entering and leaving</h2>
+<p>Each state can have actions that run when a device <strong>enters</strong> it and when it <strong>leaves</strong> it. On a move, the old state's leaving actions run first,
+then the new state's entering actions. Besides the usual actions there is <strong>Clear alarm</strong>, which clears this rule's active alarm on the device
+(e.g. on entering NORMAL); one alarm per device stays active until it is cleared. Placeholders: <code>{device}</code>, <code>{state}</code>, <code>{from_state}</code>,
+<code>{to_state}</code>, <code>{values}</code>, <code>{value}</code>, <code>{time}</code>.</p>
+
+<h2 id="page">The rule page</h2>
+<ul>
+  <li>The <strong>diagram</strong> shows states and transitions with the number of devices in each state.</li>
+  <li><strong>Devices</strong> lists each device's state, since when, its latest values, pending timers, and the buttons.</li>
+  <li>The <strong>execution log</strong> lists every change of state with the values at that moment and the result of each action.</li>
+  <li>The device page also shows the state machines the device is in.</li>
+  <li>Saving, enabling or disabling the rule puts every device back in the initial state, without running actions.</li>
+</ul>

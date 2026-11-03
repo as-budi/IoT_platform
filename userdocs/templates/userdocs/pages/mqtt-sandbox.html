@@ -1,0 +1,24 @@
+<p>The MQTT sandbox lets you practise MQTT (publish, subscribe, wildcards, retained messages, QoS) on the platform's broker without a device.
+Messages in the sandbox are not stored and do not reach dashboards or rules.</p>
+{% if not mqtt.sandbox %}<div class="alert alert-light border small">The MQTT sandbox is not available on this server.</div>{% endif %}
+
+<h2 id="create">Creating your sandbox account</h2>
+<ol>
+  <li>My profile → <em>MQTT sandbox</em> → <em>Create sandbox account</em>.</li>
+  <li>The card shows the broker address, your sandbox username and password, and your topics. The account works on the broker within about 2 minutes.</li>
+</ol>
+<p>The sandbox password is <strong>not</strong> your login password. <em>New password</em> replaces it (clients still using the old one are disconnected within about 2 minutes);
+<em>Remove sandbox account</em> deletes the account.</p>
+
+<h2 id="topics">Topics you may use</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td><code>sandbox/&lt;your username&gt;/#</code></td><td>your own topics, read and write</td></tr>
+    <tr><td><code>sandbox/public/#</code></td><td>shared by all sandbox users, read and write</td></tr>
+  </tbody>
+</table>
+
+<h2 id="connect">Connecting</h2>
+<p>Broker <code>{{ mqtt.host }}</code>, port <code>{{ mqtt.port }}</code>{% if mqtt.tls %} with TLS{% endif %}{% if mqtt.ws_url %}, or <code>{{ mqtt.ws_url }}</code> from a browser{% endif %}. For example:</p>
+<pre>mosquitto_sub -h {{ mqtt.host }} -p {{ mqtt.port }}{% if mqtt.tls %} --tls-use-os-certs{% endif %} -u &lt;sandbox username&gt; -P &lt;sandbox password&gt; -t "sandbox/public/#" -v</pre>
+<p>Sandbox accounts cannot use device topics. To connect a real device, use its access token instead (<a href="{% url 'userdocs:page' 'device-api' %}#mqtt">MQTT reference</a>).</p>

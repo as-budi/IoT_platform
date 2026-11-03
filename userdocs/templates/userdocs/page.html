@@ -1,0 +1,90 @@
+{% extends "userdocs/layout.html" %}
+{% block title %}{{ doc.title }} · Documentation · IoT Platform{% endblock %}
+
+{% block grid_class %}{% if toc|length > 2 %} has-onpage{% endif %}{% endblock %}
+
+{% block aside %}
+{% if toc|length > 2 %}
+<aside class="docs-onpage-col d-none d-xl-block">
+  <nav class="docs-onpage" aria-label="On this page">
+    <div class="docs-onpage-title">On this page</div>
+    <ul>
+      {% for level, anchor, title in toc %}
+      <li class="level-{{ level }}"><a href="#{{ anchor }}" data-anchor="{{ anchor }}">{{ title }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+</aside>
+{% endif %}
+{% endblock %}
+
+{% block doc %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb small mb-2">
+    <li class="breadcrumb-item"><a href="{% url 'userdocs:index' %}">Documentation</a></li>
+    <li class="breadcrumb-item">{{ doc.section }}</li>
+  </ol>
+</nav>
+<h1 class="h3">{{ doc.title }}</h1>
+<p class="text-muted">{{ doc.summary }}</p>
+
+{% if toc|length > 2 %}
+{# Layar sempit/sedang: daftar isi di atas isi. Layar lebar: kolom kanan (block aside). #}
+<div class="docs-toc card card-body py-2 mb-4 small d-xl-none">
+  <div class="fw-semibold mb-1">On this page</div>
+  <ul class="mb-0 ps-3">
+    {% for level, anchor, title in toc %}{% if level == 2 %}<li><a href="#{{ anchor }}">{{ title }}</a></li>{% endif %}{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<article class="docs-content">
+{{ content }}
+</article>
+
+<nav class="d-flex justify-content-between gap-2 border-top pt-3 mt-5 small" aria-label="Previous and next chapter">
+  <div>{% if previous %}<a href="{% url 'userdocs:page' previous.slug %}">← {{ previous.title }}</a>{% endif %}</div>
+  <div class="text-end">{% if following %}<a href="{% url 'userdocs:page' following.slug %}">{{ following.title }} →</a>{% endif %}</div>
+</nav>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Sorot bagian yang sedang dibaca di sub-menu kiri dan di "On this page" kanan.
+  (() => {
+    const headings = [...document.querySelectorAll(".docs-content h2[id], .docs-content h3[id]")];
+    const links = [...document.querySelectorAll(".docs-nav-item.is-current .docs-nav-sublink, .docs-onpage a")];
+    if (!headings.length || !links.length || !("IntersectionObserver" in window)) return;
+    const mark = (id) => links.forEach((link) => link.classList.toggle("active", link.dataset.anchor === id));
+    const visible = new Set();
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => entry.isIntersecting ? visible.add(entry.target) : visible.delete(entry.target));
+      const first = headings.find((h) => visible.has(h));
+      if (first) {
+        // h3 tanpa tautan di sub-menu kiri: pakai h2 di atasnya untuk menu kiri.
+        mark(first.id);
+        if (first.tagName === "H3") {
+          const parent = headings.slice(0, headings.indexOf(first)).reverse().find((h) => h.tagName === "H2");
+          if (parent) document.querySelectorAll(`.docs-nav-sublink[data-anchor="${parent.id}"]`).forEach((l) => l.classList.add("active"));
+        }
+      }
+    }, { rootMargin: "0px 0px -70% 0px" });
+    headings.forEach((h) => observer.observe(h));
+  })();
+
+  // Tombol "Copy" pada contoh perintah: salin isi elemen yang id-nya di data-copy-target.
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const field = document.getElementById(button.dataset.copyTarget);
+      try {
+        await navigator.clipboard.writeText(field.value);
+        button.textContent = "Copied";
+      } catch (err) {
+        field.select();
+        button.textContent = "Press Ctrl+C";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 2000);
+    });
+  });
+</script>
+{% endblock %}

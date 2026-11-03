@@ -211,6 +211,57 @@ class ReportTests(OtaData):
             with self.subTest(data=data), self.assertRaisesMessage(services.PayloadError, message):
                 self.report(data)
 
+    def test_mac_address_is_normalized_and_stored(self):
+        # Tahap 24: MAC dikirim bersama versi firmware, dalam bentuk apa pun yang umum.
+        result = self.report({"version": "1.0.0", "board": "esp32", "mac": "24-6f-28-aa-bb-0c"})
+        self.assertIn("MAC 24:6F:28:AA:BB:0C", result)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.mac_address, "24:6F:28:AA:BB:0C")
+        self.assertIsNotNone(self.device.mac_reported_at)
+        for raw in ("246F28AABB0D", "246f.28aa.bb0d", " 24:6F:28:AA:BB:0D "):
+            with self.subTest(raw=raw):
+                self.report({"mac": raw})   # MAC saja juga boleh
+                self.device.refresh_from_db()
+                self.assertEqual(self.device.mac_address, "24:6F:28:AA:BB:0D")
+
+    def test_invalid_mac_rejects_the_whole_report(self):
+        for raw in ("24:6F:28:AA:BB", "24:6F:28:AA:BB:GG", "00:00:00:00:00:00", 246, None, ""):
+            with self.subTest(raw=raw), self.assertRaisesMessage(services.PayloadError, '"mac" must be text'):
+                self.report({"version": "9.9.9", "mac": raw})
+        self.device.refresh_from_db()
+        self.assertEqual((self.device.firmware_version, self.device.mac_address), ("1.0.0", ""))
+
+    def test_report_without_mac_keeps_working(self):
+        Device.objects.filter(pk=self.device.pk).update(mac_address="24:6F:28:AA:BB:CC")
+        self.report({"version": "1.0.1"})
+        self.device.refresh_from_db()
+        self.assertEqual((self.device.firmware_version, self.device.mac_address), ("1.0.1", "24:6F:28:AA:BB:CC"))
+
+    def test_mac_over_every_protocol(self):
+        token = self.device.access_token
+        response = self.client.post(reverse("api:firmware", args=[token]),
+                                    data=json.dumps({"version": "1.0.0", "mac": "AA:BB:CC:00:00:01"}),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        response = self.client.post(reverse("api:firmware", args=[token]), data=json.dumps({"mac": "nope"}),
+                                    content_type="application/json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('"mac" must be text', response.json()["error"])
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.mac_address, "AA:BB:CC:00:00:01")
+
+        result = handle_message(f"p/{token}/firmware", b'{"version": "1.0.0", "mac": "aa:bb:cc:00:00:02"}', "p")
+        self.assertTrue(result.ok)
+        self.assertIn("MAC AA:BB:CC:00:00:02", result.message)
+        reply = coap.handle("POST", [token, "firmware"], b'{"version": "1.0.0", "mac": "AABBCC000003"}')
+        self.assertTrue(reply.code.startswith("2."), reply.code)   # kelas 2.xx = sukses
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.mac_address, "AA:BB:CC:00:00:03")
+
+        self.client.force_login(self.siti)
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(page, "AA:BB:CC:00:00:03")
+
     def test_another_device_cannot_report_for_this_update(self):
         update = self.start()
         other = Device.objects.create(owner=self.budi, name="Other", board=Board.ESP32)
@@ -317,10 +368,10 @@ class OtaViewTests(OtaData):
         page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
         self.assertContains(page, 'id="firmware"')
         self.assertContains(page, "1.1.0 — Greenhouse firmware")
-        self.assertNotContains(page, "only works on this computer")
+        self.assertNotContains(page, "downloading firmware updates")
         # Dibuka lewat 127.0.0.1: ESP32 tidak bisa mengunduh dari alamat itu.
         local = self.client.get(reverse("devices:detail", args=[self.device.pk]), HTTP_HOST="127.0.0.1:8000")
-        self.assertContains(local, "only works on this computer")
+        self.assertContains(local, "Downloading firmware updates is not available from devices on this server yet")
         response = self.client.post(reverse("ota:start", args=[self.device.pk]), {"package": self.package.pk})
         self.assertRedirects(response, reverse("devices:detail", args=[self.device.pk]) + "#firmware",
                              fetch_redirect_response=False)

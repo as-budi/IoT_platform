@@ -92,7 +92,7 @@
           <dt class="col-6 fw-normal text-muted">Last cleared</dt>
           <dd class="col-6 mb-0">{% if state.last_cleared_at %}{{ state.last_cleared_at|timesince }} ago{% else %}never{% endif %}</dd>
         </dl>
-        <p class="small text-muted mt-3 mb-0">Rules are evaluated by the <code>rule_engine</code> worker. Saving or toggling a rule resets it to Idle.</p>
+        <p class="small text-muted mt-3 mb-0">Saving, enabling or disabling a rule resets it to Idle.</p>
       </div>
     </div>
   </div>

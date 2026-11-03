@@ -23,6 +23,8 @@ Penjelasan konsep:
 - [docs/tahap-21-mqtt-websocket.md](docs/tahap-21-mqtt-websocket.md) — broker MQTT untuk browser (MQTT over WebSocket, `wss://…/mqtt`)
 - [docs/tahap-22-login-untuk-aplikasi-lain.md](docs/tahap-22-login-untuk-aplikasi-lain.md) — platform sebagai penyedia login (OAuth 2.0 / OpenID Connect) dan API v2
 - [docs/tahap-23-mqtt-sandbox.md](docs/tahap-23-mqtt-sandbox.md) — akun MQTT sandbox per pengguna: belajar MQTT di broker platform tanpa device
+- [docs/tahap-24-mac-address-dan-panduan-koneksi.md](docs/tahap-24-mac-address-dan-panduan-koneksi.md) — MAC address device, menu "How to connect real devices", sertifikat, dan unduhan template firmware ESP32
+- [docs/tahap-25-dokumentasi-pengguna.md](docs/tahap-25-dokumentasi-pengguna.md) — halaman bersih untuk pengguna umum, dokumentasi pengguna `/docs/` dengan pencarian, dan peta pemindahan keterangan pengembang
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat

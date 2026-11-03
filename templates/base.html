@@ -12,6 +12,8 @@
   <title>{% block title %}IoT Platform{% endblock %}</title>
   {# Tema (light/dark) dipasang sedini mungkin supaya halaman tidak "berkedip". #}
   <script src="{% static 'js/theme.js' %}"></script>
+  {# Menu utama tersembunyi/tampil, juga dipasang sedini mungkin (static/js/sidebar.js). #}
+  <script src="{% static 'js/sidebar.js' %}"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
@@ -34,7 +36,14 @@
       <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close menu"></button>
     </div>
     <div class="offcanvas-body sidebar-body">
-      <a class="sidebar-brand d-none d-lg-flex" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
+      {# Layar lebar: nama platform + tombol menyembunyikan menu utama. #}
+      <div class="sidebar-head d-none d-lg-flex">
+        <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
+        <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true"
+                aria-label="Hide menu" title="Hide menu">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 10l-2 2 2 2"/></svg>
+        </button>
+      </div>
 
       {% with path=request.path %}
       <nav class="sidebar-nav" aria-label="Sections">
@@ -44,7 +53,7 @@
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
           Dashboard
         </a>
-        <a class="sidebar-link{% if path|slice:':9' == '/devices/' and '/locations/' not in path %} active{% endif %}" href="{% url 'devices:list' %}">
+        <a class="sidebar-link{% if path|slice:':9' == '/devices/' and '/locations/' not in path and '/devices/connect/' not in path %} active{% endif %}" href="{% url 'devices:list' %}">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M10 10h4v4h-4zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg>
           Devices
         </a>
@@ -77,6 +86,14 @@
         <a class="sidebar-link{% if path|slice:':10' == '/firmware/' %} active{% endif %}" href="{% url 'ota:package_list' %}">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v11M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
           Firmware
+        </a>
+
+        {# Tahap 25: dokumentasi pengguna dengan pencarian (app userdocs). #}
+        <div class="sidebar-section">Help</div>
+        <a class="sidebar-link{% if path|slice:':6' == '/docs/' %} active{% endif %}" href="{% url 'userdocs:index' %}"
+           {% if path|slice:':6' == '/docs/' %}aria-current="page"{% endif %}>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7M8 11h7"/></svg>
+          Documentation
         </a>
 
         {# Menu ini hanya muncul untuk Admin/staff. Pengamanan sebenarnya tetap ada di view. #}
@@ -123,6 +140,11 @@
   </aside>
 
   <div class="app-main">
+    {# Layar lebar, menu utama tersembunyi: tombol untuk menampilkannya lagi. #}
+    <button type="button" class="sidebar-reopen" data-sidebar-toggle aria-controls="sidebar" aria-expanded="false"
+            aria-label="Show menu" title="Show menu">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M14 10l2 2-2 2"/></svg>
+    </button>
     {# Bilah atas hanya di layar kecil: tombol untuk membuka side menu. #}
     <header class="app-topbar d-lg-none">
       <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar"
@@ -138,7 +160,10 @@
 <header class="public-topbar">
   <div class="container d-flex align-items-center justify-content-between">
     <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
-    {% include "includes/theme_switch.html" %}
+    <div class="d-flex align-items-center gap-3">
+      <a class="small" href="{% url 'userdocs:index' %}">Documentation</a>
+      {% include "includes/theme_switch.html" %}
+    </div>
   </div>
 </header>
 <main class="container pb-5">

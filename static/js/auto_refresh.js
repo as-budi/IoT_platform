@@ -144,7 +144,7 @@
       if (version !== knownVersion) {
         requestReload();
       } else if (mode === "poll") {
-        setStatus("Polling every " + pollMs / 1000 + " s · up to date at " + clock());
+        setStatus("Checking for new data every " + pollMs / 1000 + " s · up to date at " + clock());
       }
     } catch (err) {
       if (err.message === "401") {
@@ -197,7 +197,7 @@
     socket.addEventListener("open", () => {
       everOpened = true;
       failures = 0;
-      setStatus("Live (WebSocket)", "success");
+      setStatus("Live", "success");
       // Perubahan antara halaman dibuat dan koneksi terbuka tidak dikabarkan;
       // periksa sekali, lalu berkala sebagai cadangan.
       checkVersion();
@@ -209,7 +209,7 @@
       let event;
       try { event = JSON.parse(message.data); } catch (err) { return; }
       handleEvent(event);
-      if (!reloadNeeded) setStatus("Live (WebSocket) · last update " + clock(), "success");
+      if (!reloadNeeded) setStatus("Live · last update " + clock(), "success");
     });
 
     socket.addEventListener("close", (closeEvent) => {
@@ -240,7 +240,7 @@
 
   function startPolling() {
     mode = "poll";
-    setStatus("WebSocket unavailable; polling every " + pollMs / 1000 + " s", "warning");
+    setStatus("Live connection unavailable; checking every " + pollMs / 1000 + " s", "warning");
     checkVersion();
     clearInterval(pollTimer);
     pollTimer = setInterval(checkVersion, pollMs);

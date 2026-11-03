@@ -1,0 +1,90 @@
+<p>Everything a device can send and receive. The examples use this server's addresses; <code>{{ token }}</code> stands for the
+device's access token{% if token == "<token>" %} (copy it from the device page){% endif %}. The device page shows the same examples with the token filled in.</p>
+
+<h2 id="payload">Telemetry payload</h2>
+<p>All three protocols accept the same JSON:</p>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Form</th><th>Example</th><th>Time of the reading</th></tr></thead>
+  <tbody>
+    <tr><td>Values only</td><td><code>{"temperature": 25.1, "humidity": 60}</code></td><td>when the platform receives it</td></tr>
+    <tr><td>Values with a time</td><td><code>{"ts": 1791436800000, "values": {"temperature": 25.1}}</code></td><td><code>ts</code> in <strong>milliseconds</strong> since 1 January 1970 (UTC)</td></tr>
+    <tr><td>A list of either</td><td><code>[{"ts": 1791436800000, "values": {...}}, {"ts": 1791436860000, "values": {...}}]</code></td><td>per item, e.g. readings stored while Wi-Fi was down</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li>Keys: letters, digits and underscores, starting with a letter, at most 50 characters. New keys become new variables.</li>
+  <li>Values: numbers; <code>true</code>/<code>false</code> are stored as 1/0. Text is rejected.</li>
+  <li>At most 1000 values per message. A time in seconds instead of milliseconds, or more than 5 minutes in the future, is rejected.</li>
+  <li>A message is saved completely or rejected completely, never partly.</li>
+</ul>
+
+<h2 id="http">HTTP</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Purpose</th><th>Request</th></tr></thead>
+  <tbody>
+    <tr><td>Send telemetry</td><td><code>POST {{ http.telemetry }}</code></td></tr>
+    <tr><td>Firmware report (version, board, MAC) and update progress</td><td><code>POST {{ http.firmware }}</code></td></tr>
+  </tbody>
+</table>
+<p>Send the JSON as the body with the header <code>Content-Type: application/json</code>. Answers:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th>200</th><td>saved; the answer lists new variables, e.g. <code>{"saved": 2, "new_variables": ["humidity"]}</code></td></tr>
+    <tr><th>400</th><td>the body is not valid JSON or breaks a rule above; <code>{"error": "..."}</code> explains why</td></tr>
+    <tr><th>401</th><td>unknown access token</td></tr>
+    <tr><th>403</th><td>the device is inactive</td></tr>
+    <tr><th>405</th><td>use POST</td></tr>
+  </tbody>
+</table>
+<p>Try it from a computer:</p>
+<pre>curl -X POST {{ http.telemetry }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</pre>
+<p>HTTP only carries data from the device. To receive requested states and commands, use MQTT or CoAP.</p>
+
+<h2 id="mqtt">MQTT</h2>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">Broker</th><td><code>{{ mqtt.host }}</code>, port <code>{{ mqtt.port }}</code>{% if mqtt.tls %}, TLS (see <a href="{% url 'userdocs:page' 'security' %}#root-ca">certificates</a>){% endif %}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Username / password</th><td>{% if mqtt.login %}the access token, for both. Each device may only use topics that contain its own token.{% else %}not required{% endif %}</td></tr>
+    {% if mqtt.ws_url %}<tr><th class="fw-normal text-muted pe-3">WebSocket</th><td><code>{{ mqtt.ws_url }}</code> for browsers and web apps (same account and topics)</td></tr>{% endif %}
+  </tbody>
+</table>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Direction</th><th>Topic</th><th>Payload</th></tr></thead>
+  <tbody>
+    <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.telemetry }}</code></td><td>telemetry, see <a href="#payload">payload</a></td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested states of all actuators, e.g. <code>{"lamp": 1, "fan_speed": 40}</code>; kept by the broker (retained), so a device receives it right after subscribing</td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id": 12, "method": "blink", "params": {"times": 5}}</code>; not retained</td></tr>
+    <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code> or <code>{"success": false, "error": "..."}</code></td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message from the device was rejected: <code>{"error": "...", "topic": "..."}</code></td></tr>
+    <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.firmware }}</code></td><td>firmware report and update progress (<a href="{% url 'userdocs:page' 'firmware-updates' %}#report">firmware report</a>)</td></tr>
+    <tr id="mqtt-status"><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.status }}</code></td><td><code>online</code> after connecting and <code>offline</code> as Last Will, both retained (optional)</td></tr>
+  </tbody>
+</table>
+<p>Use QoS 1 for telemetry, desired states, commands and responses. After switching an actuator, publish its new state as telemetry
+with the same key, e.g. <code>{"lamp": 1}</code>, so the platform can show <em>In sync</em>.</p>
+<h3 id="mqtt-status-topic">Online status with Last Will</h3>
+<p>Connect with a Last Will message <code>offline</code> (retained, QoS 1) on the status topic, then publish <code>online</code> (retained) there.
+The device then counts as online while the connection is open, and as offline as soon as the broker notices the connection is gone,
+instead of after {{ limits.offline_seconds }} seconds without data.</p>
+<h3 id="mqtt-tools">Trying MQTT from a computer</h3>
+<p>With the Mosquitto command-line tools (or a graphical client such as MQTTX):</p>
+<pre>mosquitto_pub -h {{ mqtt.host }} -p {{ mqtt.port }}{% if mqtt.tls %} --tls-use-os-certs{% endif %}{% if mqtt.login %} -u {{ token }} -P {{ token }}{% endif %} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</pre>
+<pre>mosquitto_sub -h {{ mqtt.host }} -p {{ mqtt.port }}{% if mqtt.tls %} --tls-use-os-certs{% endif %}{% if mqtt.login %} -u {{ token }} -P {{ token }}{% endif %} -t "{{ mqtt.desired }}" -t "{{ mqtt.commands }}" -t "{{ mqtt.errors }}" -v</pre>
+
+<h2 id="coap">CoAP</h2>
+<p>Server <code>coap://{{ coap.host }}:{{ coap.port }}</code> (UDP, not encrypted). All resources start with <code>api/v1/&lt;token&gt;</code>:</p>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Method</th><th>Resource</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td>POST</td><td><code>{{ coap.base }}/telemetry</code></td><td>telemetry, see <a href="#payload">payload</a>; answer <code>2.04 Changed</code></td></tr>
+    <tr><td class="text-nowrap">GET (+ Observe)</td><td><code>{{ coap.base }}/desired</code></td><td>requested states, e.g. <code>{"pump": 1}</code>; with Observe the server sends changes by itself</td></tr>
+    <tr><td class="text-nowrap">GET (+ Observe)</td><td><code>{{ coap.base }}/commands</code></td><td>open commands: <code>{"commands": [{"id", "method", "params"}]}</code></td></tr>
+    <tr><td>POST</td><td><code>{{ coap.base }}/commands/&lt;id&gt;/response</code></td><td><code>{"success": true, ...}</code></td></tr>
+    <tr><td>POST</td><td><code>{{ coap.base }}/firmware</code></td><td>firmware report and update progress</td></tr>
+  </tbody>
+</table>
+<p>Error answers use CoAP codes: <code>4.00</code> wrong payload, <code>4.01</code> unknown token, <code>4.03</code> device inactive, <code>4.04</code> unknown resource.
+A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.</p>
+<p>Try it with <code>coap-client</code> from the libcoap tools:</p>
+<pre>coap-client -m post -t json -e '{"temperature": 25.1}' {{ coap.base }}/telemetry</pre>
+<pre>coap-client -m get -s 60 {{ coap.base }}/desired</pre>

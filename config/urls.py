@@ -38,6 +38,8 @@ urlpatterns = [
     path("activity/", include("activity.urls")),
     # Berbagi device dan grup (tahap 19).
     path("sharing/", include("sharing.urls")),
+    # Dokumentasi pengguna dengan pencarian (tahap 25), terbuka tanpa login.
+    path("docs/", include("userdocs.urls")),
     # Halaman depan langsung diarahkan ke dashboard.
     path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]

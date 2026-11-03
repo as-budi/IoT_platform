@@ -121,8 +121,48 @@ h1, .h1, h2, .h2, h3, .h3 {
   text-decoration: none;
 }
 
-.app-sidebar .sidebar-brand.d-lg-flex {
-  padding: 0 0.5rem 0.75rem;
+.sidebar-head {
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0 0.25rem 0.75rem 0.5rem;
+}
+
+/* Tombol menyembunyikan / menampilkan menu utama (static/js/sidebar.js). */
+.sidebar-toggle,
+.sidebar-reopen {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--app-muted);
+}
+.sidebar-toggle:hover,
+.sidebar-reopen:hover {
+  color: var(--bs-body-color);
+  background: var(--app-surface-2);
+  border-color: var(--app-border);
+}
+.sidebar-reopen { display: none; }
+
+@media (min-width: 992px) {
+  html.sidebar-collapsed .app-sidebar { display: none; }
+  html.sidebar-collapsed .sidebar-reopen {
+    display: inline-flex;
+    position: fixed;
+    top: 0.85rem;
+    left: 0.85rem;
+    z-index: 1030;
+    background: var(--app-surface);
+    border-color: var(--app-border);
+    box-shadow: var(--app-shadow);
+  }
+  /* Ruang yang dilepas menu utama dipakai halaman: tanpa batas lebar 1440 px. */
+  html.sidebar-collapsed .app-content { padding-left: 4.25rem; max-width: none; }
 }
 
 .brand-mark {
@@ -1164,3 +1204,65 @@ a.user-chip.active {
   .state-row, .transition-head, .transition-row { grid-template-columns: 1fr; }
   .transition-head { display: none; }
 }
+
+/* --- Dokumentasi pengguna (tahap 25, app userdocs) -------------------------------- */
+.docs-search { flex: 1 1 18rem; max-width: 30rem; }
+/* Menu kiri tiga tingkat (tahap 25): bagian (judul tebal) > bab (tautan, menjorok)
+   > bagian di dalam bab (sub-menu, menjorok lagi, dengan garis pemandu). */
+/* Kerangka dokumentasi: menu kiri dan "On this page" berlebar tetap, isi di tengah
+   mengisi sisa ruang. Saat menu utama disembunyikan, ruang tambahannya hanya untuk isi. */
+.docs-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+@media (min-width: 992px) {
+  .docs-grid { grid-template-columns: 17rem minmax(0, 1fr); column-gap: 2rem; }
+  .docs-aside { border-right: 1px solid var(--app-border); padding-right: 1rem; }  /* garis pembatas */
+}
+@media (min-width: 1200px) {
+  .docs-grid.has-onpage { grid-template-columns: 17rem minmax(0, 1fr) 13rem; }
+}
+.docs-nav { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; font-size: 0.9rem; padding-right: 0.25rem; }
+.docs-nav-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 0.75rem; }
+.docs-nav-group + .docs-nav-group { margin-top: 1.1rem; }
+.docs-nav-section { font-weight: 700; font-size: 0.85rem; color: var(--bs-body-color); margin-bottom: 0.3rem; }
+.docs-nav-list, .docs-nav-sub { list-style: none; margin: 0; padding: 0; }
+.docs-nav-list { padding-left: 0.75rem; }
+.docs-nav-row { display: flex; align-items: center; gap: 0.25rem; }
+.docs-nav-link {
+  flex: 1; display: block; padding: 0.28rem 0.5rem; border-radius: 0.375rem; color: var(--bs-body-color); text-decoration: none;
+}
+.docs-nav-link:hover { background: var(--app-accent-soft); }
+.docs-nav-link.active { background: var(--app-accent-soft); color: var(--app-accent); font-weight: 600; }
+.docs-nav-toggle {
+  flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem;
+  border: 0; border-radius: 0.375rem; background: transparent; color: var(--app-muted);
+}
+.docs-nav-toggle:hover { background: var(--app-accent-soft); color: var(--bs-body-color); }
+.docs-nav-toggle svg { transition: transform 0.15s ease; }
+.docs-nav-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+.docs-nav-sub { margin: 0.15rem 0 0.35rem 1.1rem; border-left: 1px solid var(--app-border); }
+.docs-nav-sublink {
+  display: block; padding: 0.2rem 0.6rem; margin-left: -1px; border-left: 2px solid transparent;
+  font-size: 0.82rem; color: var(--app-muted); text-decoration: none;
+}
+.docs-nav-sublink:hover { color: var(--bs-body-color); border-left-color: var(--app-border); }
+.docs-nav-sublink.active { color: var(--app-accent); border-left-color: var(--app-accent); font-weight: 600; }
+
+/* Kolom kanan "On this page" (layar lebar). */
+.docs-onpage { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; font-size: 0.82rem;
+  border-left: 1px solid var(--app-border); padding-left: 0.85rem; }
+.docs-onpage-title { font-weight: 700; margin-bottom: 0.4rem; }
+.docs-onpage ul { list-style: none; margin: 0; padding: 0; }
+.docs-onpage li { margin: 0.15rem 0; }
+.docs-onpage li.level-3 { padding-left: 0.75rem; }
+.docs-onpage a { color: var(--app-muted); text-decoration: none; }
+.docs-onpage a:hover { color: var(--bs-body-color); }
+.docs-onpage a.active { color: var(--app-accent); font-weight: 600; }
+.docs-card:hover { box-shadow: var(--app-shadow-hover) !important; }
+.docs-content { line-height: 1.6; }
+.docs-content h2 { font-size: 1.25rem; margin-top: 2.25rem; padding-top: 0.25rem; scroll-margin-top: 1rem; }
+.docs-content h3 { font-size: 1.05rem; margin-top: 1.5rem; scroll-margin-top: 1rem; }
+.docs-content table { font-size: 0.875rem; }
+.docs-content pre {
+  background: var(--app-surface-2); border: 1px solid var(--app-border); border-radius: 0.4rem;
+  padding: 0.75rem 1rem; font-size: 0.82rem; white-space: pre; overflow-x: auto;
+}
+.docs-results mark, .docs-results mark * { padding: 0 0.1em; }

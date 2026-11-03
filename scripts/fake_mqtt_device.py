@@ -73,6 +73,10 @@ class FakeDevice:
         self.topic_status = f"{base}/status"
         # Firmware yang "sedang berjalan" di device tiruan ini.
         self.firmware_version = args.firmware_version
+        # MAC tiruan yang tetap untuk token yang sama (tahap 24). Byte pertama 02 =
+        # "locally administered": tidak akan bentrok dengan MAC kartu jaringan asli.
+        digest = hashlib.sha256(args.token.encode()).hexdigest()[:10].upper()
+        self.mac = ":".join(["02"] + [digest[i:i + 2] for i in range(0, 10, 2)])
         self.seen_updates = set()   # command ota bisa terkirim ulang (QoS 1): jalankan sekali saja
         # Keadaan aktuator "fisik" device ini, mis. {"lamp": 1}.
         self.actuators = {}
@@ -115,7 +119,8 @@ class FakeDevice:
             client.publish(self.topic_status, "online", qos=1, retain=True)
         # Setiap kali (re)start: beri tahu platform firmware apa yang berjalan.
         # Laporan inilah yang menyelesaikan pembaruan OTA (UPDATED).
-        self.publish(self.topic_firmware, {"version": self.firmware_version, "board": self.args.board})
+        self.publish(self.topic_firmware, {"version": self.firmware_version, "board": self.args.board,
+                                           "mac": self.mac})
 
     # --- pesan masuk --------------------------------------------------------------
 

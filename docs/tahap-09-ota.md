@@ -339,3 +339,20 @@ sebaiknya dilayani web server seperti Nginx (`X-Accel-Redirect`).
 5. Tambahkan pemeriksaan "versi baru harus lebih tinggi daripada versi sekarang"
    (*downgrade* ditolak). Di fungsi mana sebaiknya diletakkan, dan bagaimana membandingkan
    `1.10.0` dengan `1.9.0` dengan benar?
+
+## Catatan operasional (dipindah dari halaman dan firmware, tahap 25)
+
+- Kartu *Firmware* di halaman device dulu menulis: *"The device would download from … which only
+  works on this computer. Set `OTA_BASE_URL` in `.env` … and start the server with
+  `runall 0.0.0.0:8000`."* Kini hanya **Admin** yang melihat nama pengaturannya; pengguna biasa
+  hanya diberi tahu bahwa unduhan pembaruan belum tersedia dari device dan diminta menghubungi
+  administrator. Perbaikannya tetap: isi `OTA_BASE_URL` dengan alamat yang dijangkau device
+  (laptop: `http://<IP-Wi-Fi>:8000` dan jalankan `runall 0.0.0.0:8000`; produksi:
+  `https://<domain>`).
+- Sketch `firmware/esp32_mqtt` dengan `USE_TLS 1` menolak unduhan `http://` dan melapor
+  `FAILED` ("Refusing http:// download in TLS mode"). Dulu komentar sketch menyuruh memperbaiki
+  `OTA_BASE_URL` menjadi `https://<domain>`; kini komentarnya ditujukan ke pengguna ("ask the
+  platform administrator"), dan perbaikannya dicatat di sini.
+- Langkah mencoba OTA (upload sekali lewat USB, ubah `FW_VERSION`, *Export Compiled Binary*,
+  upload di halaman Firmware) tetap ada di komentar sketch dalam bahasa Inggris, dan di bab
+  *Firmware updates and MAC address* di `/docs/`.

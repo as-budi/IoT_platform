@@ -1,0 +1,58 @@
+<h2 id="token">Access tokens</h2>
+<ul>
+  <li>The access token is the only thing a device needs to send data as that device. Keep it out of public code repositories and screenshots.</li>
+  <li>If a token may have leaked, click <em>Generate new token</em> on the device page. The old token stops working at once; update the device with the new one.</li>
+  <li>Only the owner and Editors of a device can see its token.</li>
+  <li>Firmware update downloads use separate, single-use links, so seeing an update command does not reveal the access token.</li>
+</ul>
+
+<h2 id="encryption">Encryption on this server</h2>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">HTTP</th><td>{% if http.https %}<span class="badge text-bg-success">https</span> encrypted{% else %}<span class="badge text-bg-secondary">http</span> not encrypted{% endif %}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">MQTT</th><td>{% if mqtt.tls %}<span class="badge text-bg-success">TLS</span> encrypted, port {{ mqtt.port }}{% else %}<span class="badge text-bg-secondary">no TLS</span> not encrypted{% endif %}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">CoAP</th><td><span class="badge text-bg-secondary">no DTLS</span> not encrypted: use it only on networks you trust</td></tr>
+  </tbody>
+</table>
+<p>Without encryption, anyone on the same network path can read the data and the access token. Prefer the encrypted protocols for devices that connect over the internet.</p>
+
+<h2 id="root-ca">The root certificate an ESP32 needs</h2>
+<p>With TLS (<code>https://</code> or encrypted MQTT) the server proves its identity with a certificate.
+The ESP32 checks that proof against a <strong>root certificate</strong> (root CA) that it carries in its firmware
+(<code>ROOT_CA</code> in the templates). This stops another machine from pretending to be the server.
+The device does <strong>not</strong> need a certificate of its own: it logs in with its access token inside the encrypted connection.</p>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">Root certificate</th><td>{{ root_ca.name }} (Let's Encrypt), valid until {{ root_ca.expires }}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">SHA-256 fingerprint</th><td><code class="small text-break">{{ root_ca.sha256 }}</code></td></tr>
+  </tbody>
+</table>
+<p>
+  <a class="btn btn-sm btn-outline-primary" href="{% url 'devices:connect_root_ca' %}">Download root certificate (PEM)</a>
+  <span class="small text-muted ms-1">The firmware templates already contain it; you need the file only for your own firmware. Downloading requires logging in.</span>
+</p>
+
+<h3 id="own-firmware">Using it in your own firmware</h3>
+<p>Paste the whole PEM text, including the <code>-----BEGIN CERTIFICATE-----</code> and <code>-----END CERTIFICATE-----</code> lines, into your sketch and pass it to the TLS client:</p>
+<pre>const char* ROOT_CA = R"PEM(
+-----BEGIN CERTIFICATE-----
+...
+-----END CERTIFICATE-----
+)PEM";
+
+WiFiClientSecure client;
+client.setCACert(ROOT_CA);</pre>
+<p>It is also published at <a href="https://letsencrypt.org/certificates/" target="_blank" rel="noopener">letsencrypt.org/certificates</a> ("Root Certificates", ISRG Root X1, PEM format).</p>
+
+<h3 id="other-server">Checking which root a server uses</h3>
+<p>To find out which certificate authority signed a server's certificate, run on a computer with OpenSSL:</p>
+<pre>openssl s_client -connect {% if mqtt.tls %}{{ mqtt.host }}:{{ mqtt.port }}{% else %}server.example.com:8883{% endif %} -showcerts &lt;/dev/null | openssl x509 -noout -issuer</pre>
+<p>The issuer printed is an intermediate certificate; the root is the one that signed it (shown as <code>i:</code> on the last certificate of <code>-showcerts</code>).
+Put the <strong>root</strong> in your firmware, not the intermediate: intermediates are replaced every few months, roots last for years.
+Renewing the server's own certificate does not affect devices as long as the root stays the same.</p>
+
+<h2 id="not-supported">Not supported</h2>
+<ul>
+  <li><strong>Client certificates per device</strong> (X.509, mutual TLS): devices are identified by their access token only.</li>
+  <li><strong>CoAP over DTLS</strong> (<code>coaps://</code>).</li>
+</ul>

@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <h1 class="h3 mb-0">Alarms</h1>
+  <h1 class="h3 mb-0">Alarms <span class="fs-6 align-middle ms-1">{% include "includes/help_link.html" with page="alarms-notifications" %}</span></h1>
   <div class="btn-group btn-group-sm" role="group" aria-label="Filter">
     <a class="btn btn-outline-secondary{% if not show_all %} active{% endif %}" href="{% url 'rules:alarms' %}">Active</a>
     <a class="btn btn-outline-secondary{% if show_all %} active{% endif %}" href="{% url 'rules:alarms' %}?show=all">All</a>

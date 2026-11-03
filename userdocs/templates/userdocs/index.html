@@ -1,0 +1,27 @@
+{% extends "userdocs/layout.html" %}
+{% block title %}Documentation · IoT Platform{% endblock %}
+
+{% block doc %}
+<p class="lead">How to use IoT Platform: connecting devices, following their data, automating with rules, and working together.</p>
+{% if not user.is_authenticated %}
+<div class="alert alert-light border small">
+  You can read everything here without an account. <a href="{% url 'accounts:register' %}">Sign up</a> or
+  <a href="{% url 'accounts:login' %}">log in</a> to try it with your own devices.
+</div>
+{% endif %}
+{% for section, items in sections %}
+<h2 class="h5 mt-4">{{ section }}</h2>
+<div class="row g-3">
+  {% for item in items %}
+  <div class="col-md-6">
+    <a class="card h-100 shadow-sm text-reset text-decoration-none docs-card" href="{% url 'userdocs:page' item.slug %}">
+      <div class="card-body">
+        <div class="fw-semibold mb-1">{{ item.title }}</div>
+        <div class="small text-muted">{{ item.summary }}</div>
+      </div>
+    </a>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+{% endblock %}

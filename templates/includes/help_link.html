@@ -1,0 +1,7 @@
+{% comment %}
+  Tautan "Help" ke bab dokumentasi (tahap 25). Butuh: page (slug), anchor (opsional).
+  Contoh: {% include "includes/help_link.html" with page="rules-eca" %}
+{% endcomment %}
+<a class="btn btn-sm btn-outline-secondary" href="{% url 'userdocs:page' page %}{% if anchor %}#{{ anchor }}{% endif %}" title="Open the documentation for this page">
+  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" class="me-1 align-text-top"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/></svg>Help
+</a>

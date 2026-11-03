@@ -1,0 +1,22 @@
+{% extends "userdocs/layout.html" %}
+{% block title %}Search{% if query %}: {{ query }}{% endif %} · Documentation · IoT Platform{% endblock %}
+
+{% block doc %}
+<h1 class="h4">Search{% if query %} results for “{{ query }}”{% endif %}</h1>
+{% if not query %}
+<p class="text-muted">Type at least two letters, e.g. <em>token</em>, <em>alarm</em> or <em>certificate</em>.</p>
+{% elif results %}
+<p class="small text-muted">{{ results|length }} result{{ results|length|pluralize }}{% if results|length == 30 %} (showing the best 30){% endif %}.</p>
+<ol class="list-unstyled docs-results">
+  {% for result in results %}
+  <li class="mb-3">
+    <a class="fw-semibold" href="{% url 'userdocs:page' result.page.slug %}{% if result.anchor %}#{{ result.anchor }}{% endif %}">{{ result.heading }}</a>
+    <span class="small text-muted">· {{ result.page.title }}</span>
+    <div class="small">{{ result.snippet }}</div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<p>Nothing matches <strong>{{ query }}</strong>. Try fewer or other words, or browse the chapters.</p>
+{% endif %}
+{% endblock %}

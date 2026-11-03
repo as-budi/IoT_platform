@@ -1,0 +1,43 @@
+<p>In a rule chain every message enters at <strong>Input</strong> and travels from node to node. Each node does one job and ends with a result:
+<strong>True/False</strong> for filters, <strong>Success/Failure</strong> for the others. The message follows the links with that result.
+A branch without a matching link simply ends.</p>
+<pre>Input → [Check value: temperature &gt; 32] —True→ [Add latest value: humidity] —Success→ [Set actuator: fan ON]
+                                                                           —Success→ [Rate limit: 600 s] —True→ [Send email]</pre>
+
+<h2 id="input">1. Input</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Telemetry messages</th><td>The chain runs once for every message from one device, or from any of your own devices. The message carries the keys the device sent, e.g. <code>temperature</code>, <code>humidity</code>.</td></tr>
+    <tr><th class="text-nowrap">On a schedule</th><td>The chain runs once at every scheduled time; telemetry does not start it. The message carries the time: <code>hour</code>, <code>minute</code>, <code>weekday</code> (0 = Monday), <code>day</code>, <code>month</code>. Use <em>Add latest value</em> nodes to bring in sensor data (<a href="{% url 'userdocs:page' 'schedules' %}">Schedules</a>).</td></tr>
+  </tbody>
+</table>
+
+<h2 id="nodes">2. Nodes</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Category</th><th>Node</th><th>What it does</th><th>Results</th></tr></thead>
+  <tbody>
+    <tr><td>Filter</td><td>Check value</td><td>compares a key with a number, e.g. <code>temperature &gt; 32</code></td><td>True, False, Failure (key missing)</td></tr>
+    <tr><td>Filter</td><td>Value changed</td><td>passes when the value changed by at least the minimum change since the last value that passed (per device); blank = any change</td><td>True, False, Failure</td></tr>
+    <tr><td>Filter</td><td>Rate limit</td><td>passes at most one message per N seconds (per device)</td><td>True, False</td></tr>
+    <tr><td>Enrichment</td><td>Add latest value</td><td>adds the latest stored value of a variable of any device you can see; optionally fails if that value is too old</td><td>Success, Failure (no data, too old, no access)</td></tr>
+    <tr><td>Transformation</td><td>Calculate</td><td><code>key = a op b</code> with keys or numbers; op is + − × ÷ min max</td><td>Success, Failure (missing value, division by zero)</td></tr>
+    <tr><td>Action</td><td>Set actuator, Send command, Create alarm, Clear alarm, Send email, Send Telegram message</td><td>see <a href="{% url 'userdocs:page' 'rules' %}#actions">what rules can do</a></td><td>Success, Failure</td></tr>
+  </tbody>
+</table>
+
+<h2 id="links">3. Links</h2>
+<p>Read each link as "when <em>from</em> ends with <em>label</em>, send the message to <em>to</em>". Two links with the same label send a copy of the
+message down each branch. Links must not loop back. Nodes that are not connected to Input are drawn dashed in the diagram and never run.</p>
+
+<h2 id="repeats">Avoiding repeated actions</h2>
+<p>A rule chain has no Idle/Active state: every message walks the graph from Input, so an action node runs <strong>every time</strong> a message reaches it.
+Put <em>Value changed</em> or <em>Rate limit</em> before emails and Telegram messages. <em>Set actuator</em> is skipped when the value is already requested,
+and <em>Create alarm</em> does not create a second alarm while the rule's alarm is still active.</p>
+
+<h2 id="page">The rule page</h2>
+<ul>
+  <li>The <strong>diagram</strong> shows nodes and links; <em>Export PNG</em> saves it as an image.</li>
+  <li><strong>Last message</strong> shows the path of the latest message through the chain, node by node, with what happened at each step.</li>
+  <li>The <strong>execution log</strong> lists messages that changed something (an actuator, a command, an alarm, an email) or whose action failed. A message that only found "already ON" is not logged.</li>
+  <li>Saving the rule clears what <em>Value changed</em> and <em>Rate limit</em> remember.</li>
+</ul>

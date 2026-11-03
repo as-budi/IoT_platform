@@ -1,0 +1,34 @@
+<h2 id="sign-up">Signing up</h2>
+<ol>
+  <li>Click <em>Sign up</em> on the login page and fill in the form.</li>
+  <li>We send an activation link to your email address. It works once and expires after {{ limits.email_link_hours }} hours.</li>
+  <li>Open the link and click <em>Activate account</em>. You can now log in.</li>
+</ol>
+<p>No email? Check the spam folder. On the login page, <em>Resend activation link</em> sends a new one.
+New accounts get the <strong>User</strong> role; only an administrator can change roles.</p>
+
+<h2 id="password">Forgotten or changing your password</h2>
+<ul>
+  <li><strong>Forgotten:</strong> on the login page click <em>Forgot your password?</em>, enter your email address and open the link we send. The link expires after {{ limits.email_link_hours }} hours.</li>
+  <li><strong>Changing:</strong> My profile → <em>Change password</em>. You are logged out of every other browser.</li>
+</ul>
+
+<h2 id="profile">My profile</h2>
+<p>Open it by clicking your name at the bottom of the side menu. There you can:</p>
+<ul>
+  <li>change your first name, last name and email address (a new email address is used only after you confirm it from that inbox);</li>
+  <li>connect Telegram to receive notifications from rules (<a href="{% url 'userdocs:page' 'alarms-notifications' %}#telegram">Telegram</a>);</li>
+  <li>create an MQTT sandbox account (<a href="{% url 'userdocs:page' 'mqtt-sandbox' %}">MQTT sandbox</a>);</li>
+  <li>see and remove apps that sign you in with your account (<a href="{% url 'userdocs:page' 'connected-apps' %}">Connected apps and API</a>);</li>
+  <li>change your password.</li>
+</ul>
+<p>Your username and role can only be changed by an administrator.</p>
+
+<h2 id="roles">Roles</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th>User</th><td>Sees and manages their own devices, locations, rules and firmware, plus devices shared with them.</td></tr>
+    <tr><th>Admin</th><td>Sees everything on the platform and manages user accounts (<a href="{% url 'userdocs:page' 'administration' %}">For administrators</a>).</td></tr>
+  </tbody>
+</table>
+<p>Access to one device can also be given to other users with the roles Viewer, Operator and Editor; see <a href="{% url 'userdocs:page' 'sharing' %}">Sharing devices</a>.</p>

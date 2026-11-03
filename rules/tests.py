@@ -328,7 +328,7 @@ class RuleViewTests(RuleTestData):
         response = self.client.get(reverse("rules:new"))
         for engine in ENGINES.values():
             self.assertContains(response, engine.label)
-        self.assertContains(response, "Coming in a later stage", count=3)
+        self.assertContains(response, "Coming soon", count=3)
         # Yang tersedia (ECA, FLOW, STATE_MACHINE) tampil sebelum yang direncanakan.
         keys = [engine.key for engine in response.context["engines"]]
         self.assertEqual(keys[:3], [RuleModel.ECA, RuleModel.FLOW, RuleModel.STATE_MACHINE])

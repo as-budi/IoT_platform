@@ -10,7 +10,8 @@
   </ol>
 </nav>
 <h1 class="h3 mb-1">Choose a rule model</h1>
-<p class="text-muted mb-4">Rule engines differ in what one rule can look at and how much it remembers. Pick the model that fits the automation.</p>
+<p class="text-muted mb-4">Rule engines differ in what one rule can look at and how much it remembers. Pick the model that fits the automation.
+  <a href="{% url 'userdocs:page' 'rules' %}#models">Which model should I use?</a></p>
 
 {# Daftar model diambil dari rules/engines/ (ENGINES). Model yang belum diimplementasikan tampil sebagai "Planned". #}
 <div class="row g-3">
@@ -39,7 +40,7 @@
           {% if engine.implemented %}
           <a class="btn btn-primary w-100" href="{% url 'rules:new_model' engine.key|lower %}">Use {{ engine.key }}</a>
           {% else %}
-          <button class="btn btn-outline-secondary w-100" type="button" disabled>Coming in a later stage</button>
+          <button class="btn btn-outline-secondary w-100" type="button" disabled>Coming soon</button>
           {% endif %}
         </div>
       </div>

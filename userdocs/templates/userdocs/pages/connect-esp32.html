@@ -1,0 +1,138 @@
+<p>This chapter takes you from an ESP32 board to live data on the platform. The firmware templates below are ready to use:
+the server address, port, topic prefix and root certificate are already filled in, and when you pick a device, its access token too.</p>
+
+{% if user.is_authenticated %}
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-sm-8 col-lg-6">
+        <label class="form-label" for="guide-device">Device to connect</label>
+        <select id="guide-device" name="device" class="form-select" onchange="this.form.submit()">
+          <option value="">— No device (templates without a token) —</option>
+          {% for item in devices %}
+          <option value="{{ item.pk }}" {% if device and device.pk == item.pk %}selected{% endif %}>{{ item.name }}{% if item.owner_id != user.pk %} ({{ item.owner.username }}){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-4 col-lg-3">
+        <noscript><button type="submit" class="btn btn-outline-primary w-100">Use this device</button></noscript>
+      </div>
+    </form>
+    {% if device %}
+    <p class="small text-muted mt-2 mb-0">Addresses, topics and downloads on this page now contain the access token of
+      <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>. Treat it like a password.</p>
+    {% elif devices %}
+    <p class="small text-muted mt-2 mb-0">Pick a device to have its access token filled in. Without one, you paste the token yourself.</p>
+    {% else %}
+    <p class="small text-muted mt-2 mb-0">You have no device you can edit yet. <a href="{% url 'devices:add' %}">Add a device</a> first, then come back here.</p>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<div class="alert alert-light border small">Log in to pick one of your devices: its access token is then filled in everywhere on this page.</div>
+{% endif %}
+
+<h2 id="overview">Overview</h2>
+<ol>
+  <li><strong>Create the device</strong> on the Devices page. Sensor variables are created automatically from the data; add actuator variables (e.g. <code>lamp</code>, kind "Actuator", "On / off") yourself if the device should be controlled.</li>
+  <li><strong>Prepare Arduino IDE</strong> with the ESP32 board package and the libraries of your protocol.</li>
+  <li><strong>Choose HTTP, MQTT or CoAP.</strong></li>
+  <li><strong>Download the firmware template</strong> and fill in your Wi-Fi name and password.</li>
+  <li><strong>Upload</strong> it to the ESP32 over USB and open Serial Monitor at 115200 baud.</li>
+  <li><strong>Check the device page</strong>: "Last data" changes every few seconds, and the Firmware card shows the running version, the board and the <a href="{% url 'userdocs:page' 'firmware-updates' %}#mac">MAC address</a>.</li>
+</ol>
+
+<h2 id="arduino-ide">Prepare Arduino IDE</h2>
+<ol>
+  <li>Install <strong>Arduino IDE 2</strong> from <a href="https://www.arduino.cc/en/software" target="_blank" rel="noopener">arduino.cc/en/software</a>.</li>
+  <li><em>Tools → Board → Boards Manager</em>: search <strong>esp32</strong> and install <strong>"esp32 by Espressif Systems"</strong>. If it is not listed, add this URL in <em>File → Preferences → Additional boards manager URLs</em>:
+    <code class="d-block mt-1">https://espressif.github.io/arduino-esp32/package_esp32_index.json</code></li>
+  <li><em>Tools → Board</em>: choose your board, e.g. <strong>ESP32 Dev Module</strong> (or ESP32-S3 / C3 Dev Module).</li>
+  <li><em>Tools → Partition Scheme</em>: keep a scheme with OTA support, e.g. <strong>Default 4MB with spiffs</strong>, so the device can later be <a href="{% url 'userdocs:page' 'firmware-updates' %}">updated over the air</a>.</li>
+  <li><em>Tools → Port</em>: the USB port of the board. No port? Install the USB-to-serial driver of the chip on your board (<strong>CP210x</strong> or <strong>CH340</strong>) and use a data cable, not a charge-only cable.</li>
+  <li><em>Sketch → Include Library → Manage Libraries</em>: install the libraries of your protocol.</li>
+</ol>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Protocol</th><th>Libraries to install</th></tr></thead>
+  <tbody>
+    {% for key, info in protocols.items %}
+    <tr><td>{{ info.label }}</td><td>{% for library in info.libraries %}{{ library }}{% if not forloop.last %}, {% endif %}{% empty %}none, everything comes with the ESP32 board package{% endfor %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2 id="protocol">Choose a protocol</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th></th><th>HTTP</th><th>MQTT</th><th>CoAP</th></tr></thead>
+  <tbody>
+    <tr><th class="fw-normal text-muted">How it works</th><td>one request per reading</td><td>one permanent connection to a broker, publish/subscribe</td><td>small UDP messages, request/response</td></tr>
+    <tr><th class="fw-normal text-muted">Direction</th><td>device → platform</td><td>both ways, instant</td><td>both ways (the template asks every 2 s)</td></tr>
+    <tr><th class="fw-normal text-muted">Actuators and commands</th><td>no</td><td>yes</td><td>yes</td></tr>
+    <tr><th class="fw-normal text-muted">Firmware updates</th><td>no</td><td>yes</td><td>not in this template</td></tr>
+    <tr><th class="fw-normal text-muted">Encryption on this server</th><td>{% if http.https %}yes (https){% else %}no{% endif %}</td><td>{% if mqtt.tls %}yes (TLS){% else %}no{% endif %}</td><td>no</td></tr>
+    <tr><th class="fw-normal text-muted">Good for</th><td>a first test, sensors only</td><td>most projects, especially over the internet</td><td>trusted local networks, battery devices</td></tr>
+  </tbody>
+</table>
+<p>Not sure? Start with <strong>HTTP</strong> to check the Wi-Fi and the token, then move to <strong>MQTT</strong>.</p>
+
+<h2 id="http">HTTP template</h2>
+<p>{{ protocols.http.summary }} Sketch: <code>{{ protocols.http.sketch }}.ino</code>.</p>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">Server (<code>SERVER</code>)</th><td><code>{{ http.base_url }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Telemetry</th><td><code>POST {{ http.telemetry }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Firmware and MAC</th><td><code>POST {{ http.firmware }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Encryption</th><td>{% if http.https %}yes: the sketch checks the server against <a href="{% url 'userdocs:page' 'security' %}#root-ca">ROOT_CA</a>{% else %}no{% endif %}</td></tr>
+  </tbody>
+</table>
+{% include "devices/includes/connect_reach.html" with reach=http.reach host=http.base_url setting="OTA_BASE_URL" what="the HTTP address shown here" %}
+<ul>
+  <li>The template sends random temperature and humidity every 10 seconds. Replace <code>readTemperature()</code> and <code>readHumidity()</code> with real sensor readings, e.g. a DHT22.</li>
+  <li>Serial Monitor shows each request and its status: <code>200</code> saved, <code>400</code> wrong JSON, <code>401</code> wrong token, <code>403</code> device inactive, <code>301</code> the server only accepts <code>https://</code>, a negative number means no connection.</li>
+</ul>
+{% include "devices/includes/connect_download.html" with protocol="http" %}
+
+<h2 id="mqtt">MQTT template</h2>
+<p>{{ protocols.mqtt.summary }} Sketch: <code>{{ protocols.mqtt.sketch }}.ino</code>.</p>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">Broker (<code>MQTT_HOST</code>)</th><td><code>{{ mqtt.host }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Port (<code>MQTT_PORT</code>)</th><td><code>{{ mqtt.port }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Encryption (<code>USE_TLS</code>)</th><td>{% if mqtt.tls %}<code>1</code>, see <a href="{% url 'userdocs:page' 'security' %}#root-ca">root certificate</a>{% else %}<code>0</code>, not encrypted{% endif %}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Topic prefix (<code>TOPIC_PREFIX</code>)</th><td><code>{{ mqtt.prefix }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Username / password</th><td>{% if mqtt.login %}the access token, for both{% else %}not required (the template sends the token anyway){% endif %}</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Telemetry topic</th><td><code>{{ mqtt.telemetry }}</code></td></tr>
+  </tbody>
+</table>
+<ul>
+  <li>The built-in LED follows the actuator <code>lamp</code>: add a variable with key <code>lamp</code>, kind "Actuator", value type "On / off", then switch it on the device page. The commands <code>blink</code> and <code>ping</code> also work.</li>
+  {% if mqtt.login %}<li>A new device, or a new token, can log in to the broker after about 2 minutes.</li>{% endif %}
+  <li>Serial Monitor prints <code>failed (state 5)</code> when the broker rejects the login (wrong token), and <code>state -2</code> when it cannot reach the broker (address, port, or <a href="{% url 'userdocs:page' 'security' %}#root-ca">certificate</a>).</li>
+  <li>All topics are listed in the <a href="{% url 'userdocs:page' 'device-api' %}#mqtt">device API reference</a>.</li>
+</ul>
+{% include "devices/includes/connect_download.html" with protocol="mqtt" %}
+
+<h2 id="coap">CoAP template</h2>
+<p>{{ protocols.coap.summary }} Sketch: <code>{{ protocols.coap.sketch }}.ino</code>.</p>
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th class="fw-normal text-muted pe-3">Server (<code>SERVER_HOST</code>)</th><td><code>{{ coap.host }}</code></td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Port (<code>SERVER_PORT</code>)</th><td><code>{{ coap.port }}</code> (UDP)</td></tr>
+    <tr><th class="fw-normal text-muted pe-3">Telemetry</th><td><code>POST {{ coap.base }}/telemetry</code></td></tr>
+  </tbody>
+</table>
+{% include "devices/includes/connect_reach.html" with reach=coap.reach host=coap.host setting="COAP_PUBLIC_HOST" what="CoAP" %}
+<ul>
+  <li>There is no broker: the ESP32 sends UDP packets straight to the server, so UDP port {{ coap.port }} must be reachable from the ESP32's network.</li>
+  <li>The built-in LED follows the actuator <code>pump</code> (change <code>ACTUATOR_KEY</code> for another key), and the commands <code>blink</code> and <code>ping</code> work.</li>
+  <li>CoAP traffic is <strong>not encrypted</strong>. Use it only on networks you trust.</li>
+</ul>
+{% include "devices/includes/connect_download.html" with protocol="coap" %}
+
+<h2 id="after-upload">After uploading</h2>
+<ol>
+  <li>Serial Monitor shows the Wi-Fi connection, the MAC address and every message the board sends.</li>
+  <li>On the device page, <em>Last data</em> changes and the status becomes <em>Online</em>. New keys appear as variables.</li>
+  <li>The Firmware card shows version <code>1.0.0</code>, the board and the MAC address.</li>
+  <li>Something wrong? See <a href="{% url 'userdocs:page' 'troubleshooting' %}#device">Troubleshooting</a>.</li>
+</ol>

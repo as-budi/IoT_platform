@@ -19,6 +19,12 @@
         <div class="fs-5 fw-semibold">{{ device.get_board_display|default:"unknown" }}</div>
         {% if not device.board and can_flash %}<div class="small text-muted">Set it with <a href="{% url 'devices:edit' device.pk %}">Edit</a>, or let the device report it.</div>{% endif %}
       </div>
+      {# Tahap 24: MAC address Wi-Fi, dilaporkan device bersama versi firmware. #}
+      <div class="col-sm-4">
+        <div class="small text-muted">MAC address</div>
+        <div class="fs-5 fw-semibold font-monospace" data-device-mac>{{ device.mac_address|default:"unknown" }}</div>
+        <div class="small text-muted">{% if device.mac_reported_at %}reported {{ device.mac_reported_at|timesince }} ago{% else %}sent by the device with its firmware version, see <a href="{% url 'userdocs:page' 'firmware-updates' %}#mac">MAC address</a>{% endif %}</div>
+      </div>
     </div>
 
     {% if ota_active %}
@@ -59,11 +65,7 @@
       </div>
     </form>
     {% if ota_reach == "loopback" %}
-    <div class="alert alert-warning small py-2 mb-2">
-      The device would download from <code>{{ ota_base_url }}</code>, which only works on this computer.
-      Set <code>OTA_BASE_URL</code> in <code>.env</code> to this computer's Wi-Fi address (e.g. <code>http://192.168.1.10:8000</code>)
-      and start the server with <code>runall 0.0.0.0:8000</code>.
-    </div>
+    {% include "devices/includes/connect_reach.html" with reach="loopback" host=ota_base_url setting="OTA_BASE_URL" what="downloading firmware updates" %}
     {% else %}
     <p class="small text-muted mb-2">The device downloads the file from <code>{{ ota_base_url }}</code>.</p>
     {% endif %}

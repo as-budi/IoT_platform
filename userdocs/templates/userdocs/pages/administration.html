@@ -1,0 +1,24 @@
+<p>This chapter is for users with the <strong>Admin</strong> role.</p>
+
+<h2 id="users">Managing users</h2>
+<p>The <em>Users</em> menu (Administration) lists every account with its role, status and number of devices.</p>
+<ul>
+  <li><strong>Add user</strong>: username, name, email, role and password. Use it for accounts that should not sign up themselves.</li>
+  <li><strong>Edit</strong>: change the username, name, email, role, or make the account inactive (an inactive user cannot log in; their devices stay).</li>
+  <li><strong>Delete</strong>: removes the user together with all their devices and data. This cannot be undone.</li>
+  <li><em>Awaiting email confirmation</em> marks accounts that signed up but have not activated yet.</li>
+</ul>
+
+<h2 id="see-all">What administrators see</h2>
+<ul>
+  <li>All devices, locations, rules, alarms, firmware and activity of every user (lists show the owner).</li>
+  <li>Administrators may change and delete any device, and choose its owner.</li>
+  <li>Notes about the server's configuration that ordinary users do not see, for example when devices cannot reach an address shown on the device page.</li>
+</ul>
+
+<h2 id="admin-site">Admin site</h2>
+<p>Staff accounts also see <em>Admin site</em> in the menu: a low-level editor for all stored data. Use it with care; changes there skip the checks of the normal pages.
+Apps that may use "Sign in with IoT Platform" (<a href="{% url 'userdocs:page' 'connected-apps' %}">Connected apps</a>) are registered there.</p>
+
+<h2 id="operations">Running the server</h2>
+<p>Installing, configuring and updating the server itself is described in the project's operator documentation, which is kept with the source code, not on this website.</p>

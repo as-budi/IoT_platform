@@ -1,0 +1,67 @@
+<h2 id="device">The device does not connect</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>What you see</th><th>Likely cause and fix</th></tr></thead>
+  <tbody>
+    <tr><td>Serial Monitor shows only dots after "Connecting to …"</td><td>Wrong Wi-Fi name or password, or a 5 GHz-only network: the ESP32 supports 2.4 GHz only.</td></tr>
+    <tr><td>Strange characters in Serial Monitor</td><td>Set the baud rate to 115200.</td></tr>
+    <tr><td>No port in Arduino IDE</td><td>Install the CP210x or CH340 USB driver and use a data cable.</td></tr>
+    <tr><td>HTTP status <code>-1</code> or MQTT state <code>-2</code></td><td>The server cannot be reached: wrong address or port, a firewall on your network, or (with encryption) a wrong <code>ROOT_CA</code> (<a href="{% url 'userdocs:page' 'security' %}#root-ca">root certificate</a>).</td></tr>
+    <tr><td>HTTP <code>401</code>, MQTT state <code>5</code>, CoAP <code>4.01</code></td><td>Wrong access token, or the token was regenerated. Download the firmware template again with the device selected.</td></tr>
+    <tr><td>HTTP <code>403</code></td><td>The device is inactive; activate it with <em>Edit</em> on the device page.</td></tr>
+    <tr><td>HTTP <code>301</code></td><td>The server accepts <code>https://</code> only. Change the address to https and fill in <code>ROOT_CA</code>.</td></tr>
+    <tr><td>HTTP <code>400</code></td><td>The JSON is invalid or breaks a rule (text values, keys with spaces, time in seconds). The answer explains which; see <a href="{% url 'userdocs:page' 'device-api' %}#payload">payload</a>.</td></tr>
+    <tr><td>MQTT connects but nothing is saved</td><td>Wrong topic prefix or token in the topic. Subscribe to the device's <code>errors</code> topic to see why messages are rejected.</td></tr>
+    <tr><td>A new device cannot log in to MQTT</td><td>New devices and new tokens are accepted by the broker after about 2 minutes.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="data">Data and status</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td>The device is shown offline although it works</td><td>It is offline after {{ limits.offline_seconds }} seconds without data. Send data more often, or use MQTT with the status topic (<a href="{% url 'userdocs:page' 'device-api' %}#mqtt-status-topic">Last Will</a>).</td></tr>
+    <tr><td>A new key did not appear</td><td>Keys must start with a letter and contain only letters, digits and underscores. Keys are case sensitive: <code>Temp</code> and <code>temp</code> are two variables.</td></tr>
+    <tr><td>The chart is empty</td><td>No data in the chosen range. The page tells you when the latest reading was; choose a longer range.</td></tr>
+    <tr><td>Readings appear at the wrong time</td><td>The device sent <code>ts</code> with a wrong clock. Leave <code>ts</code> out to use the time of arrival.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="control">Controls and commands</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td>An actuator stays on <em>Waiting for device</em></td><td>The device is offline, uses HTTP (which cannot receive requests), or does not report the new state back with the same key.</td></tr>
+    <tr><td><em>Mismatch</em></td><td>The device reported another value than requested: check the firmware and the hardware.</td></tr>
+    <tr><td>The LED of a template does not react</td><td>The actuator variable is missing or has another key than the template (<code>lamp</code> for MQTT, <code>pump</code> for CoAP).</td></tr>
+    <tr><td>Commands expire</td><td>The device was offline, or its firmware does not handle commands. Choose a longer expiry.</td></tr>
+    <tr><td>Commands fail with "Unknown method"</td><td>The firmware does not implement that method; the templates know <code>blink</code> and <code>ping</code> (and <code>ota</code> for MQTT).</td></tr>
+  </tbody>
+</table>
+
+<h2 id="rules">Rules and notifications</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td>A rule never activates</td><td>Check that it is enabled, and look at <em>Last evaluation</em> on the rule page: a value shown as unknown is older than <em>ignore values older than</em>. With <em>for at least</em>, the condition must hold that long.</td></tr>
+    <tr><td>A rule switches on and off rapidly</td><td>Add a <em>clear when</em> condition (hysteresis), a duration, or a cooldown (<a href="{% url 'userdocs:page' 'rules-eca' %}#clear">ECA rules</a>).</td></tr>
+    <tr><td>A rule chain sends too many emails</td><td>Put a <em>Rate limit</em> or <em>Value changed</em> node before the email node.</td></tr>
+    <tr><td>An action fails with "no access"</td><td>The rule's owner needs at least the Operator role on the target device.</td></tr>
+    <tr><td>A scheduled run was skipped</td><td>The execution log gives the reason: the condition was false or unknown, the rule was still active from the previous run, or the run could not start in time.</td></tr>
+    <tr><td>No Telegram message</td><td>Connect Telegram in My profile and use <em>Send test</em>. For groups and channels the bot must be a member or administrator.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="firmware">Firmware updates</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td>No version to choose under <em>Update to</em></td><td>No uploaded firmware for this device's board, or the board is not set.</td></tr>
+    <tr><td>The update fails after <em>Updating</em> and the old version is back</td><td>The new firmware did not start: check it over USB first. Use a partition scheme with OTA support.</td></tr>
+    <tr><td>Stays <em>Queued</em> and then fails</td><td>The device was offline or does not run firmware that supports updates (the MQTT template does).</td></tr>
+  </tbody>
+</table>
+
+<h2 id="account">Account</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><td>No activation or reset email</td><td>Check the spam folder; request a new link on the login page. Links expire after {{ limits.email_link_hours }} hours.</td></tr>
+    <tr><td>"Session expired" on a page</td><td>Log in again; live updates resume.</td></tr>
+  </tbody>
+</table>
+<p>Still stuck? Contact the administrator of this platform.</p>

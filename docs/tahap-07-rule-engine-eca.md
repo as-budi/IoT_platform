@@ -262,3 +262,11 @@ Untuk email sungguhan, isi `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`,
 3. Matikan worker, kirim beberapa data, lalu jalankan lagi. Periksa panjang antrean dengan
    `redis-cli llen rule-engine:messages` sebelum dan sesudahnya.
 4. Tambahkan placeholder `{unit}` ke pesan alarm (petunjuk: `EcaEngine.context()`).
+
+## Catatan (tahap 25)
+
+- Halaman detail aturan dulu menulis *"Rules are evaluated by the `rule_engine` worker."* Kini
+  hanya *"Saving, enabling or disabling a rule resets it to Idle."* Worker tetap wajib berjalan
+  (bagian 4): tanpa `rule_engine`, durasi, cooldown, device diam, dan jadwal tidak pernah selesai.
+- Tombol model yang belum diimplementasikan di halaman *Choose a rule model* kini berbunyi
+  *"Coming soon"* (dulu *"Coming in a later stage"*, yang merujuk tahap pengembangan).

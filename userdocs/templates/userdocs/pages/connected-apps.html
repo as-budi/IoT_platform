@@ -1,0 +1,36 @@
+<p>Other apps can let you sign in with your IoT Platform account, for example a web MQTT client. They never see your password.</p>
+
+<h2 id="sign-in">Signing in to another app</h2>
+<ol>
+  <li>In the other app, choose to sign in with IoT Platform. You are sent to this platform (log in if needed, or sign up first).</li>
+  <li>The page <em>Allow …?</em> lists what the app asks for. Click <em>Allow</em> to continue or <em>Cancel</em> to refuse.</li>
+</ol>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Permission</th><th>What the app gets</th></tr></thead>
+  <tbody>
+    <tr><td>Sign you in</td><td>proof that it is you</td></tr>
+    <tr><td>Profile, email</td><td>your username and name; your email address</td></tr>
+    <tr><td>Devices</td><td>your devices and the devices shared with you, including the access tokens of devices you can edit (anyone with a token can act as that device)</td></tr>
+    <tr><td>MQTT sandbox</td><td>your sandbox account, including its password</td></tr>
+  </tbody>
+</table>
+
+<h2 id="manage">Managing connected apps</h2>
+<p>My profile → <em>Connected apps</em> → <em>Manage</em> lists the apps you allowed, when, and when they were last used.
+<em>Revoke access</em> stops an app at once; it has to ask you again next time.</p>
+
+<h2 id="api">For app developers</h2>
+<p>Apps are registered by the platform administrator. Registered apps use OAuth 2.0 with OpenID Connect (authorization code with PKCE) and
+call the API with the access token they receive:</p>
+<pre>curl -H "Authorization: Bearer &lt;access_token&gt;" {{ http.base_url }}/api/v2/me/devices</pre>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Request</th><th>Returns</th><th>Scope</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /api/v2/me</code></td><td>the signed-in user (email only with the <code>email</code> scope)</td><td><code>profile</code></td></tr>
+    <tr><td><code>GET /api/v2/me/devices</code></td><td>broker details, devices with role, status, firmware, MAC address, variables, and token and topics where allowed</td><td><code>devices:read</code></td></tr>
+    <tr><td><code>GET /api/v2/me/sandbox</code></td><td>the user's MQTT sandbox account</td><td><code>mqtt:sandbox</code></td></tr>
+  </tbody>
+</table>
+<p>Answers: <code>200</code> success, <code>401 invalid_token</code> (missing, wrong, expired or revoked token, or inactive account),
+<code>403 insufficient_scope</code> (the user did not allow that permission). A browser login session does not work on <code>/api/v2/</code>.
+The OpenID Connect discovery document is at <code>{{ http.base_url }}/o/.well-known/openid-configuration</code>.</p>

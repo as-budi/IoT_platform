@@ -1388,15 +1388,65 @@ Periksa:
 sudo systemctl start iot-mqtt-accounts.service          # atau jalankan sekarang juga
 journalctl -u iot-mqtt-accounts -n 3 --no-pager         # ✔ "... 1 sandbox account(s) ..."
 # 2. dari laptop (ganti nilai dari kartu MQTT sandbox):
-mosquitto_sub -h iot.contoh.my.id -p 8883 --capath /etc/ssl/certs -u sbx-5 -P 'PASSWORD' -t 'sandbox/#' -v -C 1 &
+mosquitto_sub -h iot.contoh.my.id -p 8883 --capath /etc/ssl/certs -u sbx-5 -P 'PASSWORD' -t 'sandbox/USERNAME/#' -v -C 1 &
 mosquitto_pub -h iot.contoh.my.id -p 8883 --capath /etc/ssl/certs -u sbx-5 -P 'PASSWORD' -t sandbox/USERNAME/hello -m hi
 # ✔ sandbox/USERNAME/hello hi
 ```
 
 Di macOS, `--capath /etc/ssl/certs` diganti `--cafile /etc/ssl/cert.pem`.
 
+`sbx-5`, `PASSWORD`, dan `USERNAME` diambil dari kartu **MQTT sandbox** di My profile
+(*Username*, *Password* lewat tombol Copy, dan *Your topics*). Password itu bukan password
+login platform. Subscribe ke `sandbox/#` atau `#` ditolak broker; pakai `sandbox/USERNAME/#`
+atau `sandbox/public/#`.
+
 Aplikasi yang sudah login sebelum tahap ini (MQTT Client) belum memegang scope
 `mqtt:sandbox`; pengguna cukup logout lalu login lagi dan menyetujui izin baru.
+
+### 14.5 Tahap 24–25: MAC address, template firmware, dokumentasi pengguna
+
+Tahap 24 menambah kolom MAC address (`devices 0021`) dan unduhan template firmware ESP32. Tahap 25
+membersihkan halaman dari keterangan pengembang, menambah app `userdocs` (dokumentasi di `/docs/`,
+terbuka tanpa login) dan tombol menyembunyikan menu utama. Tidak ada paket Python, layanan
+systemd, isian `.env` wajib, atau konfigurasi Nginx/Mosquitto baru, jadi cukup `update.sh`.
+Server yang belum menerima tahap 23 ikut mendapatkannya sekaligus (migrasi `mqtt_bridge 0001`).
+
+```bash
+# di Mac (conda activate iot_platform), dari folder project:
+python manage.py makemigrations --check --dry-run      # ✔ No changes detected
+python manage.py test
+git add -A && git commit -m "Tahap 24-25" && git push
+
+# di server:
+sudo systemctl start iot-backup.service                # cadangan dulu (+ snapshot manual di panel)
+sudo /srv/iot/app/deploy/scripts/update.sh             # migrate: devices 0021 (dan mqtt_bridge 0001 bila tahap 23 belum)
+```
+
+Periksa:
+
+```bash
+sudo -u iot -H /srv/iot/venv/bin/python /srv/iot/app/manage.py showmigrations devices mqtt_bridge | grep '\[ \]'   # ✔ tidak ada keluaran
+systemctl is-active iot-web iot-mqtt iot-rules iot-housekeeping mosquitto
+curl -s -o /dev/null -w '%{http_code}\n' https://DOMAIN-ANDA/docs/                       # ✔ 200 (tanpa login)
+curl -s 'https://DOMAIN-ANDA/docs/search/?q=mac+address' | grep -c '<mark>'             # ✔ angka > 0
+curl -s https://DOMAIN-ANDA/docs/ | grep -o 'css/app\.[0-9a-f]*\.css'                    # ✔ nama ber-hash baru
+```
+
+Lalu di browser, masuk sebagai **Admin** dan buka halaman sebuah device serta
+`/docs/connect-esp32/`. Kotak kuning **Administrator: devices cannot reach …** berarti alamat
+untuk device belum diisi di `.env`:
+
+| Pesan menyebut | Isi di `/srv/iot/app/.env` |
+|---|---|
+| `OTA_BASE_URL` | `OTA_BASE_URL=https://DOMAIN-ANDA` |
+| `COAP_PUBLIC_HOST` | `COAP_PUBLIC_HOST=DOMAIN-ANDA` (hanya bila port UDP 5683 memang dibuka) |
+
+Setelah mengubah `.env`: `sudo systemctl restart iot.target`. Pengguna biasa tidak melihat nama
+pengaturan itu, hanya "not available … contact the administrator".
+
+Device lama tetap berjalan tanpa perubahan. MAC address baru tampil setelah device memakai
+firmware dari template baru: unduh di `/docs/connect-esp32/`, lalu upload lewat USB, atau, untuk
+device MQTT, naikkan `FW_VERSION`, *Export Compiled Binary*, dan perbarui lewat OTA.
 
 ---
 

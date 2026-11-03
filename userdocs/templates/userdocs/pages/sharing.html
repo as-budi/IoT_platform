@@ -1,0 +1,38 @@
+<p>Share a device with other users, directly or through a group, and choose what they may do with it.</p>
+
+<h2 id="roles">Roles</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>They can</th><th class="text-center">Viewer</th><th class="text-center">Operator</th><th class="text-center">Editor</th><th class="text-center">Owner</th></tr></thead>
+  <tbody>
+    <tr><td>see the device, variables, charts, history, alarms, firmware and log</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>use its sensors in the conditions of their own rules</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>switch actuators, send commands, acknowledge and clear alarms</td><td></td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>use it as the target of their rules' actions</td><td></td><td class="text-center">✓</td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>see the access token and connection details, create a new token</td><td></td><td></td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>change device and variable settings, update firmware</td><td></td><td></td><td class="text-center">✓</td><td class="text-center">✓</td></tr>
+    <tr><td>delete the device, decide who has access</td><td></td><td></td><td></td><td class="text-center">✓</td></tr>
+  </tbody>
+</table>
+<p>Someone with access in several ways (directly and through groups) gets the highest of those roles. Administrators can do everything.</p>
+
+<h2 id="share">Sharing a device</h2>
+<ol>
+  <li>Open the device page and go to <em>Sharing</em> (only the owner sees the form).</li>
+  <li>Enter a <strong>username</strong>, or choose one of your <strong>groups</strong>, pick a role and click <em>Share</em>.</li>
+  <li>To change a role, choose another role in the list and save, or share again. <em>Remove</em> takes the access away.</li>
+</ol>
+<p>Users who received a device see it on their dashboard and in their device list, where it is marked "Shared by …" (filter <em>Shared with me</em>). They can <em>Leave</em> a shared device on its page.
+The owner sees in the activity log when someone else controls the device.</p>
+
+<h2 id="groups">Sharing groups</h2>
+<p>A group is a list of users, e.g. a class team or the lab technicians. Sharing groups → <em>New group</em>, then add members by username.
+Share a device with the group and every member gets that access; new members get it too, and members who leave lose it.
+Deleting a group removes the access it gave; the devices themselves are not changed.</p>
+
+<h2 id="rules">Shared devices in rules</h2>
+<ul>
+  <li>Conditions may use sensors of devices shared with you as Viewer or higher.</li>
+  <li>Actions that switch, command or raise alarms need the Operator role on the target device.</li>
+  <li>"Any of my devices" in a rule chain or "every device I own" in a state machine only includes devices you own.</li>
+  <li>If a share is removed, rules that depended on it stop acting on that device.</li>
+</ul>

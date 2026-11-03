@@ -1,0 +1,51 @@
+<p>An ECA rule is one form: <strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run actions.
+When the condition recovers, the rule <strong>clears</strong> and can run other actions.</p>
+<pre>WHEN  new data for Soil moisture or Temperature
+IF    (Soil moisture &lt; 20 AND Temperature &gt; 30) OR Soil moisture &lt; 10   for at least 60 s
+THEN  set Water pump to ON; raise a major alarm                   (when the rule activates)
+CLEAR when Soil moisture &gt; 30
+THEN  set Water pump to OFF                                       (when the rule clears; the alarm clears by itself)</pre>
+
+<h2 id="event">1. When: the event</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">New data for a variable in the conditions</th><td>The rule is checked every time any variable used in the conditions sends a value. Values of the other variables are taken from their latest stored reading.</td></tr>
+    <tr><th class="text-nowrap">Device sends no data</th><td>Choose a device and a number of seconds. The rule activates when the device has been quiet that long, and clears when data arrives again.</td></tr>
+    <tr><th class="text-nowrap">On a schedule</th><td>The rule is checked at set times, not when data arrives (<a href="{% url 'userdocs:page' 'schedules' %}">Schedules</a>).</td></tr>
+  </tbody>
+</table>
+
+<h2 id="condition">2. If: the condition</h2>
+<p>Conditions compare a variable with a number: <code>&gt;</code>, <code>≥</code>, <code>&lt;</code>, <code>≤</code>, <code>=</code> or <code>≠</code>. For on/off variables use 1 (ON) and 0 (OFF).
+Conditions are arranged in boxes: <strong>every</strong> condition inside a box must be true (AND), and the rule activates when <strong>any</strong> box is true (OR).</p>
+<p>A value counts as <em>unknown</em> when it is older than <em>ignore values older than</em> (see below). A condition with an unknown value is neither true nor false,
+so the rule does not activate on stale data.</p>
+
+<h2 id="clear">Clear when (hysteresis)</h2>
+<p>Optional. Without it, the rule clears as soon as the condition is false. With a separate clear condition, the rule stays active until that condition holds,
+which prevents rapid ON/OFF switching around a threshold: e.g. activate below 20, clear above 30. For a rule with one variable, the form rejects clear conditions that overlap the activate condition (e.g. activate below 20, clear above 15), and the rule never activates while its clear condition is also true.</p>
+
+<h2 id="timing">Timing and safeguards</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">For at least (seconds)</th><td>The condition must hold this long before the rule activates. Meanwhile the rule is <em>Pending</em>. 0 = immediately.</td></tr>
+    <tr><th class="text-nowrap">Cooldown (seconds)</th><td>Minimum time between two activations. 0 = no cooldown.</td></tr>
+    <tr><th class="text-nowrap">Ignore values older than (seconds)</th><td>A variable whose latest value is older than this counts as unknown. 0 = no limit. Default 300.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="actions">3. Then: the actions</h2>
+<p>Add as many actions as you need and choose for each whether it runs <strong>when the rule activates</strong> or <strong>when the rule clears</strong>.
+The available actions and message placeholders are listed in the <a href="{% url 'userdocs:page' 'rules' %}#actions">rules overview</a>.
+A raised alarm is cleared automatically when the rule clears.</p>
+
+<h2 id="states">Idle, Pending, Active</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th>Idle</th><td>the condition does not hold</td></tr>
+    <tr><th>Pending</th><td>the condition holds, waiting for <em>for at least</em> or the cooldown</td></tr>
+    <tr><th>Active</th><td>the rule has activated and ran its "on activate" actions</td></tr>
+  </tbody>
+</table>
+<p>Actions run only when the rule <strong>changes</strong> state, not on every message. A pump switched on by the rule therefore does not get switched on again with every new reading.
+The <em>Last evaluation</em> box on the rule page shows each condition, the value it used, how old it was, and the result.</p>

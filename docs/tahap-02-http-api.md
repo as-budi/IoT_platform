@@ -175,3 +175,19 @@ Buka Serial Monitor (115200 baud) untuk melihat balasan server pada setiap kirim
    dengan `ts` masing-masing.
 3. Tambahkan kolom `last_seen_ip` pada `Device` dan isi dengan alamat pengirim
    (`request.META["REMOTE_ADDR"]`) setiap kali telemetri diterima.
+
+## Catatan operasional (dipindah dari halaman dan firmware, tahap 25)
+
+Sejak platform dibuka untuk umum, keterangan untuk pengembang tidak lagi tampil di halaman web
+maupun di komentar firmware. Yang dulu tertulis di sana untuk HTTP:
+
+- Tab HTTP di halaman device dulu menulis *"Served by `runserver`"*. Endpoint `/api/v1/...`
+  dilayani proses web biasa (`runserver`/`runall` di laptop, layanan web di server), tidak butuh
+  worker tambahan. Kini tab itu menautkan ke bab *Device API reference* di `/docs/`.
+- Agar ESP32 di Wi-Fi yang sama bisa menjangkau laptop, server dijalankan dengan
+  `runserver 0.0.0.0:8000` (atau `runall 0.0.0.0:8000`), bukan `runserver` saja yang hanya
+  mendengar `127.0.0.1`.
+- Sketch `firmware/esp32_telemetry`: `SERVER` diawali `http://` untuk server di laptop
+  (belajar) atau `https://<domain>` untuk server produksi (isi juga `ROOT_CA`). Server produksi
+  menjawab `http://` dengan 301 dan telemetri tidak tersimpan. Sejak tahap 24 sketch ini juga
+  melapor versi, board, dan MAC ke `/firmware`.

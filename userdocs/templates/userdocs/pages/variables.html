@@ -1,0 +1,29 @@
+<p>A variable is one value of a device. Its <strong>key</strong> is the name the device uses in its data, e.g. <code>temperature</code> in
+<code>{"temperature": 25.1}</code>.</p>
+
+<h2 id="automatic">Created automatically</h2>
+<p>When a device sends a key that does not exist yet, the variable is created automatically as a sensor with that key.
+You can then edit it to add a label and a unit. Add variables yourself when you want to choose the settings first,
+and always for actuators.</p>
+
+<h2 id="fields">Settings of a variable</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Key</th><td>Letters, digits and underscores, starting with a letter, at most 50 characters, e.g. <code>soil_moisture</code>. No spaces. Keys are case sensitive.</td></tr>
+    <tr><th class="text-nowrap">Label</th><td>Display name, e.g. "Soil moisture". Blank = the key is shown.</td></tr>
+    <tr><th class="text-nowrap">Unit</th><td>e.g. °C, %, V. May be blank.</td></tr>
+    <tr><th class="text-nowrap">Kind</th><td><strong>Sensor</strong> (read only) or <strong>Actuator</strong> (can be controlled from the platform).</td></tr>
+    <tr><th class="text-nowrap">Value type</th><td><strong>Number</strong>, or <strong>On / off</strong> (stored as 1 and 0, shown as ON and OFF).</td></tr>
+    <tr><th class="text-nowrap">Minimum, maximum</th><td>For number actuators: the range a user may request, e.g. 0–180 for a servo. Blank = no limit.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="values">What a device may send</h2>
+<ul>
+  <li>Values must be numbers. <code>true</code> and <code>false</code> are accepted and stored as 1 and 0. Text values are rejected.</li>
+  <li>One message may contain many keys, and several readings with their own time (<a href="{% url 'userdocs:page' 'device-api' %}#payload">payload formats</a>).</li>
+  <li>An actuator reports its real state with the same key, e.g. the pump sends <code>{"pump": 1}</code> after switching on.</li>
+</ul>
+
+<h2 id="delete">Deleting a variable</h2>
+<p><em>Delete</em> on the variable page removes the variable and all its data. If the device keeps sending that key, the variable is created again.</p>

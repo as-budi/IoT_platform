@@ -141,6 +141,11 @@
       The access token identifies this device to the API. Treat it like a password:
       anyone who has it can send data as this device.
     </p>
+    {# Tahap 24/25: bab dokumentasi ESP32, dengan template firmware berisi token device ini. #}
+    <div class="alert alert-light border small py-2 d-flex flex-wrap align-items-center gap-2">
+      <span>Connecting an ESP32? The documentation walks you through each protocol and gives you a firmware template with this device's token already filled in.</span>
+      <a class="btn btn-sm btn-outline-primary ms-auto" href="{% url 'userdocs:page' 'connect-esp32' %}?device={{ device.pk }}">Connect an ESP32</a>
+    </div>
     <label class="form-label small mb-1" for="access-token">Access token</label>
     <div class="input-group mb-3">
       <input type="text" class="form-control font-monospace" id="access-token" value="{{ device.access_token }}" readonly>
@@ -162,7 +167,7 @@
     <div class="tab-content">
       {# ---------- HTTP ---------- #}
       <div class="tab-pane fade show active" id="pane-http" role="tabpanel" aria-labelledby="tab-http" tabindex="0">
-        <p class="small text-muted mb-2">Served by <code>runserver</code>. The device sends a POST request for every reading.</p>
+        <p class="small text-muted mb-2">The device sends one POST request for every reading. All payload formats are in the <a href="{% url 'userdocs:page' 'device-api' %}#http">device API reference</a>.</p>
         <label class="form-label small mb-1" for="curl-example">Send telemetry from a terminal</label>
         <div class="input-group mb-3">
           <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
@@ -170,7 +175,7 @@
         </div>
         <label class="form-label small mb-1" for="curl-firmware-example">Report the running firmware version (for firmware updates)</label>
         <div class="input-group mb-3">
-          <textarea class="form-control font-monospace small" id="curl-firmware-example" rows="2" readonly>curl -X POST {{ firmware_url }} -H "Content-Type: application/json" -d '{"version": "1.0.0", "board": "esp32"}'</textarea>
+          <textarea class="form-control font-monospace small" id="curl-firmware-example" rows="2" readonly>curl -X POST {{ firmware_url }} -H "Content-Type: application/json" -d '{"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}'</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-firmware-example">Copy</button>
         </div>
       </div>
@@ -190,7 +195,6 @@
           </tbody>
         </table>
         <p class="small text-muted mb-2">
-          {% if mqtt.show_bridge_hint %}Data is exchanged only while <code>python manage.py mqtt_bridge</code> is running.{% endif %}
           {% if mqtt.login %}A new device, or a new token, can connect within about 2 minutes. Each device may use only the topics below.{% endif %}
         </p>
         <div class="table-responsive">
@@ -241,19 +245,10 @@ client.on("connect", () => {
       <div class="tab-pane fade" id="pane-coap" role="tabpanel" aria-labelledby="tab-coap" tabindex="0">
         <p class="small text-muted mb-2">
           Server <code>coap://{{ coap.host }}:{{ coap.port }}</code> (UDP).
-          Data is exchanged only while <code>python manage.py coap_server</code> is running.
-          There is no broker: the device must be able to reach this computer directly.
+          There is no broker: the device sends its messages straight to this server, so UDP port {{ coap.port }}
+          must be reachable from the device's network. CoAP traffic is not encrypted.
         </p>
-        {% if coap.reach == "loopback" %}
-        <div class="alert alert-warning small py-2">
-          <strong>{{ coap.host }}</strong> only works for programs on this computer. For an ESP32,
-          set <code>COAP_PUBLIC_HOST</code> in <code>.env</code> to this computer's Wi-Fi address (e.g. 192.168.1.10).
-        </div>
-        {% elif coap.reach == "private" %}
-        <div class="alert alert-light border small py-2">
-          <strong>{{ coap.host }}</strong> is a private address: reachable only from devices on the same network.
-        </div>
-        {% endif %}
+        {% include "devices/includes/connect_reach.html" with reach=coap.reach host=coap.host setting="COAP_PUBLIC_HOST" what="CoAP" %}
         <div class="table-responsive">
           <table class="table table-sm small align-middle">
             <thead class="table-light"><tr><th>Method</th><th>URI</th><th>Purpose</th></tr></thead>
@@ -266,7 +261,7 @@ client.on("connect", () => {
             </tbody>
           </table>
         </div>
-        <label class="form-label small mb-1" for="coap-post-example">Send telemetry (libcoap: <code>brew install libcoap</code>)</label>
+        <label class="form-label small mb-1" for="coap-post-example">Send telemetry with <code>coap-client</code> (part of the libcoap tools)</label>
         <div class="input-group mb-2">
           <textarea class="form-control font-monospace small" id="coap-post-example" rows="2" readonly>coap-client -m post -t json -e '{"temperature": 25.1}' {{ coap.telemetry }}</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="coap-post-example">Copy</button>
@@ -397,7 +392,7 @@ client.on("connect", () => {
   </div>
   <div class="card-footer small text-muted">
     Offline after {{ offline_after }} s without data, or at once when an MQTT device's session ends (Last Will).
-    Checked by the <code>housekeeping</code> worker.
+    The status is checked every few seconds.
   </div>
 </div>
 {% endblock %}

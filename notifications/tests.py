@@ -131,7 +131,7 @@ class LinkTests(RuleTestData):
 
     @override_settings(TELEGRAM_BOT_TOKEN="")
     def test_profile_without_bot(self):
-        self.assertContains(self.client.get(reverse("accounts:profile")), "no Telegram bot configured")
+        self.assertContains(self.client.get(reverse("accounts:profile")), "not available on this server")
 
 
 @BOT

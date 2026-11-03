@@ -1,0 +1,23 @@
+{% comment %}
+  Peringatan alamat server yang tidak terjangkau device (tahap 24, diubah tahap 25).
+  Butuh: reach ("loopback" / "private" / lainnya), host, setting (nama pengaturan .env),
+  what (fitur yang terdampak, mis. "CoAP").
+  Pengguna biasa hanya diberi tahu fiturnya belum bisa dipakai; nama pengaturan server
+  hanya untuk Admin (penjelasan lengkap: docs/tahap-25-dokumentasi-pengguna.md).
+{% endcomment %}
+{% if reach == "loopback" %}
+{% if user.is_admin %}
+<div class="alert alert-warning small py-2">
+  <strong>Administrator:</strong> devices cannot reach <code>{{ host }}</code>, so {{ what }} does not work for them yet.
+  Set <code>{{ setting }}</code> in the server settings to an address that devices can reach. Only administrators see this note.
+</div>
+{% else %}
+<div class="alert alert-warning small py-2">
+  {{ what|capfirst }} is not available from devices on this server yet. Please contact the administrator.
+</div>
+{% endif %}
+{% elif reach == "private" %}
+<div class="alert alert-light border small py-2">
+  <strong>{{ host }}</strong> is a private network address: only devices on the same network as the server can reach it.
+</div>
+{% endif %}

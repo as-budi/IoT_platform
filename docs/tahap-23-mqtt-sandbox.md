@@ -110,11 +110,15 @@ Dengan `False`: kartu tidak tampil, URL `/accounts/sandbox/…` menjawab 404, AP
 python manage.py migrate                 # mqtt_bridge 0001 (SandboxAccount)
 # My profile -> MQTT sandbox -> Create sandbox account
 python manage.py mqtt_accounts           # di laptop dengan Mosquitto sendiri; di server timer yang menjalankannya
-mosquitto_sub -h 127.0.0.1 -u sbx-5 -P '<password>' -t 'sandbox/#' -v &
+mosquitto_sub -h 127.0.0.1 -u sbx-5 -P '<password>' -t 'sandbox/rina/#' -t 'sandbox/public/#' -v &
 mosquitto_pub -h 127.0.0.1 -u sbx-5 -P '<password>' -t sandbox/rina/hello -m hi        # diterima
 mosquitto_pub -h 127.0.0.1 -u sbx-5 -P '<password>' -t sandbox/budi/hello -m hi        # dibuang broker (ACL)
 mosquitto_pub -h 127.0.0.1 -u sbx-5 -P '<password>' -t iot/abc/telemetry -m '{}'       # dibuang broker (ACL)
 ```
+
+Subscribe juga harus berada di dalam kedua area itu. Filter yang lebih luas, seperti
+`sandbox/#` atau `#`, **ditolak** broker walaupun sebagian topiknya boleh dibaca, karena
+Mosquitto 2 memeriksa seluruh filter terhadap ACL.
 
 Catatan: pada MQTT 3.1.1, publish ke topik terlarang tidak menghasilkan error di klien; broker
 diam-diam membuangnya. Subscribe ke topik terlarang dijawab kode *failure* (0x80).

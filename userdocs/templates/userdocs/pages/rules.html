@@ -1,0 +1,63 @@
+<p>Rules react to device data automatically, e.g. "when soil moisture drops below 20 %, switch the pump on".
+Rules → <em>New rule</em> starts by choosing a model.</p>
+
+<h2 id="models">Which model should I use?</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Model</th><th>Remembers</th><th>Good for</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td><a href="{% url 'userdocs:page' 'rules-eca' %}">ECA</a> (Event–Condition–Action)</td><td>one state per rule: Idle, Pending or Active</td><td>threshold alarms and simple automations, filled in as a form</td><td>if soil &lt; 20 for 60 s then pump ON; when soil &gt; 30, pump OFF</td></tr>
+    <tr><td><a href="{% url 'userdocs:page' 'rule-chains' %}">Rule chain</a></td><td>almost nothing</td><td>processing every message with branches, extra data and calculations</td><td>Input → temperature &gt; 32? → add humidity → fan ON → email</td></tr>
+    <tr><td><a href="{% url 'userdocs:page' 'state-machines' %}">State machine</a></td><td>a named state per device and how long it has been there</td><td>alarms with stages, device modes, life cycles</td><td>NORMAL → WARNING → CRITICAL → NORMAL</td></tr>
+  </tbody>
+</table>
+<p>Models marked <em>Coming soon</em> on the model page cannot be used yet. Rules of any model can also run on a <a href="{% url 'userdocs:page' 'schedules' %}">schedule</a>
+(ECA and rule chains).</p>
+
+<h2 id="actions">What rules can do</h2>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Set actuator</th><td>request a new state, e.g. pump = 1 (ON). Skipped if that value is already requested.</td></tr>
+    <tr><th class="text-nowrap">Send command</th><td>queue a command with method, parameters and expiry, like sending it by hand.</td></tr>
+    <tr><th class="text-nowrap">Raise alarm</th><td>create an alarm with a severity and message; it clears by itself when the rule recovers (<a href="{% url 'userdocs:page' 'alarms-notifications' %}">Alarms</a>).</td></tr>
+    <tr><th class="text-nowrap">Send email</th><td>to the addresses you enter, or to the rule owner when left blank.</td></tr>
+    <tr><th class="text-nowrap">Send Telegram message</th><td>to the chat connected in the rule owner's profile, or to the chats you enter (<a href="{% url 'userdocs:page' 'alarms-notifications' %}#telegram">Telegram</a>).</td></tr>
+  </tbody>
+</table>
+<p>A rule may use the sensors of any device you can see, but it can only switch, command or raise alarms on devices you may control
+(your own devices, or shared ones with at least the Operator role). Access is checked again every time a rule runs.</p>
+
+<h3 id="placeholders">Placeholders in messages</h3>
+<p>Alarm, email and Telegram messages can include values from the moment the rule ran:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><td><code>{rule}</code></td><td>name of the rule</td></tr>
+    <tr><td><code>{device}</code>, <code>{variable}</code>, <code>{value}</code></td><td>the device, variable and value that triggered the rule</td></tr>
+    <tr><td><code>{threshold}</code></td><td>the threshold of the condition (ECA)</td></tr>
+    <tr><td><code>{values}</code></td><td>all values in the condition, e.g. <code>Soil moisture = 15, Temperature = 32</code></td></tr>
+    <tr><td><code>{transition}</code></td><td>activated or cleared</td></tr>
+    <tr><td><code>{time}</code></td><td>the scheduled time (scheduled rules)</td></tr>
+    <tr><td><code>{temperature}</code>, …</td><td>rule chains: any key in the message</td></tr>
+    <tr><td><code>{state}</code>, <code>{from_state}</code>, <code>{to_state}</code></td><td>state machines</td></tr>
+  </tbody>
+</table>
+
+<h2 id="list">The rule list</h2>
+<p>Filter by model and state (<em>Active now</em>, <em>Enabled</em>, <em>Disabled</em>, <em>On a schedule</em>) and search by any word in the rule:
+a device name, a variable key such as <code>temperature</code>, or an action such as <code>email</code>.</p>
+
+<h2 id="rule-page">The rule page</h2>
+<ul>
+  <li><strong>Enable / Disable</strong> switches the rule on or off. Saving, enabling or disabling resets what the rule remembers (an ECA rule returns to Idle, a state machine puts every device back in its initial state, without running actions).</li>
+  <li><strong>State</strong> shows what the rule is doing now and the last values it looked at.</li>
+  <li><strong>Execution log</strong> lists every time the rule did something, the values at that moment and the result of each action (✓ done, ✗ failed, ⏭ skipped).</li>
+  <li><strong>Alarms from this rule.</strong></li>
+</ul>
+
+<h2 id="import-export">Export and import</h2>
+<ul>
+  <li><strong>Export</strong> on the rule page downloads the rule as JSON. The <em>JSON</em> card shows the same text to copy.</li>
+  <li><strong>Import</strong> on the rule list creates a new rule from JSON; the model follows <code>"model"</code> in the file.</li>
+  <li><strong>Import</strong> on a rule page replaces that rule's content; its history and alarms are kept.</li>
+</ul>
+<p>The JSON uses device and variable <strong>names</strong>, not internal numbers, so a rule can be copied to another account with devices of the same names.
+Files up to 100 KB are accepted. If anything in the file is wrong, nothing is saved and the errors are listed.</p>

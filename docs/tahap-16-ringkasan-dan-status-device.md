@@ -296,3 +296,10 @@ python manage.py test devices.tests_housekeeping
 - Pita min–max di chart (datanya sudah ada di tabel ringkasan).
 - Retensi: menghapus data asli lebih tua dari N hari, sementara ringkasan jam disimpan lebih
   lama (nomor 2 bagian kedua di daftar saran).
+
+## Catatan (tahap 25)
+
+Kaki tabel *Connection history* di halaman device dulu menulis *"Checked by the `housekeeping`
+worker."* Kini tertulis *"The status is checked every few seconds."* Pemeriksaannya tetap
+dilakukan worker `housekeeping` (setiap 10 detik, lihat tabel di awal dokumen ini); tanpa worker
+itu device tidak pernah menjadi offline karena diam.

@@ -1,0 +1,46 @@
+<p>There are two ways to make a device do something. Use a <strong>requested state</strong> for things that have a state
+(a relay, a fan, a servo, a set point) and a <strong>command</strong> for one-off actions (reboot, open a valve for 5 seconds).</p>
+
+<table class="table table-sm">
+  <thead class="table-light"><tr><th></th><th>Requested state</th><th>Command</th></tr></thead>
+  <tbody>
+    <tr><td>Examples</td><td>pump ON/OFF, fan speed 60, servo 90°</td><td>reboot, blink, open valve for N seconds</td></tr>
+    <tr><td>Device offline</td><td>the request waits and is applied when the device comes back</td><td>the command expires if it is not picked up in time</td></tr>
+    <tr><td>Clicking several times</td><td>only the latest value counts</td><td>every click is a new command</td></tr>
+    <tr><td>Proof it worked</td><td>the device reports the same value</td><td>status and response of the command</td></tr>
+  </tbody>
+</table>
+
+<h2 id="requested-state">Switching an actuator</h2>
+<p>Actuator variables show a switch (on/off) or a number field with <em>Set</em> on the dashboard and the device page.
+The platform stores your request and passes it to the device; the device then reports its real state with the same key.
+The badge next to the actuator compares both:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Waiting for device</th><td>The device has not reported anything since the latest request (it may be offline).</td></tr>
+    <tr><th class="text-nowrap">In sync</th><td>The device reported the requested value.</td></tr>
+    <tr><th class="text-nowrap">Mismatch</th><td>The device reported, but with another value (stuck, refused, or changed locally).</td></tr>
+  </tbody>
+</table>
+<p>Number actuators only accept values within their minimum and maximum. Switching needs at least the Operator role on a shared device.
+How a device receives requested states is described in the <a href="{% url 'userdocs:page' 'device-api' %}#mqtt">MQTT</a> and
+<a href="{% url 'userdocs:page' 'device-api' %}#coap">CoAP</a> references. HTTP devices can only send data.</p>
+
+<h2 id="commands">Sending a command</h2>
+<p>Device page → <em>Commands</em>:</p>
+<ol>
+  <li><strong>Method</strong>: the name of the action, e.g. <code>reboot</code> or <code>blink</code>. The device firmware decides which methods exist.</li>
+  <li><strong>Parameters</strong>: JSON for the action, e.g. <code>{"times": 5}</code>. Use <code>{}</code> for none.</li>
+  <li><strong>Expires after</strong>: 1 minute, 5 minutes, 1 hour or 1 day. A command that has not finished before it expires is never run later.</li>
+</ol>
+<p>The table below the form shows each command with its status and the device's response:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th>Queued</th><td>waiting for the device</td></tr>
+    <tr><th>Sent</th><td>delivered to the device, no answer yet</td></tr>
+    <tr><th>Succeeded</th><td>the device answered with success</td></tr>
+    <tr><th>Failed</th><td>the device answered with an error, see the response</td></tr>
+    <tr><th>Expired</th><td>not finished in time; it will not run any more</td></tr>
+  </tbody>
+</table>
+<p>Rules can also switch actuators and send commands automatically (<a href="{% url 'userdocs:page' 'rules' %}">Rules overview</a>).</p>

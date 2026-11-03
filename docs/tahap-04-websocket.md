@@ -114,7 +114,7 @@ penantian BZPOPMIN. Tes `RedisSettingsTests` menjaga agar aturan ini tidak terla
 
 ## 6. Di sisi browser (`static/js/auto_refresh.js`)
 
-1. Membuka `ws://<host>/ws/devices/<id>/`. Status di atas halaman: **Live (WebSocket)**.
+1. Membuka `ws://<host>/ws/devices/<id>/`. Status di atas halaman: **Live** (sebelum tahap 25: *Live (WebSocket)*).
 2. Setiap kabar diserahkan ke *handler* halaman (`AutoRefresh.on("telemetry", ...)`):
    - Halaman device: card **sensor** diperbarui di tempat dan disorot sebentar.
    - Halaman variabel: card nilai terkini, tabel history (halaman 1), dan chart. Chart bergeser
@@ -161,3 +161,16 @@ biasanya di belakang Nginx yang meneruskan header `Upgrade`.
    lalu tampilkan lencana Online/Offline di halaman device tanpa muat ulang.
 4. Buat halaman daftar device ikut diperbarui langsung: consumer baru yang bergabung ke group
    semua device milik pengguna.
+
+## Catatan (tahap 25)
+
+Teks status di `static/js/auto_refresh.js` dibuat bebas istilah teknis untuk pengguna umum:
+
+| Dulu | Sekarang |
+|---|---|
+| `Live (WebSocket)` | `Live` |
+| `Polling every N s · up to date at …` | `Checking for new data every N s · up to date at …` |
+| `WebSocket unavailable; polling every N s` | `Live connection unavailable; checking every N s` |
+
+Mekanismenya tidak berubah: WebSocket sebagai jalur utama, pemeriksaan versi data berkala sebagai
+cadangan.

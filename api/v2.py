@@ -115,6 +115,7 @@ def my_devices(request):
             "last_protocol": device.last_protocol or None,
             "board": device.board or None,
             "firmware_version": device.firmware_version or None,
+            "mac_address": device.mac_address or None,
             "url": request.build_absolute_uri(reverse("devices:detail", args=[device.pk])),
             # Token dan topik (topik memuat token) hanya untuk Editor ke atas.
             "access_token": device.access_token if can_connect else None,

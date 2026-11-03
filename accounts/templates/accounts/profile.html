@@ -6,7 +6,10 @@
 {# Halaman profil milik pengguna yang sedang login (ProfileView). #}
 <div class="row justify-content-center">
   <div class="col-lg-7">
-    <h1 class="h3 mb-3">My profile</h1>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="h3 mb-0">My profile</h1>
+      {% include "includes/help_link.html" with page="account" %}
+    </div>
 
     <div class="card shadow-sm mb-3">
       <div class="card-body">
@@ -54,7 +57,7 @@
         <div>
           <h2 class="h5 mb-1">Telegram</h2>
           {% if not telegram_enabled %}
-          <p class="small text-muted mb-0">Not available: the server has no Telegram bot configured.</p>
+          <p class="small text-muted mb-0">Telegram notifications are not available on this server.</p>
           {% elif telegram_link %}
           <p class="small mb-0">Connected to <strong>{{ telegram_link.chat_name|default:telegram_link.chat_id }}</strong>
             since {{ telegram_link.linked_at|date:"j M Y" }}. Rules send their Telegram messages here.</p>

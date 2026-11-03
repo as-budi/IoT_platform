@@ -1,5 +1,3 @@
-import ipaddress
-
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -8,7 +6,7 @@ from django.core.paginator import Paginator
 from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Subquery, Sum
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
-from django.http import FileResponse, Http404, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils.http import urlencode
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -28,7 +26,9 @@ from realtime import events
 from realtime.routing import device_ws_path
 from sharing import access
 
+from . import connect
 from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
+from .connect import host_reach
 from .forms import (
     ChartPeriodForm,
     CommandForm,
@@ -337,9 +337,19 @@ def mqtt_info(device):
         "options": options,
         # MQTT over WebSocket untuk browser (tahap 21), mis. wss://iot.domain/mqtt.
         "ws_url": settings.MQTT_PUBLIC_WS_URL,
-        # Bridge berjalan sebagai service di server (DEBUG=False); di laptop, manual.
-        "show_bridge_hint": settings.DEBUG,
     }
+
+
+def coap_host(request):
+    """(host, reach) server CoAP: dari COAP_PUBLIC_HOST (.env), atau dari address bar browser."""
+    host = settings.COAP_PUBLIC_HOST or request.get_host()
+    if not settings.COAP_PUBLIC_HOST:
+        # Buang nomor port HTTP; perhatikan alamat IPv6 seperti [::1]:8000.
+        host = host.rsplit(":", 1)[0] if host.count(":") == 1 or "]:" in host else host
+    bare = host.strip("[]")
+    if ":" in bare and not host.startswith("["):
+        host = f"[{bare}]"  # alamat IPv6 di dalam URI harus diberi kurung siku
+    return host, host_reach(host)
 
 
 def coap_info(request, device):
@@ -351,18 +361,7 @@ def coap_info(request, device):
       private  -> hanya device di jaringan yang sama (192.168.x.x, 10.x.x.x, ...)
       public   -> dari mana saja, selama port UDP-nya terbuka
     """
-    host = settings.COAP_PUBLIC_HOST or request.get_host()
-    if not settings.COAP_PUBLIC_HOST:
-        # Buang nomor port HTTP; perhatikan alamat IPv6 seperti [::1]:8000.
-        host = host.rsplit(":", 1)[0] if host.count(":") == 1 or "]:" in host else host
-    bare = host.strip("[]")
-    try:
-        address = ipaddress.ip_address(bare)
-        reach = "loopback" if address.is_loopback else "private" if address.is_private else "public"
-    except ValueError:
-        reach = "loopback" if bare == "localhost" else "unknown"
-    if ":" in bare and not host.startswith("["):
-        host = f"[{bare}]"  # alamat IPv6 di dalam URI harus diberi kurung siku
+    host, reach = coap_host(request)
     base = f"coap://{host}:{settings.COAP_PORT}/api/v1/{device.access_token}"
     return {
         "host": host,
@@ -803,3 +802,53 @@ class DeviceTokenRegenerateView(OwnedDeviceMixin, View):
             f"New access token created for {device.name}. Update the device with the new token.",
         )
         return redirect(reverse("devices:detail", args=[device.pk]) + "#connect")
+
+
+# --- Template firmware ESP32 (tahap 24, devices/connect.py) ------------------------
+# Panduannya sendiri kini bab "Connect an ESP32" di dokumentasi pengguna (app userdocs,
+# tahap 25). /devices/connect/ dialihkan ke sana supaya tautan lama tetap berfungsi.
+
+def connect_guide_redirect(request):
+    target = reverse("userdocs:page", args=["connect-esp32"])
+    query = request.META.get("QUERY_STRING", "")
+    return redirect(f"{target}?{query}" if query else target)
+
+
+def selected_device(request, devices):
+    """Device dari ?device=<pk>, hanya bila termasuk `devices`; selain itu None."""
+    pk = request.GET.get("device", "")
+    if not pk.isdigit():
+        return None
+    return devices.filter(pk=int(pk)).first()
+
+
+class ConnectFirmwareView(LoginRequiredMixin, View):
+    """GET /devices/connect/firmware/<protocol>.zip[?device=<pk>] — template firmware ESP32.
+
+    Device yang tidak boleh diubah pengguna (bukan Editor ke atas) -> 404, supaya
+    access token orang lain tidak bisa diambil lewat unduhan ini.
+    """
+
+    def get(self, request, protocol):
+        if protocol not in connect.PROTOCOLS:
+            raise Http404("Unknown protocol.")
+        device = None
+        if request.GET.get("device"):
+            device = selected_device(request, visible_devices(request.user, access.EDITOR))
+            if device is None:
+                raise Http404("No such device.")
+        coap_server, _ = coap_host(request)
+        values = connect.server_values(request, coap_server)[protocol]
+        filename, data = connect.build_firmware_zip(protocol, values, device)
+        response = HttpResponse(data, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class RootCaView(LoginRequiredMixin, View):
+    """GET /devices/connect/isrg-root-x1.pem — sertifikat root CA untuk TLS di ESP32."""
+
+    def get(self, request):
+        response = HttpResponse(connect.read_root_ca(), content_type="application/x-pem-file")
+        response["Content-Disposition"] = 'attachment; filename="isrg-root-x1.pem"'
+        return response

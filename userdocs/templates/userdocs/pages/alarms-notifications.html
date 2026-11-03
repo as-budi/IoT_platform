@@ -1,0 +1,36 @@
+<h2 id="alarms">Alarms</h2>
+<p>Alarms are raised by rules (<em>Raise alarm</em> action or <em>Create alarm</em> node) with a severity: <strong>Critical</strong>, <strong>Major</strong>, <strong>Minor</strong> or <strong>Warning</strong>.
+Each alarm has two independent states:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th class="text-nowrap">Active / Cleared</th><td>whether the cause is still there. Rules clear their own alarms when the condition recovers; a person can also <em>Clear</em> an alarm.</td></tr>
+    <tr><th class="text-nowrap">Unacknowledged / Acknowledged</th><td>whether someone is handling it. <em>Acknowledge</em> records who and when.</td></tr>
+  </tbody>
+</table>
+<p>Active, unacknowledged alarms are shown as a red badge next to <em>Alarms</em> in the menu, as a banner on the dashboard, and on the device page.
+A rule does not create a second alarm while its alarm on that device is still active.
+Acknowledging and clearing need at least the Operator role on a shared device. The Alarms page shows active alarms, or all alarms with <em>All</em>.</p>
+
+<h2 id="email">Email</h2>
+<p>The <em>Send email</em> action sends the message to the addresses you enter (separated by commas), or to the rule owner's email address when left blank.
+Use <a href="{% url 'userdocs:page' 'rules' %}#placeholders">placeholders</a> to include values.</p>
+
+<h2 id="telegram">Telegram</h2>
+{% if not telegram_enabled %}<div class="alert alert-light border small">Telegram notifications are not available on this server.</div>{% endif %}
+<h3 id="telegram-connect">Connecting your account</h3>
+<ol>
+  <li>My profile → <em>Telegram</em> → <em>Connect Telegram</em>.</li>
+  <li>Click <em>Open Telegram</em> and press <strong>START</strong> at the bottom of the chat with the bot.</li>
+  <li>Come back and press <em>I pressed Start</em>. The link works for a few minutes and only for your account; do not share it.</li>
+  <li><em>Send test</em> checks that messages arrive. <em>Disconnect</em> stops them.</li>
+</ol>
+<h3 id="telegram-recipients">Recipients</h3>
+<p>The <em>Send Telegram message</em> action sends to the chat connected in the rule owner's profile when <em>Recipients</em> is blank. You can also enter chat ids, separated by commas:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><td><code>123456789</code></td><td>a private chat</td></tr>
+    <tr><td><code>-1001234567890</code></td><td>a group or supergroup; the bot must be a member of the group</td></tr>
+    <tr><td><code>@lab_iot_alerts</code></td><td>a public channel; the bot must be an administrator of the channel</td></tr>
+  </tbody>
+</table>
+<p>In rule chains, put a <em>Rate limit</em> or <em>Value changed</em> node before a Telegram or email node, otherwise every message sends one.</p>

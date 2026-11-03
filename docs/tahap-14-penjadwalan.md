@@ -553,3 +553,10 @@ sistem operasi tidak berpengaruh; yang dipakai `TIME_ZONE` Django.
 | `rules/templates/rules/includes/schedule_fields.html`, `schedule_summary.html` | tampilan |
 | `rules/migrations/0004_rule_schedule.py` | migrasi |
 | `rules/tests_schedule.py` | 40 tes |
+
+## Catatan (tahap 25)
+
+Form jadwal dulu menulis *"The rule engine worker (`manage.py rule_engine`) must be running."*
+Kalimat itu diganti penjelasan untuk pengguna: jadwal yang tidak bisa dimulai dalam beberapa
+menit dilewati dan tercatat di log. Batasnya `RULE_SCHEDULE_GRACE_SECONDS` (bawaan 300 s, bagian 3);
+penyebab paling umum tetap worker `rule_engine` yang mati.

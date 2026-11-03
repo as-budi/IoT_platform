@@ -1,0 +1,62 @@
+<p>A device running the MQTT firmware template can be updated over the air (OTA): you upload a compiled firmware file once,
+then update any compatible device from its page. The device downloads the file, checks it, restarts into it and reports the new version.</p>
+
+<h2 id="prepare">Preparing a device</h2>
+<ul>
+  <li>Use the <a href="{% url 'userdocs:page' 'connect-esp32' %}#mqtt">MQTT firmware template</a> (or firmware that implements the same <code>ota</code> command) and upload it once over USB.</li>
+  <li>In Arduino IDE choose a partition scheme with OTA support, e.g. <em>Default 4MB with spiffs</em>.</li>
+  <li>Set the board of the device (device → <em>Edit</em>), or let the device report it.</li>
+</ul>
+
+<h2 id="upload">Uploading firmware</h2>
+<ol>
+  <li>Change <code>FW_VERSION</code> in the sketch, e.g. from <code>"1.0.0"</code> to <code>"1.1.0"</code>.</li>
+  <li>Arduino IDE: <em>Sketch → Export Compiled Binary</em>. This creates a <code>.bin</code> file in the sketch folder.</li>
+  <li>Firmware → <em>Upload firmware</em>: title, <strong>version exactly as in <code>FW_VERSION</code></strong>, board, the .bin file, and release notes if you like.
+    Files up to {{ limits.firmware_max_mb }} MB are accepted; the platform computes the MD5 and SHA-256 checksums.</li>
+</ol>
+<p>The version must match what the new firmware reports after it starts: that report is how the platform knows the update worked.
+Firmware you upload is visible only to you (administrators see all).</p>
+
+<h2 id="update">Updating a device</h2>
+<p>Device page → <em>Firmware</em> card → choose the version under <em>Update to</em> → <em>Update firmware</em>.
+Only firmware for the device's board is offered. The device must be online. Progress appears in the card by itself:</p>
+<table class="table table-sm">
+  <tbody>
+    <tr><th>Queued</th><td>waiting for the device to pick up the update command</td></tr>
+    <tr><th>Downloading</th><td>the device downloads the file (with percentage)</td></tr>
+    <tr><th>Downloaded, Verified</th><td>the file is complete and its MD5 matches</td></tr>
+    <tr><th>Updating</th><td>the device restarts into the new firmware</td></tr>
+    <tr><th>Updated</th><td>the device started and reported the new version</td></tr>
+    <tr><th>Failed</th><td>see the reason in the update's details; the old firmware keeps running</td></tr>
+    <tr><th>Canceled</th><td>you clicked <em>Cancel</em></td></tr>
+  </tbody>
+</table>
+<p>Common reasons for <em>Failed</em>: the device was offline and did not pick up the command in time; the download broke or the checksum did not match;
+the new firmware did not start and the device went back to the old version; or nothing was heard from the device for a long time.
+Starting and canceling updates needs the Editor role on a shared device. The Firmware page lists recent updates of all your devices.</p>
+
+<h2 id="report">The firmware report</h2>
+<p>Every template reports, when it starts (MQTT: on every connection), which firmware it runs and on which board:</p>
+<pre>{"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}</pre>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Protocol</th><th>Send it to</th></tr></thead>
+  <tbody>
+    <tr><td>HTTP</td><td><code>POST {{ http.firmware }}</code></td></tr>
+    <tr><td>MQTT</td><td>topic <code>{{ mqtt.firmware }}</code></td></tr>
+    <tr><td>CoAP</td><td><code>POST {{ coap.base }}/firmware</code></td></tr>
+  </tbody>
+</table>
+<p><code>board</code> is one of: {% for value, label in boards %}<code>{{ value }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
+The version may contain letters, digits and <code>. _ + -</code>.</p>
+
+<h2 id="mac">MAC address</h2>
+<p>The report also carries the board's Wi-Fi <strong>MAC address</strong>. The platform stores it with the device and shows it in the Firmware card.
+It tells you which physical board is using the token, for example to find the board in your router's list of connected devices,
+or to notice that a token was copied to another board (the MAC address changes).</p>
+<ul>
+  <li>On the ESP32 the value comes from <code>WiFi.macAddress()</code>, after Wi-Fi has started.</li>
+  <li>Accepted forms: <code>24:6F:28:AA:BB:CC</code>, <code>24-6f-28-aa-bb-cc</code>, <code>246f.28aa.bbcc</code> or <code>246F28AABBCC</code>. It is stored as <code>24:6F:28:AA:BB:CC</code>.</li>
+  <li>An invalid MAC address rejects the whole report, so nothing from it is saved.</li>
+  <li>Reports without <code>mac</code> are still accepted. The card then shows "unknown" until the device sends its MAC address.</li>
+</ul>

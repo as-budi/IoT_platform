@@ -186,3 +186,9 @@ Tes memakai Telegram tiruan (`unittest.mock`), jadi tidak butuh token atau inter
 - Notifikasi yang terlalu sering bisa membuat Telegram membatasi bot (±30 pesan/detik, ±20
   pesan/menit ke satu grup). Di rule chain, pasang node *Rate limit*; di ECA, aksi hanya
   berjalan saat aturan berpindah keadaan.
+
+## Catatan (tahap 25)
+
+Kartu Telegram di profil dulu menulis *"Not available: the server has no Telegram bot
+configured."* Kini *"Telegram notifications are not available on this server."* Penyebabnya tetap
+`TELEGRAM_BOT_TOKEN` kosong di `.env`.

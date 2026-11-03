@@ -22,7 +22,8 @@
     <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">STATE MACHINE</span></h1>
     <p class="text-muted mb-4">Every device the rule watches is in <strong>one state</strong> at a time, e.g. NORMAL, WARNING or CRITICAL.
       Transitions move it to another state when a condition holds, after some time, when the device goes quiet or offline,
-      or when someone presses a button. Actions run when a device <strong>enters</strong> or <strong>leaves</strong> a state.</p>
+      or when someone presses a button. Actions run when a device <strong>enters</strong> or <strong>leaves</strong> a state.
+      <a href="{% url 'userdocs:page' 'state-machines' %}">Read the guide</a></p>
 
     {% if rule_form.errors or spec_form.errors or state_formset.total_error_count or transition_formset.total_error_count or action_formset.total_error_count or machine_errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>

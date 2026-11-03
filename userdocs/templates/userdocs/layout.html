@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% comment %}
+  Kerangka dokumentasi pengguna (tahap 25, termasuk menu bertingkat):
+    kiri   : menu tiga tingkat, mirip dokumentasi PyTorch
+             bagian (judul tebal, bukan tautan)
+               └ bab (tautan; tombol panah membuka sub-menu)
+                   └ bagian di dalam bab (judul <h2>, tautan ke #id)
+    tengah : isi (block doc)
+    kanan  : "On this page" (block aside), hanya di layar lebar
+  Data menu dari userdocs/views.py: base_context() -> nav.
+{% endcomment %}
+
+{% block content %}
+<div class="docs">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <a class="h3 mb-0 text-reset text-decoration-none" href="{% url 'userdocs:index' %}">Documentation</a>
+    <form method="get" action="{% url 'userdocs:search' %}" class="docs-search d-flex gap-2" role="search">
+      <input type="search" name="q" value="{{ query }}" class="form-control" placeholder="Search the documentation"
+             aria-label="Search the documentation" minlength="2" required>
+      <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+  </div>
+
+  {# Grid: menu (lebar tetap) | isi (mengisi sisa) | On this page (lebar tetap); lihat .docs-grid di app.css. #}
+  <div class="docs-grid{% block grid_class %}{% endblock %}">
+    <aside class="docs-aside">
+      <button class="btn btn-sm btn-outline-secondary d-lg-none mb-2" type="button" data-bs-toggle="collapse"
+              data-bs-target="#docs-nav" aria-expanded="false" aria-controls="docs-nav">Chapters</button>
+      <nav id="docs-nav" class="docs-nav collapse d-lg-block" aria-label="Documentation chapters">
+        <div class="docs-nav-title">Section Navigation</div>
+        {% for section, items in nav %}
+        <div class="docs-nav-group">
+          <div class="docs-nav-section" role="heading" aria-level="2">{{ section }}</div>
+          <ul class="docs-nav-list">
+            {% for item in items %}
+            <li class="docs-nav-item{% if item.current %} is-current{% endif %}">
+              <div class="docs-nav-row">
+                <a class="docs-nav-link{% if item.current %} active{% endif %}" href="{% url 'userdocs:page' item.page.slug %}"
+                   {% if item.current %}aria-current="page"{% endif %}>{{ item.page.title }}</a>
+                {% if item.toc %}
+                <button class="docs-nav-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#docs-sub-{{ item.page.slug }}"
+                        aria-controls="docs-sub-{{ item.page.slug }}" aria-expanded="{% if item.current %}true{% else %}false{% endif %}"
+                        aria-label="Show the sections of {{ item.page.title }}">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                {% endif %}
+              </div>
+              {% if item.toc %}
+              <ul class="docs-nav-sub collapse{% if item.current %} show{% endif %}" id="docs-sub-{{ item.page.slug }}">
+                {% for anchor, title in item.toc %}
+                <li><a class="docs-nav-sublink" href="{% if not item.current %}{% url 'userdocs:page' item.page.slug %}{% endif %}#{{ anchor }}" data-anchor="{{ anchor }}">{{ title }}</a></li>
+                {% endfor %}
+              </ul>
+              {% endif %}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endfor %}
+      </nav>
+    </aside>
+    <div class="docs-main">
+      {% block doc %}{% endblock %}
+    </div>
+    {% block aside %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

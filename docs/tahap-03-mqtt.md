@@ -174,3 +174,21 @@ Jangan mengirim data penting lewat broker publik. Untuk pemakaian sungguhan:
 4. Tambahkan *Last Will* pada device: broker mengirim `{"online": false}` ke topik
    `<prefix>/<token>/status` bila device putus tanpa pamit. Tampilkan status
    online/offline di dashboard.
+
+## Catatan operasional (dipindah dari halaman dan firmware, tahap 25)
+
+- Tab MQTT di halaman device dulu menulis *"Data is exchanged only while `python manage.py
+  mqtt_bridge` is running"* (hanya saat `DEBUG=True`). Faktanya tetap: tanpa proses
+  `mqtt_bridge` (di laptop: `runall`; di server: `iot-mqtt.service`), pesan MQTT tidak
+  disimpan dan desired state/command tidak terkirim. Pengguna kini tidak lagi melihat kalimat itu.
+- Komentar sketch `firmware/esp32_mqtt` kini berbahasa Inggris untuk pengguna. Catatan
+  pengembang yang dulu ada di sana:
+  - `MQTT_HOST`, `MQTT_PORT`, dan `TOPIC_PREFIX` di sketch harus sama dengan `MQTT_PUBLIC_HOST`,
+    `MQTT_PUBLIC_PORT`, dan `MQTT_TOPIC_PREFIX` di `.env` (template unduhan dari `/docs/`
+    sudah mengisinya otomatis).
+  - Mode belajar: broker publik/lokal tanpa enkripsi, `USE_TLS 0`, port 1883. Mode produksi:
+    `USE_TLS 1`, `MQTT_HOST` = domain server, port 8883, `ROOT_CA` diisi (`docs/deploy-vps.md`).
+  - Broker milik server menolak klien tanpa akun; akun dan ACL dibuat oleh
+    `python manage.py mqtt_accounts` (username = password = access token). Broker publik
+    (broker.emqx.io) mengabaikan akun itu, jadi sketch yang sama jalan di keduanya.
+  - Di laptop, jalankan `python manage.py runall 0.0.0.0:8000` (web + `mqtt_bridge`).

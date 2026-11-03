@@ -1,49 +1,46 @@
 /*
- * Contoh firmware ESP32: komunikasi dua arah dengan platform lewat MQTT,
- * lengkap dengan TLS dan pembaruan over-the-air (OTA). Satu sketch ini dipakai
- * dari tahap 3 (MQTT) sampai produksi (docs/deploy-vps.md).
+ * ESP32 firmware template: two-way communication with IoT Platform over MQTT,
+ * with optional TLS encryption and over-the-air (OTA) firmware updates.
  *
- *   - Telemetri setiap 10 detik: suhu chip, kekuatan sinyal Wi-Fi, keadaan lampu.
- *   - Desired state "lamp" -> LED menyala/padam -> melapor balik (tahap 3).
- *   - Command "blink" {"times": 5} dan "ping" -> mengirim hasilnya (tahap 3).
- *   - Status online/offline lewat Last Will (tahap 16).
- *   - Versi firmware dilaporkan ke <prefix>/<token>/firmware setiap tersambung,
- *     dan command "ota" untuk memperbarui firmware dari jauh (tahap 9):
- *       {"id": 12, "method": "ota", "params": {"update": 7, "version": "1.1.0",
- *        "url": "https://iot.contoh.my.id/api/v1/ota/<token-unduhan>.bin",
- *        "md5": "...", "size": 912345}}
- *     File diunduh dengan HTTPUpdate (bawaan core ESP32) ke partisi OTA CADANGAN,
- *     MD5 diperiksa dari header x-MD5; firmware lama tetap utuh sampai semuanya
- *     berhasil. Langkah dilaporkan: DOWNLOADING (%), DOWNLOADED, VERIFIED,
- *     UPDATING, lalu restart. Firmware BARU melaporkan versinya setelah menyala;
- *     laporan itulah yang membuat platform menandai pembaruan UPDATED.
- *   - USE_TLS 1: MQTT terenkripsi (port 8883) dan unduhan OTA hanya lewat https://
- *     dengan sertifikat server yang diperiksa terhadap ROOT_CA.
+ * What it does
+ *   - Sends telemetry every 10 seconds: chip temperature, Wi-Fi signal strength
+ *     and the state of the lamp (the built-in LED).
+ *   - Follows the requested state of the actuator "lamp": switches the LED on or
+ *     off and reports the new state back.
+ *   - Runs the commands "blink" {"times": 5} and "ping" and sends the result back.
+ *   - Announces "online" when it connects; the broker announces "offline" for it
+ *     when the connection is lost (MQTT Last Will).
+ *   - Reports its firmware version, board and Wi-Fi MAC address every time it
+ *     connects, e.g. {"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}.
+ *   - Installs firmware updates started from the device page (command "ota"):
+ *     the file is written to the spare OTA partition and checked (MD5) before the
+ *     ESP32 restarts into it; the running firmware stays intact until then. Each
+ *     step is reported, and the new firmware reports its version after it starts,
+ *     which is how the platform knows the update succeeded.
  *
- * Persiapan di dashboard:
- *   1. Buat device, salin access token-nya (bagian "Connect a device").
- *   2. Tambahkan variabel key "lamp", kind "Actuator", value type "On / off".
- *   3. Di komputer sendiri jalankan:  python manage.py runall 0.0.0.0:8000
- *      (web + mqtt_bridge). Di server produksi, layanan iot-* sudah berjalan.
+ * Before uploading
+ *   1. On the platform: create the device and add a variable with key "lamp",
+ *      kind "Actuator", value type "On / off".
+ *   2. Fill in WIFI_SSID and WIFI_PASSWORD. Check MQTT_HOST, MQTT_PORT, USE_TLS,
+ *      TOPIC_PREFIX and ACCESS_TOKEN: a template downloaded from the platform
+ *      already contains the right values.
+ *   3. Arduino IDE: Tools > Partition Scheme must support OTA, e.g.
+ *      "Default 4MB with spiffs".
  *
- * Mode pemakaian:
- *   - Belajar di jaringan lokal / broker publik: USE_TLS 0, MQTT_PORT 1883.
- *     Unduhan OTA memakai OTA_BASE_URL=http://<IP-Wi-Fi-komputer>:8000 di .env.
- *   - Server produksi: USE_TLS 1, MQTT_HOST = domain server, MQTT_PORT 8883,
- *     ROOT_CA diisi, dan OTA_BASE_URL=https://<domain> di .env server.
- *     Server produksi TIDAK menerima http:// lagi (semuanya dialihkan ke https).
+ * Updating this device over the air later
+ *   1. Upload this sketch once over USB with FW_VERSION "1.0.0".
+ *   2. Change FW_VERSION (e.g. "1.1.0") and whatever else you need, then
+ *      Sketch > Export Compiled Binary.
+ *   3. Upload the .bin file on the platform's Firmware page with the same version
+ *      and board, then choose it under "Update firmware" on the device page.
  *
- * Mencoba OTA (docs/tahap-09-ota.md):
- *   1. FW_VERSION = "1.0.0", upload lewat kabel USB SEKALI. Pastikan
- *      Tools > Partition Scheme mendukung OTA (mis. "Default 4MB with spiffs").
- *   2. Ubah FW_VERSION menjadi "1.1.0" (dan perilaku apa saja, mis. interval),
- *      lalu Sketch > Export Compiled Binary. Upload file .bin-nya di halaman
- *      Firmware dengan versi 1.1.0, board ESP32.
- *   3. Di halaman device, pilih 1.1.0 dan klik "Update firmware".
+ * Libraries (Arduino IDE: Sketch > Include Library > Manage Libraries):
+ * PubSubClient by Nick O'Leary and ArduinoJson 7 by Benoit Blanchon.
+ * WiFiClientSecure, HTTPClient and HTTPUpdate come with the board package
+ * "esp32" by Espressif Systems. Serial Monitor: 115200 baud.
  *
- * Pustaka (Library Manager): PubSubClient (Nick O'Leary), ArduinoJson 7 (Benoit
- * Blanchon). WiFiClientSecure, HTTPClient, dan HTTPUpdate sudah termasuk paket
- * board "esp32" by Espressif.
+ * Documentation: open "Documentation" in the platform menu, chapters
+ * "Connect an ESP32" and "Firmware updates".
  */
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -52,31 +49,30 @@
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 
-// ---- versi firmware INI ---------------------------------------------------------
-// Harus SAMA PERSIS dengan versi yang diisi saat mengunggah .bin di platform.
+// ---- this firmware ----------------------------------------------------------------
+// Must be EXACTLY the version you enter when uploading the .bin file to the platform.
 #define FW_VERSION "1.0.0"
-#define FW_BOARD   "esp32"   // esp32, esp32s2, esp32s3, esp32c3 (lihat devices.models.Board)
+#define FW_BOARD   "esp32"   // esp32, esp32s2, esp32s3 or esp32c3
 
-// ---- isi bagian ini ---------------------------------------------------------------
+// ---- fill in this part -------------------------------------------------------------
 const char* WIFI_SSID     = "your-wifi-name";
 const char* WIFI_PASSWORD = "your-wifi-password";
 
-// Harus SAMA dengan MQTT_HOST, MQTT_PORT, dan MQTT_TOPIC_PREFIX di file .env.
+// Broker address, port and topic prefix of the platform (see the device page, MQTT tab).
 const char* MQTT_HOST     = "broker.emqx.io";
 const uint16_t MQTT_PORT  = 1883;
-const char* TOPIC_PREFIX  = "paste-MQTT_TOPIC_PREFIX-here";
+const char* TOPIC_PREFIX  = "paste-the-topic-prefix-here";
 const char* ACCESS_TOKEN  = "paste-the-device-access-token-here";
 
-// ---- server produksi (docs/deploy-vps.md) -------------------------------------
-// USE_TLS 1: MQTT terenkripsi ke broker Mosquitto milik server (port 8883), dan unduhan
-// OTA lewat https://. Isi juga MQTT_HOST = domain server, MQTT_PORT = 8883, dan ROOT_CA.
-// USE_TLS 0: broker publik/lokal tanpa enkripsi (port 1883), hanya untuk belajar.
+// ---- encryption ---------------------------------------------------------------------
+// USE_TLS 1: encrypted MQTT (usually port 8883), and firmware updates are downloaded
+// over https:// only. The server is checked against ROOT_CA below.
+// USE_TLS 0: no encryption (usually port 1883). Use it only on networks you trust.
 #define USE_TLS 0
 
-// Sertifikat akar (root CA) yang menandatangani sertifikat Let's Encrypt server.
-// Salin isinya dari https://letsencrypt.org/certificates/ (bagian "Root Certificates",
-// ISRG Root X1, format PEM), termasuk baris BEGIN/END. Dengan ini ESP32 bisa
-// memastikan ia benar-benar berbicara dengan server Anda, bukan penyamar.
+// Root certificate (root CA) that signed the server's certificate: ISRG Root X1 for
+// servers using Let's Encrypt (PEM format, including the BEGIN/END lines). With it the
+// ESP32 makes sure it talks to the real server and not to an impostor.
 const char* ROOT_CA = R"PEM(
 -----BEGIN CERTIFICATE-----
 paste ISRG Root X1 here
@@ -98,10 +94,10 @@ String topicTelemetry, topicDesired, topicCommands, topicErrors, topicFirmware, 
 bool lampOn = false;
 unsigned long lastSend = 0;
 
-// Pembaruan yang menunggu dijalankan di loop() (bukan di dalam callback MQTT,
-// karena unduhan memakan waktu puluhan detik).
-long otaUpdateId = 0;           // 0 = tidak ada
-long lastOtaUpdateId = 0;       // command bisa terkirim ulang (QoS 1): jalankan sekali saja
+// An accepted update waits to be run in loop(), not inside the MQTT callback,
+// because the download takes tens of seconds.
+long otaUpdateId = 0;           // 0 = none
+long lastOtaUpdateId = 0;       // a command can arrive twice (QoS 1): run it only once
 String otaUrl;
 int otaLastPercent = -1;
 
@@ -112,12 +108,13 @@ void publishJson(const String& topic, JsonDocument& doc) {
   Serial.printf("-> %s  %s\n", topic.c_str(), text.c_str());
 }
 
-// ---- laporan firmware ----------------------------------------------------------------
+// ---- firmware report -----------------------------------------------------------------
 
 void reportFirmwareVersion() {
   JsonDocument doc;
   doc["version"] = FW_VERSION;
   doc["board"] = FW_BOARD;
+  doc["mac"] = WiFi.macAddress();   // Wi-Fi MAC address, e.g. "24:6F:28:AA:BB:CC"
   publishJson(topicFirmware, doc);
 }
 
@@ -128,10 +125,10 @@ void reportOtaState(const char* state, int progress = -1, const String& error = 
   if (progress >= 0) doc["progress"] = progress;
   if (error.length()) doc["error"] = error;
   publishJson(topicFirmware, doc);
-  mqtt.loop();  // kirim sekarang, jangan menunggu putaran loop() berikutnya
+  mqtt.loop();  // send now, do not wait for the next loop()
 }
 
-// Dipanggil HTTPUpdate selama mengunduh. Lapor setiap kenaikan 10 %.
+// Called by HTTPUpdate while downloading. Reports every 10 % of progress.
 void onOtaProgress(int current, int total) {
   int percent = total > 0 ? (int)((long long)current * 100 / total) : 0;
   if (percent >= otaLastPercent + 10 || percent == 100) {
@@ -145,19 +142,19 @@ void runOta() {
   otaLastPercent = -1;
   reportOtaState("DOWNLOADING", 0);
 
-  httpUpdate.rebootOnUpdate(false); // restart sendiri, SETELAH melapor
+  httpUpdate.rebootOnUpdate(false); // restart ourselves, AFTER reporting
   httpUpdate.onProgress(onOtaProgress);
-  // update() mengunduh, menulis ke partisi cadangan, dan memeriksa MD5 (header x-MD5).
-  // Bila gagal di tengah jalan, partisi aktif (firmware lama) tidak tersentuh.
+  // update() downloads the file, writes it to the spare partition and checks the MD5
+  // (x-MD5 header). If anything fails, the running firmware is left untouched.
   t_httpUpdate_return result;
   if (otaUrl.startsWith("https://")) {
     WiFiClientSecure https;
-    https.setCACert(ROOT_CA);       // file firmware hanya diterima dari server yang sah
+    https.setCACert(ROOT_CA);       // firmware is accepted only from the real server
     result = httpUpdate.update(https, otaUrl);
   } else {
 #if USE_TLS
-    // Mode produksi: jangan pernah memasang firmware yang diunduh tanpa enkripsi.
-    // Perbaiki OTA_BASE_URL di .env server menjadi https://<domain>.
+    // With TLS on, never install firmware that was downloaded without encryption.
+    // The update fails; ask the platform administrator to serve downloads over https://.
     reportOtaState("FAILED", -1, "Refusing http:// download in TLS mode");
     otaUpdateId = 0;
     return;
@@ -169,9 +166,9 @@ void runOta() {
 
   if (result == HTTP_UPDATE_OK) {
     reportOtaState("DOWNLOADED");
-    reportOtaState("VERIFIED");       // MD5 cocok, image sudah ditulis dan ditandai untuk boot
+    reportOtaState("VERIFIED");       // MD5 matches, image written and marked for boot
     reportOtaState("UPDATING");
-    for (int i = 0; i < 10; i++) { mqtt.loop(); delay(50); }  // pastikan laporan terkirim
+    for (int i = 0; i < 10; i++) { mqtt.loop(); delay(50); }  // make sure the reports are sent
     Serial.println("OTA: restarting into the new firmware");
     ESP.restart();
   } else {
@@ -183,7 +180,7 @@ void runOta() {
   otaUpdateId = 0;
 }
 
-// ---- desired state & command (tahap 3) ---------------------------------------------------
+// ---- requested state & commands -----------------------------------------------------------
 
 void setLamp(bool on) {
   lampOn = on;
@@ -217,7 +214,7 @@ void handleCommand(const String& id, JsonDocument& command) {
   if (strcmp(method, "ota") == 0) {
     long update = command["params"]["update"] | 0L;
     const char* version = command["params"]["version"] | "";
-    if (update == lastOtaUpdateId) return;            // kiriman ulang: sudah ditangani
+    if (update == lastOtaUpdateId) return;            // sent again: already handled
     if (strcmp(version, FW_VERSION) == 0) {
       result["success"] = false;
       result["error"] = String("Already running ") + FW_VERSION;
@@ -225,7 +222,7 @@ void handleCommand(const String& id, JsonDocument& command) {
       result["success"] = false;
       result["error"] = "Another update is running";
     } else {
-      // Terima dulu; unduhan dijalankan di loop() setelah jawaban ini terkirim.
+      // Accept first; the download runs in loop() after this answer has been sent.
       otaUpdateId = lastOtaUpdateId = update;
       otaUrl = String(command["params"]["url"] | "");
       result["success"] = true;
@@ -267,7 +264,7 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// ---- koneksi --------------------------------------------------------------------------------
+// ---- connection ----------------------------------------------------------------------------
 
 void connectWifi() {
   Serial.printf("Connecting to %s", WIFI_SSID);
@@ -283,21 +280,20 @@ void connectMqtt() {
   while (!mqtt.connected()) {
     String clientId = "esp32-" + String((uint32_t)ESP.getEfuseMac(), HEX);
     Serial.printf("Connecting to MQTT %s:%u as %s ... ", MQTT_HOST, MQTT_PORT, clientId.c_str());
-    // Broker milik server menolak klien tanpa akun. Username = password = access token;
-    // ACL broker hanya mengizinkan topik yang memuat token ini (manage.py mqtt_accounts).
-    // Broker publik (broker.emqx.io) mengabaikan akun ini, jadi aman dipakai di keduanya.
-    // Last Will (tahap 16): bila koneksi putus tanpa pamit (listrik mati, Wi-Fi hilang),
-    // broker mengirim "offline" (retained) ke topik status atas nama device ini.
+    // Username = password = access token. The platform's broker only lets this device
+    // use topics that contain its own token; brokers without accounts ignore the login.
+    // Last Will: if the connection is lost without a goodbye (power cut, Wi-Fi gone),
+    // the broker publishes "offline" (retained) to the status topic for this device.
     if (mqtt.connect(clientId.c_str(), ACCESS_TOKEN, ACCESS_TOKEN,
                      topicStatus.c_str(), 1, true, "offline")) {
       Serial.println("ok");
-      mqtt.publish(topicStatus.c_str(), "online", true);   // retained: sesi dimulai
-      // Subscribe setelah SETIAP koneksi. Desired state di-retain oleh broker,
-      // jadi langsung diterima begitu subscribe -> lampu kembali ke keadaan yang diminta.
+      mqtt.publish(topicStatus.c_str(), "online", true);   // retained: the session has started
+      // Subscribe after EVERY connection. The broker keeps (retains) the requested state,
+      // so it arrives right after subscribing and the lamp returns to the requested state.
       mqtt.subscribe(topicDesired.c_str(), 1);
       mqtt.subscribe((topicCommands + "+").c_str(), 1);
       mqtt.subscribe(topicErrors.c_str(), 0);
-      // Setiap kali tersambung (termasuk setelah restart karena OTA): laporkan versi.
+      // On every connection (including the restart after an update): report the version.
       reportFirmwareVersion();
     } else {
       Serial.printf("failed (state %d), retrying in 5 s\n", mqtt.state());
@@ -326,13 +322,13 @@ void setup() {
 #endif
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMessage);
-  mqtt.setBufferSize(1024);  // command ota memuat URL panjang
+  mqtt.setBufferSize(1024);  // the ota command contains a long URL
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) connectWifi();
   if (!mqtt.connected()) connectMqtt();
-  mqtt.loop();  // WAJIB sering dipanggil: menerima pesan dan menjaga koneksi
+  mqtt.loop();  // call often: receives messages and keeps the connection alive
 
   if (otaUpdateId != 0) {
     runOta();

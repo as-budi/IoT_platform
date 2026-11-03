@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "notifications",  # notifikasi Telegram untuk aksi aturan (tahap 17)
     "activity",       # log aktivitas seluruh platform (tahap 18)
     "sharing",        # berbagi device antar-pengguna dan grup (tahap 19)
+    "userdocs",       # dokumentasi pengguna dengan pencarian (tahap 25)
     # Login untuk aplikasi lain lewat OAuth 2.0 / OpenID Connect (tahap 22).
     # "oauth" (milik project) SEBELUM "oauth2_provider" (paket django-oauth-toolkit),
     # supaya template halaman izin milik kita yang dipakai.

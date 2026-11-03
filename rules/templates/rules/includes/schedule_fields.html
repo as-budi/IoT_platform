@@ -45,7 +45,8 @@ dikosongkan server (RuleScheduleForm.clean).
   </div>
   {% for error in form.non_field_errors %}<div class="alert alert-danger py-2">{{ error }}</div>{% endfor %}
   <p class="small text-muted mb-0">Times use the server's time zone ({{ time_zone }}).
-    The rule engine worker (<code>manage.py rule_engine</code>) must be running.</p>
+    A run that cannot start within a few minutes of its time is skipped and shown in the execution log.
+    <a href="{% url 'userdocs:page' 'schedules' %}">More about schedules</a></p>
 </div>
 
 <script>

@@ -1,0 +1,34 @@
+<p>ECA rules and rule chains can run at set times instead of when data arrives, e.g. "water at 06:00 if the soil is dry" or "email a report every weekday at 07:00".</p>
+
+<h2 id="kinds">Three kinds of schedule</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Repeat</th><th>You fill in</th><th>Example</th></tr></thead>
+  <tbody>
+    <tr><td>At set times</td><td>one or more times, and the days of the week</td><td><code>06:00, 18:30</code> on Mon–Fri</td></tr>
+    <tr><td>Every N minutes</td><td>1 to 1440 minutes, and the days of the week</td><td>every 15 minutes, every day: 00:00, 00:15, 00:30, …</td></tr>
+    <tr><td>Once</td><td>a date and time in the future</td><td>20 Oct 07:30</td></tr>
+  </tbody>
+</table>
+<p>Times use the server's time zone ({{ time_zone }}). The rule page shows the next planned runs and the last scheduled time.</p>
+
+<h2 id="eca">Scheduled ECA rules</h2>
+<ul>
+  <li>Choose <em>On a schedule</em> as the event.</li>
+  <li>The condition is optional. With a condition, the actions run at the scheduled time only if it holds (values come from the latest stored readings);
+    otherwise the run is logged as <em>Skipped</em>. Without a condition, the actions run at every scheduled time.</li>
+  <li><strong>Keep active for (seconds)</strong>: how long the rule stays active before it clears by itself and runs its "on clear" actions,
+    e.g. 600 for "pump ON for 10 minutes". 0 = only the "on activate" actions run (one-shot emails, commands, alarms).</li>
+  <li>If the rule is still active from the previous run when the next time comes, that run is skipped.</li>
+</ul>
+
+<h2 id="chains">Scheduled rule chains</h2>
+<p>Choose <em>On a schedule</em> for the Input. At every scheduled time one message enters the chain carrying the time
+(<code>hour</code>, <code>minute</code>, <code>weekday</code>, <code>day</code>, <code>month</code>). Add <em>Add latest value</em> nodes to bring in sensor readings.
+Telemetry does not start a scheduled chain.</p>
+
+<h2 id="missed">Missed runs and disabled rules</h2>
+<ul>
+  <li>A run that cannot start within {{ limits.schedule_grace_minutes }} minutes of its time (for example during maintenance of the platform) is not run late;
+    it is logged as <em>Skipped</em> with the reason.</li>
+  <li>A disabled rule does not run. Enabling it plans the next run from that moment.</li>
+</ul>

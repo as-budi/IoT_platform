@@ -154,3 +154,22 @@ menjadi langkah lanjutan.
 3. Ubah `COAP_OBSERVE_INTERVAL` menjadi 5, lalu ukur jeda antara menekan ON dan reaksi device.
 4. Tambahkan resource `GET <token>/time` yang mengembalikan waktu server dalam milidetik,
    supaya ESP32 tanpa NTP bisa mengisi `ts` telemetri dengan benar.
+
+## Catatan operasional (dipindah dari halaman dan firmware, tahap 25)
+
+- Tab CoAP di halaman device dulu menulis bahwa data hanya dipertukarkan selama
+  `python manage.py coap_server` berjalan, dan bahwa device harus bisa menjangkau "komputer ini".
+  Keduanya tetap benar (di server: `iot-coap.service`), tetapi kini tidak tampil ke pengguna.
+- Peringatan alamat `127.0.0.1` (`COAP_PUBLIC_HOST` kosong atau loopback) kini hanya untuk
+  **Admin**, lengkap dengan nama pengaturannya. Pengguna biasa hanya melihat bahwa CoAP belum
+  tersedia di server ini (`devices/templates/devices/includes/connect_reach.html`).
+- Label contoh `coap-client` dulu menyebut `brew install libcoap`; kini netral ("part of the
+  libcoap tools"). Di macOS tetap `brew install libcoap`.
+- Catatan pengembang dari komentar sketch `firmware/esp32_coap`:
+  - Sketch memakai GET berkala karena pustaka "CoAP simple library" tidak mendukung Observe
+    sepenuhnya; Observe penuh bisa dicoba dengan `scripts/fake_coap_device.py` atau
+    `coap-client -s`.
+  - Di laptop: `python manage.py coap_server`, izinkan koneksi masuk bila ditanya macOS, dan
+    ESP32 harus satu jaringan dengan laptop karena CoAP tidak memakai broker.
+  - Sejak tahap 24, `SERVER_HOST` berupa teks (IP atau nama domain), diisi dari
+    `COAP_PUBLIC_HOST`.

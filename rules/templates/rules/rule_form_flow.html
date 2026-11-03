@@ -22,7 +22,8 @@
     <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">FLOW</span></h1>
     <p class="text-muted mb-4">Every message enters at <strong>Input</strong> and travels from node to node.
       Each node ends with a result — <strong>True/False</strong> for filters, <strong>Success/Failure</strong> for the others —
-      and the message follows the links with that label. A branch without a matching link simply ends.</p>
+      and the message follows the links with that label. A branch without a matching link simply ends.
+      <a href="{% url 'userdocs:page' 'rule-chains' %}">Read the guide</a></p>
 
     {% if rule_form.errors or spec_form.errors or node_formset.total_error_count or link_formset.total_error_count or graph_errors or schedule_form.in_use and schedule_form.errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>

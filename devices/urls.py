@@ -9,6 +9,11 @@ urlpatterns = [
     # Device
     path("", views.DeviceListView.as_view(), name="list"),
     path("add/", views.DeviceCreateView.as_view(), name="add"),
+    # Unduhan template firmware ESP32 (tahap 24). Panduannya kini di /docs/ (tahap 25);
+    # alamat lama /devices/connect/ dialihkan ke bab "Connect an ESP32".
+    path("connect/", views.connect_guide_redirect, name="connect_guide"),
+    path("connect/firmware/<str:protocol>.zip", views.ConnectFirmwareView.as_view(), name="connect_firmware"),
+    path("connect/isrg-root-x1.pem", views.RootCaView.as_view(), name="connect_root_ca"),
     path("<int:pk>/", views.DeviceDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.DeviceUpdateView.as_view(), name="edit"),
     path("<int:pk>/delete/", views.DeviceDeleteView.as_view(), name="delete"),

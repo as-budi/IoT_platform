@@ -19,7 +19,8 @@
 <div class="row justify-content-center">
   <div class="col-xl-9">
     <h1 class="h3 mb-1">{% if rule %}Edit {{ rule.name }}{% else %}New rule{% endif %} <span class="badge model-badge align-middle fs-6">ECA</span></h1>
-    <p class="text-muted mb-4"><strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run the actions. When the condition recovers, the rule <strong>clears</strong> and can run other actions.</p>
+    <p class="text-muted mb-4"><strong>When</strong> an event arrives, <strong>if</strong> the condition holds, <strong>then</strong> run the actions. When the condition recovers, the rule <strong>clears</strong> and can run other actions.
+      <a href="{% url 'userdocs:page' 'rules-eca' %}">Read the guide</a></p>
 
     {% if rule_form.errors or spec_form.errors or action_formset.total_error_count or when_formset.total_error_count or clear_formset.total_error_count or cross_errors or schedule_form.in_use and schedule_form.errors %}
     <div class="alert alert-danger">Please correct the errors below.</div>

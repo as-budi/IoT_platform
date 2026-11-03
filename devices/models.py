@@ -176,6 +176,11 @@ class Device(models.Model):
     # server): hanya device yang tahu pasti firmware mana yang menyala.
     firmware_version = models.CharField("firmware version", max_length=40, blank=True, editable=False)
     firmware_reported_at = models.DateTimeField("firmware reported", null=True, blank=True, editable=False)
+    # MAC address Wi-Fi yang dilaporkan device bersama versi firmware (tahap 24),
+    # disimpan seragam "AA:BB:CC:DD:EE:FF". Berguna untuk mengenali alat fisik mana
+    # yang memakai token ini, mis. saat mencocokkan dengan daftar DHCP router.
+    mac_address = models.CharField("MAC address", max_length=17, blank=True, editable=False)
+    mac_reported_at = models.DateTimeField("MAC reported", null=True, blank=True, editable=False)
     # --- Status koneksi (tahap 16, devices/presence.py) ---
     # Online = mengirim data dalam DEVICE_OFFLINE_SECONDS terakhir, ATAU punya sesi
     # MQTT yang diumumkan lewat topik <prefix>/<token>/status (Last Will).

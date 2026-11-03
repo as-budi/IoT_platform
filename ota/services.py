@@ -40,6 +40,9 @@ REPORTABLE = {
     OtaStatus.DOWNLOADING, OtaStatus.DOWNLOADED, OtaStatus.VERIFIED, OtaStatus.UPDATING, OtaStatus.FAILED,
 }
 VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+\-]{0,39}$")
+# MAC address (tahap 24): 12 digit heksadesimal, boleh dipisah ":", "-", atau ".".
+MAC_DIGITS_RE = re.compile(r"^[0-9A-Fa-f]{12}$")
+MAC_SEPARATORS_RE = re.compile(r"[:\-.]")
 
 
 class OtaError(Exception):
@@ -276,7 +279,7 @@ def claim_download(token, address):
 def handle_report(device, data, protocol):
     """Laporan firmware dari device (HTTP, MQTT, atau CoAP; payload sama):
 
-        {"version": "1.0.0", "board": "esp32"}                     saat menyala
+        {"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}   saat menyala
         {"update": 7, "state": "DOWNLOADING", "progress": 40}      selama pembaruan
         {"update": 7, "state": "FAILED", "error": "MD5 mismatch"}
 
@@ -285,15 +288,44 @@ def handle_report(device, data, protocol):
     """
     if not isinstance(data, dict):
         raise PayloadError('Report must be a JSON object, e.g. {"version": "1.0.0"}.')
-    if "version" not in data and "state" not in data:
-        raise PayloadError('Report needs "version" and/or "update" + "state".')
+    if not any(key in data for key in ("version", "state", "mac")):
+        raise PayloadError('Report needs "version" (and "mac"), and/or "update" + "state".')
+    # Periksa MAC lebih dulu: laporan dengan MAC yang salah ditolak utuh, tidak setengah tersimpan.
+    mac = normalize_mac(data["mac"]) if "mac" in data else None
     expire_due(device)
     done = []
     if "state" in data:
         done.append(report_state(device, data, protocol))
     if "version" in data:
         done.append(report_version(device, data.get("version"), data.get("board"), protocol))
+    if mac is not None:
+        done.append(report_mac(device, mac))
     return "; ".join(done)
+
+
+def normalize_mac(value):
+    """Seragamkan MAC address: "aa-bb-cc-dd-ee-ff", "aabb.ccdd.eeff", atau
+    "aabbccddeeff" -> "AA:BB:CC:DD:EE:FF". Melempar PayloadError bila bentuknya salah.
+    """
+    message = '"mac" must be text like "AA:BB:CC:DD:EE:FF" (12 hexadecimal digits).'
+    if not isinstance(value, str):
+        raise PayloadError(message)
+    digits = MAC_SEPARATORS_RE.sub("", value.strip())
+    if not MAC_DIGITS_RE.match(digits) or int(digits, 16) == 0:
+        raise PayloadError(message)
+    digits = digits.upper()
+    return ":".join(digits[i:i + 2] for i in range(0, 12, 2))
+
+
+def report_mac(device, mac):
+    """Simpan MAC address yang dilaporkan device (tahap 24). `mac` sudah dinormalisasi."""
+    changed = device.mac_address != mac
+    device.mac_address = mac
+    device.mac_reported_at = timezone.now()
+    device.save(update_fields=["mac_address", "mac_reported_at"])
+    if changed:
+        events.emit(device.pk, {"type": "firmware", "mac": mac})
+    return f"MAC {mac}"
 
 
 def report_state(device, data, protocol):
