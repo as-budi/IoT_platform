@@ -251,14 +251,11 @@ class EcaEngine(RuleEngine):
             clear_result, clear_details = conditions.evaluate(
                 spec.clear_groups, readings, now, spec.max_age_seconds
             )
-            clear = clear_result is True
-            # Bila kedua ekspresi benar bersamaan, aturan tidak diaktifkan
-            # (mencegah aktif lalu langsung pulih, berulang-ulang).
-            condition = when_result is True and not clear
         else:
             clear_result, clear_details = (None if when_result is None else not when_result), []
-            clear = when_result is False      # "tidak diketahui" TIDAK memulihkan aturan
-            condition = when_result is True
+        # Bila kedua ekspresi benar bersamaan, aturan tidak diaktifkan (mencegah aktif
+        # lalu langsung pulih). Tanpa histeresis, "tidak diketahui" TIDAK memulihkan aturan.
+        condition, clear = conditions.decide(when_result, clear_result, spec.has_hysteresis)
 
         trigger = None
         for condition_row in spec.condition_list():

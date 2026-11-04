@@ -260,6 +260,8 @@ def export_rule(rule):
             _action(action)
             for action in rule.actions.select_related("target_variable__device", "target_device").order_by("order", "pk")
         ],
+        # Micro rule (tahap 26): hanya ditulis bila aktif, supaya berkas lama tetap sama.
+        **({"run_on_devices": True} if rule.edge_enabled else {}),
     }
 
 
@@ -428,6 +430,7 @@ def eca_form_data(data, owner):
         "rule-name": _text(data.get("name")),
         "rule-description": _text(data.get("description")),
         "rule-is_enabled": _text(bool(data.get("enabled", True))),
+        "rule-edge_enabled": _text(bool(data.get("run_on_devices", False))),
         "eca-event": _text(eca.get("event", EcaSpec.Event.TELEMETRY)),
         "eca-silence_seconds": _text(eca.get("silence_seconds")),
         "eca-duration_seconds": _text(eca.get("duration_seconds", 0)),

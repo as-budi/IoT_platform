@@ -1,0 +1,114 @@
+{
+  "name": "duration_interrupted",
+  "description": "A false value while pending returns the rule to IDLE.",
+  "fragment": {
+    "fmt": "microrule/1",
+    "rule": 12,
+    "rev": "767eecb9",
+    "strategy": "actuator",
+    "role": "eval",
+    "self": 3,
+    "sources": [
+      {
+        "p": 1,
+        "mac": "AA:BB:CC:00:00:01",
+        "key_id": null
+      },
+      {
+        "p": 2,
+        "mac": "AA:BB:CC:00:00:02",
+        "key_id": null
+      }
+    ],
+    "signals": [
+      {
+        "s": 1,
+        "key": "soil_moisture",
+        "kh": "0x6511",
+        "from": 1
+      },
+      {
+        "s": 2,
+        "key": "temperature",
+        "kh": "0xFF0F",
+        "from": 2
+      }
+    ],
+    "when": [
+      [
+        [
+          1,
+          "<",
+          20.0
+        ],
+        [
+          2,
+          ">",
+          30.0
+        ]
+      ],
+      [
+        [
+          1,
+          "<",
+          10.0
+        ]
+      ]
+    ],
+    "clear": [
+      [
+        [
+          1,
+          ">",
+          30.0
+        ]
+      ]
+    ],
+    "timing": {
+      "duration": 60,
+      "cooldown": 0,
+      "max_age": 300,
+      "tick": 1
+    },
+    "on_activate": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 1.0
+      }
+    ],
+    "on_clear": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 0.0
+      }
+    ]
+  },
+  "steps": [
+    {
+      "t": 0,
+      "rx": {
+        "mac": "AA:BB:CC:00:00:01",
+        "frame": "4d520101010000000111650000a04000000000000000000000"
+      },
+      "expect": [],
+      "status": "PENDING"
+    },
+    {
+      "t": 30000,
+      "rx": {
+        "mac": "AA:BB:CC:00:00:01",
+        "frame": "4d520101020000000111650000404100000000000000000000"
+      },
+      "expect": [],
+      "status": "IDLE"
+    },
+    {
+      "t": 60000,
+      "tick": true,
+      "expect": [],
+      "status": "IDLE"
+    }
+  ]
+}

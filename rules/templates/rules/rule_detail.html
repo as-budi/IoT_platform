@@ -105,6 +105,8 @@
 
 {% if rule_json %}{% include "rules/includes/json_card.html" %}{% endif %}
 
+{% if edge %}{% include "rules/includes/edge_plan.html" %}{% endif %}
+
 {% if alarms %}
 <h2 class="h5 mb-3">Alarms from this rule</h2>
 <div class="mb-4">{% include "rules/includes/alarm_table.html" %}</div>

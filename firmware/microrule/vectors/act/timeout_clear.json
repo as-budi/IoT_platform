@@ -1,0 +1,72 @@
+{
+  "name": "timeout_clear",
+  "description": "When the evaluator goes quiet, \"clear\" runs the clear actions.",
+  "fragment": {
+    "fmt": "microrule/1",
+    "rule": 12,
+    "rev": "2211a7ee",
+    "strategy": "sensor",
+    "role": "act",
+    "self": 3,
+    "evaluator": {
+      "p": 1,
+      "mac": "AA:BB:CC:00:00:01",
+      "key_id": null
+    },
+    "on_activate": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 1.0
+      }
+    ],
+    "on_clear": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 0.0
+      }
+    ],
+    "state_timeout": 30,
+    "on_timeout": "clear"
+  },
+  "steps": [
+    {
+      "t": 0,
+      "rx": {
+        "mac": "AA:BB:CC:00:00:01",
+        "frame": "4d520104010000000c0000002211a7ee01010000000000000000000000"
+      },
+      "expect": [
+        {
+          "tr": "ACTIVATE",
+          "actions": [
+            {
+              "do": "set",
+              "key": "pump",
+              "value": 1.0
+            }
+          ]
+        }
+      ],
+      "applied": true
+    },
+    {
+      "t": 31000,
+      "tick": true,
+      "expect": [
+        {
+          "tr": "CLEAR",
+          "actions": [
+            {
+              "do": "set",
+              "key": "pump",
+              "value": 0.0
+            }
+          ]
+        }
+      ],
+      "applied": false
+    }
+  ]
+}

@@ -25,6 +25,7 @@ Penjelasan konsep:
 - [docs/tahap-23-mqtt-sandbox.md](docs/tahap-23-mqtt-sandbox.md) — akun MQTT sandbox per pengguna: belajar MQTT di broker platform tanpa device
 - [docs/tahap-24-mac-address-dan-panduan-koneksi.md](docs/tahap-24-mac-address-dan-panduan-koneksi.md) — MAC address device, menu "How to connect real devices", sertifikat, dan unduhan template firmware ESP32
 - [docs/tahap-25-dokumentasi-pengguna.md](docs/tahap-25-dokumentasi-pengguna.md) — halaman bersih untuk pengguna umum, dokumentasi pengguna `/docs/` dengan pencarian, dan peta pemindahan keterangan pengembang
+- [docs/tahap-26-micro-rule-model-dan-compiler.md](docs/tahap-26-micro-rule-model-dan-compiler.md) — micro rule: aturan ECA dipecah menjadi fragmen untuk device (ESP-NOW), dua strategi evaluasi (aktuator / sensor), evaluator referensi, simulator, dan test vector firmware
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat

@@ -52,7 +52,7 @@
       <tbody>
         {% for rule in rules %}
         <tr>
-          <td><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a></td>
+          <td><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a>{% if rule.edge_enabled and edge_rules_visible %} <span class="badge text-bg-light border fw-normal" title="Also prepared to run on the devices">devices</span>{% endif %}</td>
           <td><span class="badge model-badge">{{ rule.model }}</span></td>
           <td class="small">
             {% if rule.summary %}

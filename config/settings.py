@@ -105,6 +105,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 # Menyediakan `active_alarm_count` untuk lencana di side menu.
                 "rules.context_processors.alarms",
+                "rules.context_processors.edge_rules",
             ],
         },
     },
@@ -383,6 +384,27 @@ RULE_ENGINE_TICK = float(os.getenv("RULE_ENGINE_TICK", "1"))
 # Penjadwalan (tahap 14): jadwal yang terlambat lebih dari ini (detik), mis. karena
 # worker mati saat jadwal tiba, TIDAK dijalankan lagi tetapi dicatat "Skipped".
 RULE_SCHEDULE_GRACE_SECONDS = int(os.getenv("RULE_SCHEDULE_GRACE_SECONDS", "300"))
+
+# --- Micro rule (tahap 26): aturan yang dipecah menjadi fragmen untuk device ----------
+# Lihat docs/tahap-26-micro-rule-model-dan-compiler.md. MICRO_RULES di .env menentukan siapa
+# yang melihat fitur ini (bagian "Run on devices", pilihan di form ECA, halaman /docs/edge-rules/):
+#   all   = semua pengguna
+#   admin = hanya Admin (pengguna lain tidak melihat apa pun)
+#   off   = tidak tampil untuk siapa pun
+# Kosong = all bila DJANGO_DEBUG=True (laptop), off bila tidak (server). Nilai lama
+# MICRO_RULES_ENABLED=True/False tetap dibaca (True = all, False = off).
+_micro_rules = os.getenv("MICRO_RULES", "").strip().lower()
+if not _micro_rules and os.getenv("MICRO_RULES_ENABLED", "").strip():
+    _micro_rules = "all" if os.getenv("MICRO_RULES_ENABLED").strip() == "True" else "off"
+if not _micro_rules:
+    _micro_rules = "all" if DEBUG else "off"
+if sys.argv[1:2] == ["test"]:
+    _micro_rules = "all"
+if _micro_rules not in ("all", "admin", "off"):
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(f"MICRO_RULES in .env must be all, admin or off (got {_micro_rules!r}).")
+MICRO_RULES = {"VISIBILITY": _micro_rules}
 
 # --- Housekeeping (tahap 16): status online/offline dan tabel ringkasan ------------
 # Worker `manage.py housekeeping` (systemd: iot-housekeeping, runall: "housekeeping").

@@ -61,6 +61,21 @@ class RuleForm(BootstrapFormMixin, forms.ModelForm):
         widgets = {"description": forms.Textarea(attrs={"rows": 2})}
 
 
+class EcaRuleForm(RuleForm):
+    """RuleForm untuk aturan ECA: ditambah pilihan micro rule (tahap 26) bila fiturnya aktif."""
+
+    class Meta(RuleForm.Meta):
+        fields = ("name", "description", "is_enabled", "edge_enabled")
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from .edge.limits import visible_to
+
+        # Tanpa field ini, nilai edge_enabled yang tersimpan tidak berubah saat form disimpan.
+        if not visible_to(user):
+            del self.fields["edge_enabled"]
+
+
 class EcaSpecForm(BootstrapFormMixin, forms.ModelForm):
     """Bagian ECA selain kondisi: event, durasi, cooldown, batas umur data."""
 

@@ -7,6 +7,7 @@ visible_devices(pemilik aturan).
 """
 import copy
 import hashlib
+import logging
 
 from django.conf import settings
 from django.contrib import messages
@@ -32,6 +33,7 @@ from .events import originator_device_id
 from .engines.flow import NODE_TYPES, node_summary
 from .flow_diagram import layout as flow_layout
 from .forms import (
+    EcaRuleForm,
     ANY_STATE, INPUT, ActionFormSet, ClearFormSet, EcaSpecForm, FlowSpecForm, LinkFormSet, MachineActionFormSet,
     MachineSpecForm, NodeFormSet, RuleForm, RuleScheduleForm, StateFormSet, TransitionFormSet, WhenFormSet,
     check_graph, check_machine, cross_check, live_links, live_transitions, schedule_checks,
@@ -46,6 +48,9 @@ from .portable import (
 )
 
 EXECUTIONS_PAGE_SIZE = 25
+
+
+logger = logging.getLogger(__name__)
 
 
 def visible_rules(user):
@@ -291,7 +296,7 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         return get_object_or_404(visible_rules(self.request.user), pk=pk, model=RuleModel.ECA)
 
     def build_forms(self, rule, data=None):
-        return build_eca_forms(rule, rule.owner if rule else self.request.user, data)
+        return build_eca_forms(rule, rule.owner if rule else self.request.user, data, user=self.request.user)
 
     def render_forms(self, rule, forms, cross_errors=()):
         return render(self.request, self.template_name, {
@@ -318,7 +323,7 @@ class EcaRuleFormView(LoginRequiredMixin, View):
         return redirect("rules:detail", pk=saved.pk)
 
 
-def build_eca_forms(rule, owner, data=None, replace=False):
+def build_eca_forms(rule, owner, data=None, replace=False, user=None):
     """Semua form halaman ECA. Dipakai form biasa dan impor JSON.
 
     Pilihan device mengikuti PEMILIK aturan (Admin yang mengedit aturan milik
@@ -337,7 +342,7 @@ def build_eca_forms(rule, owner, data=None, replace=False):
     rule_instance = Rule() if replace or rule is None else rule
     kwargs = {"form_kwargs": {"devices": devices}}
     return {
-        "rule_form": RuleForm(data, instance=rule, prefix="rule"),
+        "rule_form": EcaRuleForm(data, instance=rule, prefix="rule", user=user),
         "spec_form": EcaSpecForm(data, instance=spec, devices=devices, prefix="eca"),
         "when_formset": WhenFormSet(data, instance=spec_instance, prefix="when", **kwargs),
         "clear_formset": ClearFormSet(data, instance=spec_instance, prefix="clear", **kwargs),
@@ -401,7 +406,19 @@ def save_eca_forms(forms, rule, owner, replace=False):
         save_schedule(forms["schedule_form"], saved, event == EcaSpec.Event.SCHEDULE)
         # Kondisi mungkin berubah: mulai lagi dari IDLE.
         reset_state(saved)
+    edge_after_save(saved, owner)
     return saved
+
+
+def edge_after_save(rule, user):
+    """Micro rule (tahap 26): perbarui rencana fragmen. Kegagalan di sini tidak boleh
+    menggagalkan penyimpanan aturan; rencana bisa dibuat ulang dari halaman aturan."""
+    from .edge.services import compile_and_store
+
+    try:
+        compile_and_store(rule, user)
+    except Exception:  # pragma: no cover - dicatat saja
+        logger.exception("Could not compile edge plan for rule %s", rule.pk)
 
 
 def save_conditions(formset, spec):
@@ -957,6 +974,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             **schedule_context(rule),
         )
         context.update(self.live(rule))
+        context["edge"] = edge_context(rule, self.request.user)
         return context
 
     def live(self, rule):
@@ -1112,7 +1130,8 @@ class RuleImportView(LoginRequiredMixin, View):
         except RuleImportError as exc:
             return self.render_page(rule, text, exc.errors)
         build, validate, save = self.HANDLERS[parsed["model"]]
-        forms = build(rule, owner, data, replace=rule is not None)
+        extra = {"user": self.request.user} if parsed["model"] == RuleModel.ECA else {}
+        forms = build(rule, owner, data, replace=rule is not None, **extra)
         valid, extra_errors = validate(forms)
         if not valid:
             return self.render_page(rule, text, form_errors(forms, extra_errors))
@@ -1191,3 +1210,99 @@ class AlarmActionView(LoginRequiredMixin, View):
         if done:
             messages.success(request, f"Alarm \"{alarm.message}\" {text}.")
         return redirect_back(request, reverse("rules:alarms"))
+
+
+# --- Micro rule (tahap 26) -----------------------------------------------------------
+
+def edge_context(rule, user):
+    """Bagian "Run on devices" di halaman aturan ECA; None bila tidak tampil untuk `user`."""
+    from .edge.limits import visible_to
+    from .edge.services import rule_context
+
+    if not visible_to(user) or rule.model != RuleModel.ECA or getattr(rule, "eca", None) is None:
+        return None
+    return rule_context(rule)
+
+
+def _edge_rule(request, pk):
+    from .edge.limits import visible_to
+
+    if not visible_to(request.user):
+        raise Http404("Edge rules are not enabled.")
+    rule = get_object_or_404(visible_rules(request.user), pk=pk)
+    if rule.model != RuleModel.ECA:
+        raise Http404("Only ECA rules can run on devices.")
+    return rule
+
+
+class EdgePlanDownloadView(LoginRequiredMixin, View):
+    """/rules/<pk>/edge/<strategy>/: JSON rencana lengkap, satu fragmen (?device=<p>),
+    atau zip (?format=zip) berisi IR, analisis, metrik, dan fragmen per device."""
+
+    def get(self, request, pk, strategy):
+        import io
+        import json
+        import zipfile
+
+        from .edge.ir import device_names
+        from .edge.metrics import plan_metrics
+        from .edge.placement import STRATEGIES
+        from .edge.services import analyze
+
+        rule = _edge_rule(request, pk)
+        if strategy not in STRATEGIES:
+            raise Http404("Unknown strategy.")
+        report = analyze(rule, strategy)
+        if report.plan is None:
+            raise Http404("This rule cannot run on devices.")
+        plan = report.plan
+        names = device_names(report.ir)
+        base = f"rule-{rule.pk}-{strategy}-{plan['rev']}"
+        dump = lambda obj: json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+        device = request.GET.get("device")
+        if device:
+            try:
+                fragment = plan["fragments"][int(device)]
+            except (KeyError, ValueError):
+                raise Http404("This device has no part in the plan.")
+            response = HttpResponse(dump(fragment), content_type="application/json")
+            response["Content-Disposition"] = f'attachment; filename="{base}-{slugify(names[int(device)]) or device}.json"'
+            return response
+        summary = {
+            "rule": rule.pk, "name": rule.name, "strategy": strategy, "policy": plan["policy"], "rev": plan["rev"],
+            "verdict": report.verdict, "analysis": report.items,
+            "metrics": plan_metrics(report.ir, plan),
+            "devices": {str(p): names.get(p) for p in plan["fragments"]},
+        }
+        if request.GET.get("format") == "zip":
+            buffer = io.BytesIO()
+            with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("plan.json", dump(summary))
+                archive.writestr("ir.json", dump(report.ir))
+                for p, fragment in plan["fragments"].items():
+                    archive.writestr(f"fragments/{p}-{slugify(names.get(p, '')) or 'device'}.json", dump(fragment))
+            response = HttpResponse(buffer.getvalue(), content_type="application/zip")
+            response["Content-Disposition"] = f'attachment; filename="{base}.zip"'
+            return response
+        body = {**summary, "ir": report.ir, "fragments": {str(p): f for p, f in plan["fragments"].items()}}
+        response = HttpResponse(dump(body), content_type="application/json")
+        response["Content-Disposition"] = f'attachment; filename="{base}.json"'
+        return response
+
+
+class EdgePlanCompileView(LoginRequiredMixin, View):
+    """POST /rules/<pk>/edge/compile/: buat ulang rencana yang tersimpan (mis. setelah
+    MAC device berubah atau akses berubah)."""
+
+    http_method_names = ["post"]
+
+    def post(self, request, pk):
+        from .edge.services import compile_and_store
+
+        rule = _edge_rule(request, pk)
+        if not rule.edge_enabled:
+            messages.info(request, "Turn on \"Also run on my devices\" in the rule form first.")
+        else:
+            compile_and_store(rule, request.user)
+            messages.success(request, "Device plan updated.")
+        return redirect(reverse("rules:detail", args=[rule.pk]) + "#edge")

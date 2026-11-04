@@ -1,0 +1,50 @@
+<p>An ECA rule normally runs on the platform: devices send data, the platform decides, and the platform tells the actuators what to do. If the internet connection or the platform is down, the rule stops. <strong>Running rules on devices</strong> prepares a rule so that the devices involved can run it themselves, talking to each other directly by radio.</p>
+<div class="alert alert-info small">This is a preview. The platform already shows how a rule would be split, but devices do not run the plan yet. Firmware support comes in a later update.</div>
+
+<h2 id="turn-on">Turning it on</h2>
+<ol>
+  <li>Open the ECA rule and click <em>Edit</em>.</li>
+  <li>Switch on <strong>Also run on my devices</strong> and save.</li>
+  <li>On the rule page, open <strong>Run on devices</strong>. It shows whether the rule can run on the devices, what each device would do, and anything that stops it.</li>
+</ol>
+<p>The plan is saved each time you save the rule. If a device is replaced (new board, new MAC address), the page says the saved plan is out of date; click <em>Update saved plan</em>.</p>
+
+<h2 id="how">How a rule is split</h2>
+<ul>
+  <li><strong>Sensors</strong> broadcast the values the rule needs over ESP-NOW, a direct radio link between ESP32 boards. Only devices that take part in the rule use the values; the others ignore them.</li>
+  <li>The <strong>actuator</strong> (the device whose output the rule controls) checks the conditions itself, with the same timing as on the platform: <em>for at least</em>, <em>cooldown</em>, the clear condition, and <em>ignore values older than</em>.</li>
+  <li><strong>Alarms, emails and Telegram messages</strong> stay on the platform and are sent when it is reachable.</li>
+</ul>
+<p>Devices find each other by <strong>MAC address</strong>, so every device in the rule must have reported its MAC address (see <a href="{% url 'userdocs:page' 'firmware-updates' %}">Firmware updates and MAC address</a>). They must also be on the same Wi-Fi channel, which is the case when they use the same access point.</p>
+
+<h2 id="results">What the result means</h2>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Result</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td>Runs on devices</td><td>Everything in the rule can run on the devices.</td></tr>
+    <tr><td>Partly on devices</td><td>Control actions run on the devices; alarms and messages stay on the platform.</td></tr>
+    <tr><td>Platform only</td><td>The rule cannot run on devices. The list under the result says why.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="limits">What can run on devices</h2>
+<ul>
+  <li>ECA rules with the event <em>New data for a variable in the conditions</em>. Scheduled rules and "device sends no data" rules stay on the platform.</li>
+  <li>The rule needs at least one <em>Set actuator</em> or <em>Send command</em> action. A command needs a handler for its method in the device firmware.</li>
+  <li>At most {{ edge_limits.MAX_SIGNALS }} variables, {{ edge_limits.MAX_CONDITIONS }} conditions, {{ edge_limits.MAX_GROUPS }} OR groups, and {{ edge_limits.MAX_ACTIONS }} actions per device for each of "on activate" and "on clear".</li>
+  <li>A device can take part in at most {{ edge_limits.MAX_RULES_PER_DEVICE }} such rules and broadcast at most {{ edge_limits.MAX_PUBLISHED_SIGNALS }} variables.</li>
+  <li>Set <em>Ignore values older than</em> to a real limit (not 0), at most {{ edge_limits.MAX_AGE_LIMIT }} s. When a sensor stops sending, its value becomes unknown after that time, exactly as on the platform.</li>
+  <li>Devices compare 32-bit numbers. Prefer <code>&lt;</code> and <code>&gt;</code> over <code>=</code> with fractional thresholds.</li>
+  <li>The rule owner needs Operator access to the actuators, as for any rule that controls a device.</li>
+</ul>
+
+<h2 id="compare">Two ways to split a rule</h2>
+<p>The page compares two arrangements. The rule uses the first one.</p>
+<ul>
+  <li><strong>Actuator evaluates</strong>: each actuator checks the rule itself. A decision is made where the action happens, so no extra device has to work for the actions to run.</li>
+  <li><strong>Sensor evaluates</strong>: one sensor checks the rule and broadcasts the decision to the actuators. All actuators follow one decision, but data from other sensors needs two radio hops, the actuators stop if that sensor stops, and the sensor must stay awake.</li>
+</ul>
+<p>The comparison table shows how many devices must work, the longest radio path, and how many radio messages are sent while nothing changes.</p>
+
+<h2 id="downloads">Downloads</h2>
+<p><em>Download plan (JSON)</em> gives the whole plan; <em>JSON</em> next to a device gives only that device's part; <em>Download all (zip)</em> gives every part in separate files. The files contain device MAC addresses and the rule logic, never access tokens.</p>

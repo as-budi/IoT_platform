@@ -1,0 +1,14 @@
+{
+  "name": "state_active",
+  "description": "STATE frame: rule 12, active, transition 3.",
+  "frame": "4d520104070000000c0000009f3a1c0701030005000000000000000000",
+  "decoded": {
+    "type": 4,
+    "counter": 7,
+    "rule": 12,
+    "rev": "9f3a1c07",
+    "active": true,
+    "seq": 3,
+    "age_ms": 500
+  }
+}

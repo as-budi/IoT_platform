@@ -1,0 +1,92 @@
+{
+  "name": "local_signal",
+  "description": "Sensor evaluates (SE): its own variable is read locally.",
+  "fragment": {
+    "fmt": "microrule/1",
+    "rule": 12,
+    "rev": "2211a7ee",
+    "strategy": "sensor",
+    "role": "eval",
+    "self": 1,
+    "sources": [
+      {
+        "p": 2,
+        "mac": "AA:BB:CC:00:00:02",
+        "key_id": null
+      }
+    ],
+    "signals": [
+      {
+        "s": 1,
+        "key": "soil_moisture",
+        "kh": "0x6511",
+        "from": 0
+      },
+      {
+        "s": 2,
+        "key": "temperature",
+        "kh": "0xFF0F",
+        "from": 2
+      }
+    ],
+    "when": [
+      [
+        [
+          1,
+          "<",
+          20.0
+        ],
+        [
+          2,
+          ">",
+          30.0
+        ]
+      ],
+      [
+        [
+          1,
+          "<",
+          10.0
+        ]
+      ]
+    ],
+    "clear": [
+      [
+        [
+          1,
+          ">",
+          30.0
+        ]
+      ]
+    ],
+    "timing": {
+      "duration": 0,
+      "cooldown": 0,
+      "max_age": 300,
+      "tick": 1
+    },
+    "on_activate": [],
+    "on_clear": [],
+    "emit": {
+      "heartbeat": 10,
+      "repeat": 3,
+      "repeat_gap_ms": 100
+    }
+  },
+  "steps": [
+    {
+      "t": 0,
+      "local": {
+        "key": "soil_moisture",
+        "value": 5
+      },
+      "expect": [
+        {
+          "tr": "ACTIVATE",
+          "actions": []
+        }
+      ],
+      "status": "ACTIVE"
+    }
+  ]
+}

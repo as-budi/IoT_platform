@@ -13,3 +13,10 @@ def alarms(request):
         acknowledged_at__isnull=True, device__in=visible_devices(user)
     ).count()
     return {"active_alarm_count": count}
+
+
+def edge_rules(request):
+    """Micro rule (tahap 26): apakah pengguna ini melihat fitur "Run on devices" (MICRO_RULES)."""
+    from .edge.limits import visible_to
+
+    return {"edge_rules_visible": visible_to(getattr(request, "user", None))}

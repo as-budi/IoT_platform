@@ -14,6 +14,7 @@ from devices.connect import host_reach
 from devices.models import Board
 from devices.views import coap_host, selected_device, visible_devices
 from mqtt_bridge import topics as mqtt_topics
+from rules.edge.limits import limits as edge_limits
 from sharing import access
 
 TOKEN_PLACEHOLDER = "<token>"
@@ -61,6 +62,7 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
             "email_link_hours": settings.PASSWORD_RESET_TIMEOUT // 3600,
             "schedule_grace_minutes": max(1, settings.RULE_SCHEDULE_GRACE_SECONDS // 60),
         },
+        "edge_limits": edge_limits(),
         "time_zone": settings.TIME_ZONE,
         "telegram_enabled": bool(getattr(settings, "TELEGRAM_BOT_TOKEN", "")),
         "boards": Board.choices,

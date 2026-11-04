@@ -1,0 +1,128 @@
+{
+  "name": "duration_then_activate",
+  "description": "The condition must hold for 60 s before the rule activates.",
+  "fragment": {
+    "fmt": "microrule/1",
+    "rule": 12,
+    "rev": "767eecb9",
+    "strategy": "actuator",
+    "role": "eval",
+    "self": 3,
+    "sources": [
+      {
+        "p": 1,
+        "mac": "AA:BB:CC:00:00:01",
+        "key_id": null
+      },
+      {
+        "p": 2,
+        "mac": "AA:BB:CC:00:00:02",
+        "key_id": null
+      }
+    ],
+    "signals": [
+      {
+        "s": 1,
+        "key": "soil_moisture",
+        "kh": "0x6511",
+        "from": 1
+      },
+      {
+        "s": 2,
+        "key": "temperature",
+        "kh": "0xFF0F",
+        "from": 2
+      }
+    ],
+    "when": [
+      [
+        [
+          1,
+          "<",
+          20.0
+        ],
+        [
+          2,
+          ">",
+          30.0
+        ]
+      ],
+      [
+        [
+          1,
+          "<",
+          10.0
+        ]
+      ]
+    ],
+    "clear": [
+      [
+        [
+          1,
+          ">",
+          30.0
+        ]
+      ]
+    ],
+    "timing": {
+      "duration": 60,
+      "cooldown": 0,
+      "max_age": 300,
+      "tick": 1
+    },
+    "on_activate": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 1.0
+      }
+    ],
+    "on_clear": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 0.0
+      }
+    ]
+  },
+  "steps": [
+    {
+      "t": 0,
+      "rx": {
+        "mac": "AA:BB:CC:00:00:01",
+        "frame": "4d520101010000000111650000a04000000000000000000000"
+      },
+      "expect": [],
+      "status": "PENDING"
+    },
+    {
+      "t": 30000,
+      "tick": true,
+      "expect": [],
+      "status": "PENDING"
+    },
+    {
+      "t": 59000,
+      "tick": true,
+      "expect": [],
+      "status": "PENDING"
+    },
+    {
+      "t": 60000,
+      "tick": true,
+      "expect": [
+        {
+          "tr": "ACTIVATE",
+          "actions": [
+            {
+              "do": "set",
+              "key": "pump",
+              "value": 1.0
+            }
+          ]
+        }
+      ],
+      "status": "ACTIVE"
+    }
+  ]
+}

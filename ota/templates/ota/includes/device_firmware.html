@@ -23,7 +23,7 @@
       <div class="col-sm-4">
         <div class="small text-muted">MAC address</div>
         <div class="fs-5 fw-semibold font-monospace" data-device-mac>{{ device.mac_address|default:"unknown" }}</div>
-        <div class="small text-muted">{% if device.mac_reported_at %}reported {{ device.mac_reported_at|timesince }} ago{% else %}sent by the device with its firmware version, see <a href="{% url 'userdocs:page' 'firmware-updates' %}#mac">MAC address</a>{% endif %}</div>
+        <div class="small text-muted">{% if device.mac_reported_at %}reported {{ device.mac_reported_at|timesince }} ago{% elif device.mac_address %}test value, not reported by the device yet{% else %}sent by the device with its firmware version, see <a href="{% url 'userdocs:page' 'firmware-updates' %}#mac">MAC address</a>{% endif %}</div>
       </div>
     </div>
 

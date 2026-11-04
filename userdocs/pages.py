@@ -73,22 +73,43 @@ PAGES = [
          "Managing users and what administrators can see."),
 ]
 
+# Micro rule (tahap 26): halaman ini hanya tampil untuk pengguna yang boleh melihat fiturnya
+# (settings.MICRO_RULES: all / admin / off), lihat visible_pages().
+EDGE_PAGE = Page("edge-rules", "Running rules on devices", "Automation",
+                 "Preview: how a rule is split between your devices so it keeps working without the platform.")
+_index = [page.slug for page in PAGES].index("rules-eca") + 1
+PAGES = PAGES[:_index] + [EDGE_PAGE] + PAGES[_index:]
+HIDDEN_UNLESS_EDGE = {EDGE_PAGE.slug}
+
 BY_SLUG = {page.slug: page for page in PAGES}
 
 
-def sections():
-    """[(nama bagian, [Page, ...]), ...] dalam urutan PAGES."""
+def visible_pages(user=None):
+    """PAGES yang boleh dilihat `user` (halaman micro rule mengikuti MICRO_RULES)."""
+    from rules.edge.limits import visible_to
+
+    show_edge = visible_to(user)
+    return [page for page in PAGES if show_edge or page.slug not in HIDDEN_UNLESS_EDGE]
+
+
+def is_visible(slug, user=None):
+    return slug in BY_SLUG and any(page.slug == slug for page in visible_pages(user))
+
+
+def sections(user=None):
+    """[(nama bagian, [Page, ...]), ...] dalam urutan PAGES, hanya halaman yang boleh dilihat."""
     result = []
-    for page in PAGES:
+    for page in visible_pages(user):
         if not result or result[-1][0] != page.section:
             result.append((page.section, []))
         result[-1][1].append(page)
     return result
 
 
-def neighbours(slug):
+def neighbours(slug, user=None):
     """(halaman sebelumnya, halaman berikutnya) untuk tautan di bawah halaman."""
-    index = [page.slug for page in PAGES].index(slug)
-    previous = PAGES[index - 1] if index > 0 else None
-    following = PAGES[index + 1] if index + 1 < len(PAGES) else None
+    pages = visible_pages(user)
+    index = [page.slug for page in pages].index(slug)
+    previous = pages[index - 1] if index > 0 else None
+    following = pages[index + 1] if index + 1 < len(pages) else None
     return previous, following

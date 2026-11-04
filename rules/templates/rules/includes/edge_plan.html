@@ -1,0 +1,120 @@
+{% load static %}
+{# Micro rule (tahap 26): rencana menjalankan aturan ini di device. Konteks: edge (rules/edge/services.py rule_context). #}
+<details class="card shadow-sm mb-4 edge-plan" id="edge"{% if edge.edge_enabled %} open{% endif %}>
+  <summary class="card-body py-2 d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <span class="h6 text-muted text-uppercase mb-0">Run on devices <span class="badge text-bg-light border text-lowercase fw-normal">preview</span></span>
+    <span class="small text-muted">{% if edge.edge_enabled %}On: a plan is kept for this rule{% else %}Off: turn on "Also run on my devices" in the rule form{% endif %}</span>
+  </summary>
+  <div class="card-body pt-0">
+    <p class="small text-muted mb-3">How this rule would be split between your devices so it keeps working when the platform cannot be reached. Devices talk to each other directly by radio (ESP-NOW). This is a preview: your devices do not run the rule yet. <a href="{% url 'userdocs:page' 'edge-rules' %}">Learn more</a></p>
+
+    {# Perbandingan dua strategi #}
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle mb-0 edge-compare">
+        <thead class="table-light"><tr><th></th>{% for tab in edge.tabs %}<th>{{ tab.label }}{% if tab.is_selected %} <span class="badge text-bg-secondary fw-normal">used</span>{% endif %}</th>{% endfor %}</tr></thead>
+        <tbody>
+          <tr><th class="fw-normal text-muted">Result</th>{% for tab in edge.tabs %}<td><span class="badge edge-verdict edge-verdict-{{ tab.report.verdict|lower }}">{{ tab.report.label }}</span></td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">Devices that must work</th>{% for tab in edge.tabs %}<td>{{ tab.metrics.critical_devices|default:"—" }}</td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">Longest radio path</th>{% for tab in edge.tabs %}<td>{% if tab.metrics %}{{ tab.metrics.max_hops }} hop{{ tab.metrics.max_hops|pluralize }}{% else %}—{% endif %}</td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">Radio messages per minute (quiet)</th>{% for tab in edge.tabs %}<td>{{ tab.metrics.frames_per_minute|default:"—" }}</td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">Actuators may disagree</th>{% for tab in edge.tabs %}<td>{% if tab.metrics %}{{ tab.metrics.divergence|yesno:"yes,no" }}{% else %}—{% endif %}</td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">A sensor must stay awake</th>{% for tab in edge.tabs %}<td>{% if tab.metrics %}{{ tab.metrics.always_on_sensor|yesno:"yes,no" }}{% else %}—{% endif %}</td>{% endfor %}</tr>
+          <tr><th class="fw-normal text-muted">Size on devices</th>{% for tab in edge.tabs %}<td>{% if tab.metrics %}{{ tab.metrics.fragments }} part{{ tab.metrics.fragments|pluralize }}, {{ tab.metrics.total_bytes }} bytes{% else %}—{% endif %}</td>{% endfor %}</tr>
+        </tbody>
+      </table>
+    </div>
+
+    <ul class="nav nav-tabs" role="tablist">
+      {% for tab in edge.tabs %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link{% if tab.is_selected %} active{% endif %}" id="edge-tab-{{ tab.strategy }}" data-bs-toggle="tab" data-bs-target="#edge-pane-{{ tab.strategy }}" type="button" role="tab" aria-controls="edge-pane-{{ tab.strategy }}" aria-selected="{{ tab.is_selected|yesno:'true,false' }}">{{ tab.label }}</button>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="tab-content border border-top-0 rounded-bottom p-3">
+      {% for tab in edge.tabs %}
+      <div class="tab-pane fade{% if tab.is_selected %} show active{% endif %}" id="edge-pane-{{ tab.strategy }}" role="tabpanel" aria-labelledby="edge-tab-{{ tab.strategy }}">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <div>
+            <span class="badge edge-verdict edge-verdict-{{ tab.report.verdict|lower }}">{{ tab.report.label }}</span>
+            {% if tab.rev %}<span class="small text-muted ms-1">version <code>{{ tab.rev }}</code></span>{% endif %}
+            {% if tab.stored %}<span class="small text-muted">· saved as revision {{ tab.stored.revision }}, {{ tab.stored.created_at|date:"d M Y H:i" }}</span>{% endif %}
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            {% if tab.report.plan %}
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:edge_download' rule.pk tab.strategy %}">Download plan (JSON)</a>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:edge_download' rule.pk tab.strategy %}?format=zip">Download all (zip)</a>
+            {% endif %}
+            {% if edge.edge_enabled and tab.stale %}
+            <form method="post" action="{% url 'rules:edge_compile' rule.pk %}" class="d-inline">{% csrf_token %}<button class="btn btn-sm btn-outline-primary">Update saved plan</button></form>
+            {% endif %}
+          </div>
+        </div>
+        {% if edge.edge_enabled and tab.stale %}<div class="alert alert-warning small py-2">The saved plan is out of date (for example a device was replaced and has a new MAC address). Update it before sending it to devices.</div>{% endif %}
+
+        {% if tab.items %}
+        <ul class="list-unstyled small mb-3 edge-items">
+          {% for item in tab.items %}
+          <li class="edge-item edge-item-{{ item.level }}"><span class="edge-item-mark" aria-hidden="true">{% if item.level == "block" %}✗{% elif item.level == "warn" %}!{% else %}i{% endif %}</span> {{ item.text }}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if tab.diagram %}
+        <div class="edge-diagram-wrap mb-2">{{ tab.diagram|safe }}</div>
+        <p class="small text-muted mb-3">Solid line: data broadcast by a sensor. Dashed line: the decision sent to an actuator.</p>
+        {% endif %}
+
+        {% if tab.rows %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light"><tr><th>Device</th><th>Role</th><th>Size</th><th>Listens to</th><th>Broadcasts</th><th></th></tr></thead>
+            <tbody>
+              {% for row in tab.rows %}
+              <tr>
+                <td><a href="{% url 'devices:detail' row.device_id %}">{{ row.name }}</a></td>
+                <td><code>{{ row.role }}</code></td>
+                <td style="min-width:9rem">
+                  <div class="progress edge-size" role="progressbar" aria-label="Size of this part" aria-valuenow="{{ row.percent }}" aria-valuemin="0" aria-valuemax="100"><div class="progress-bar" style="width: {{ row.percent }}%"></div></div>
+                  <span class="small text-muted">{{ row.size }} / {{ edge.limits.MAX_FRAGMENT_BYTES }} bytes</span>
+                </td>
+                <td>{% if row.sources %}{{ row.sources|join:", " }}{% if row.listens_state %} <span class="small text-muted">(decision)</span>{% endif %}{% else %}—{% endif %}</td>
+                <td>
+                  {% if row.publish %}<div>{{ row.publish|join:", " }} <span class="small text-muted">(data, {{ row.frame }} bytes per message)</span></div>{% endif %}
+                  {% if row.emit %}<div>rule decision <span class="small text-muted">(on each change, repeated {{ row.emit.repeat }}×, then every {{ row.emit.heartbeat }} s; {{ row.state_frame }} bytes per message)</span></div>{% endif %}
+                  {% if not row.publish and not row.emit %}—{% endif %}
+                </td>
+                <td class="text-end text-nowrap"><a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:edge_download' rule.pk tab.strategy %}?device={{ row.p }}">JSON</a></td>
+              </tr>
+              <tr class="edge-json-row"><td colspan="6" class="pt-0 border-0"><details><summary class="small text-muted">Show the part for {{ row.name }}</summary>
+                <div class="d-flex flex-wrap gap-2 my-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-target="edge-json-{{ tab.strategy }}-{{ row.p }}">Copy</button>
+                  <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:edge_download' rule.pk tab.strategy %}?device={{ row.p }}">Download</a>
+                </div>
+                <pre class="rule-json-code mb-0" id="edge-json-{{ tab.strategy }}-{{ row.p }}" data-json-viewer>{{ row.json }}</pre>
+              </details></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</details>
+{# Tampilan JSON bernomor baris (static/js/json_viewer.js), sama dengan kartu JSON aturan. #}
+<script src="{% static 'js/json_viewer.js' %}"></script>
+<script>
+  (function () {
+    document.querySelectorAll("#edge [data-copy-target]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(document.getElementById(button.dataset.copyTarget).textContent);
+          button.textContent = "Copied";
+          setTimeout(() => { button.textContent = "Copy"; }, 1500);
+        } catch (err) { /* clipboard ditolak browser: teks tetap bisa dipilih manual */ }
+      });
+    });
+  })();
+</script>

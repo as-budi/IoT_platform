@@ -24,9 +24,9 @@ def base_context(request, facts, current=None):
     nav = [
         (section, [{"page": item, "toc": tocs.get(item.slug, []), "current": item.slug == current}
                    for item in items])
-        for section, items in pages.sections()
+        for section, items in pages.sections(request.user)
     ]
-    return {"sections": pages.sections(), "nav": nav, "query": request.GET.get("q", "").strip()}
+    return {"sections": pages.sections(request.user), "nav": nav, "query": request.GET.get("q", "").strip()}
 
 
 def index(request):
@@ -36,7 +36,7 @@ def index(request):
 
 def page(request, slug):
     doc = pages.BY_SLUG.get(slug)
-    if doc is None:
+    if doc is None or not pages.is_visible(slug, request.user):
         raise Http404("No such page.")
     facts = docs_context(request)
     context = dict(facts)
@@ -44,7 +44,7 @@ def page(request, slug):
         context.update(device_context(request))
     # Fragmen dirender lebih dulu: daftar isi diambil dari judul-judul bagiannya.
     rendered = render_to_string(doc.template, context, request=request)
-    previous, following = pages.neighbours(slug)
+    previous, following = pages.neighbours(slug, request.user)
     context.update(base_context(request, facts, current=slug))
     context.update({
         "doc": doc,
@@ -59,5 +59,7 @@ def page(request, slug):
 def search_view(request):
     facts = docs_context(request)
     context = base_context(request, facts)
-    context["results"] = search.search(context["query"], facts["http"]["base_url"], facts)
+    visible = {page.slug for page in pages.visible_pages(request.user)}
+    context["results"] = [result for result in search.search(context["query"], facts["http"]["base_url"], facts)
+                          if result["page"].slug in visible]
     return render(request, "userdocs/search.html", context)

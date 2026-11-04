@@ -40,6 +40,15 @@
             </div>
           </div>
           <div class="col-12">{% include "rules/includes/field.html" with field=rule_form.description %}</div>
+          {% if rule_form.edge_enabled %}
+          <div class="col-12">
+            <div class="form-check form-switch">
+              {{ rule_form.edge_enabled }}
+              <label class="form-check-label" for="{{ rule_form.edge_enabled.id_for_label }}">{{ rule_form.edge_enabled.label|capfirst }} <span class="badge text-bg-light border">preview</span></label>
+              <div class="form-text">Prepares a plan for running this rule on the devices themselves, so it keeps working when the platform cannot be reached. Devices do not run it yet; the plan is shown on the rule page. <a href="{% url 'userdocs:page' 'edge-rules' %}">Learn more</a></div>
+            </div>
+          </div>
+          {% endif %}
         </div>
       </div></div>
 

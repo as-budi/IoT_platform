@@ -1266,3 +1266,34 @@ a.user-chip.active {
   padding: 0.75rem 1rem; font-size: 0.82rem; white-space: pre; overflow-x: auto;
 }
 .docs-results mark, .docs-results mark * { padding: 0 0.1em; }
+
+/* ---------- Micro rule: bagian "Run on devices" di halaman aturan (tahap 26) ---------- */
+.edge-plan > summary { cursor: pointer; list-style: none; }
+.edge-plan > summary::-webkit-details-marker { display: none; }
+.edge-plan > summary .h6::before { content: "▸"; margin-right: 0.35rem; }
+.edge-plan[open] > summary .h6::before { content: "▾"; }
+.edge-compare th:first-child { width: 16rem; }
+.edge-verdict { border: 1px solid var(--app-border); color: var(--bs-body-color); background: var(--app-surface-2); }
+.edge-verdict-full { background: rgba(11, 138, 11, 0.12); color: #0b6e0b; border-color: rgba(11, 138, 11, 0.3); }
+.edge-verdict-partial { background: var(--app-accent-soft); color: var(--app-accent); border-color: rgba(42, 120, 214, 0.3); }
+.edge-verdict-none { color: var(--app-muted); }
+[data-bs-theme="dark"] .edge-verdict-full { color: #4cc94c; }
+.edge-item { display: flex; gap: 0.5rem; padding: 0.15rem 0; }
+.edge-item-mark { flex: 0 0 1.2rem; height: 1.2rem; border-radius: 50%; text-align: center; font-size: 0.75rem;
+  line-height: 1.2rem; font-weight: 600; background: var(--app-surface-2); border: 1px solid var(--app-border); }
+.edge-item-block .edge-item-mark { color: #c0392b; border-color: rgba(192, 57, 43, 0.4); }
+.edge-item-warn .edge-item-mark { color: #a15c00; border-color: rgba(161, 92, 0, 0.4); }
+[data-bs-theme="dark"] .edge-item-block .edge-item-mark { color: #ff6b6b; }
+[data-bs-theme="dark"] .edge-item-warn .edge-item-mark { color: #f2b544; }
+.edge-diagram-wrap { overflow-x: auto; }
+.edge-diagram { max-width: 100%; height: auto; font-size: 12px; }
+.edge-node rect { fill: var(--app-surface); stroke: var(--app-border); stroke-width: 1.5; }
+.edge-node-eval rect { stroke: var(--app-accent); }
+.edge-node-cloud rect { fill: var(--app-surface-2); stroke-dasharray: 4 3; }
+.edge-node-name { fill: var(--bs-body-color); font-weight: 600; }
+.edge-node-role { fill: var(--app-muted); font-size: 11px; }
+.edge-link { fill: none; stroke: var(--app-muted); stroke-width: 1.5; }
+.edge-link-state { stroke: var(--app-accent); stroke-dasharray: 6 4; }
+.edge-arrow { fill: var(--app-muted); }
+.edge-size { height: 0.4rem; }
+.edge-json-row td { background: transparent; }

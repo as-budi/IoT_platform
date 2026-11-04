@@ -1,0 +1,26 @@
+{
+  "name": "crc16",
+  "description": "CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF).",
+  "cases": [
+    {
+      "input": "123456789",
+      "value": "0x29B1"
+    },
+    {
+      "input": "soil_moisture",
+      "value": "0x6511"
+    },
+    {
+      "input": "temperature",
+      "value": "0xFF0F"
+    },
+    {
+      "input": "pump",
+      "value": "0xF6AC"
+    },
+    {
+      "input": "humidity",
+      "value": "0x429B"
+    }
+  ]
+}

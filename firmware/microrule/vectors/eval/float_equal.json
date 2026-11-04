@@ -1,0 +1,73 @@
+{
+  "name": "float_equal",
+  "description": "\"=\" compares 32-bit values: 0.1 equals 0.1.",
+  "fragment": {
+    "fmt": "microrule/1",
+    "rule": 1,
+    "rev": "fc2ea27f",
+    "strategy": "actuator",
+    "role": "eval",
+    "self": 3,
+    "sources": [
+      {
+        "p": 1,
+        "mac": "AA:BB:CC:00:00:01",
+        "key_id": null
+      }
+    ],
+    "signals": [
+      {
+        "s": 1,
+        "key": "level",
+        "kh": "0x5531",
+        "from": 1
+      }
+    ],
+    "when": [
+      [
+        [
+          1,
+          "==",
+          0.10000000149011612
+        ]
+      ]
+    ],
+    "clear": [],
+    "timing": {
+      "duration": 0,
+      "cooldown": 0,
+      "max_age": 300,
+      "tick": 1
+    },
+    "on_activate": [
+      {
+        "do": "set",
+        "key": "pump",
+        "value": 1.0
+      }
+    ],
+    "on_clear": []
+  },
+  "steps": [
+    {
+      "t": 0,
+      "rx": {
+        "mac": "AA:BB:CC:00:00:01",
+        "frame": "4d52010101000000013155cdcccc3d00000000000000000000"
+      },
+      "expect": [
+        {
+          "tr": "ACTIVATE",
+          "actions": [
+            {
+              "do": "set",
+              "key": "pump",
+              "value": 1.0
+            }
+          ]
+        }
+      ],
+      "status": "ACTIVE"
+    }
+  ]
+}

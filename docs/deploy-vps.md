@@ -1448,6 +1448,44 @@ Device lama tetap berjalan tanpa perubahan. MAC address baru tampil setelah devi
 firmware dari template baru: unduh di `/docs/connect-esp32/`, lalu upload lewat USB, atau, untuk
 device MQTT, naikkan `FW_VERSION`, *Export Compiled Binary*, dan perbarui lewat OTA.
 
+### 14.6 Tahap 26: micro rule (model dan compiler)
+
+Tahap 26 menambah migrasi `rules 0007_edge_plan` (kolom `edge_enabled`/`edge_strategy` di
+aturan, tabel `EdgePlan` dan `EdgeFragment`) dan paket `rules/edge/`. Tidak ada paket Python,
+layanan, atau konfigurasi Nginx/Mosquitto baru. Mesin aturan di server tidak berubah.
+
+Siapa yang melihat fitur ini (bagian "Run on devices" di halaman aturan, pilihan di form ECA,
+kartu di halaman device, halaman `/docs/edge-rules/`) diatur dengan `MICRO_RULES` di `.env`:
+
+| Nilai | Yang melihat |
+|---|---|
+| `all` | semua pengguna |
+| `admin` | hanya Admin; pengguna lain tidak melihat apa pun (halaman dokumentasinya juga 404) |
+| `off` | tidak seorang pun |
+| kosong | `all` bila `DJANGO_DEBUG=True` (Mac), `off` bila tidak (server) |
+
+Selama firmware tahap 27–28 belum siap, di server pakai `off` atau `admin`. Setelah mengubah
+`.env`: `sudo systemctl restart iot.target`. Nilai lain membuat server menolak start dengan pesan
+yang jelas. `MICRO_RULES_ENABLED=True/False` dari versi sebelumnya masih dibaca (`all`/`off`).
+
+```bash
+# di Mac:
+python manage.py makemigrations --check --dry-run      # ✔ No changes detected
+python manage.py test rules
+git add -A && git commit -m "Tahap 26: micro rule model dan compiler" && git push
+
+# di server:
+sudo systemctl start iot-backup.service
+sudo /srv/iot/app/deploy/scripts/update.sh             # migrate: rules 0007
+sudo -u iot -H /srv/iot/venv/bin/python /srv/iot/app/manage.py showmigrations rules | grep '\[ \]'   # ✔ tidak ada keluaran
+```
+
+Perintah untuk data paper (boleh dijalankan di server, hanya membaca):
+
+```bash
+sudo -u iot -H /srv/iot/venv/bin/python /srv/iot/app/manage.py edge_report --out /tmp/edge.csv
+```
+
 ---
 
 ## 15. Pemantauan dan pemecahan masalah

@@ -1,0 +1,21 @@
+{
+  "name": "data_two_signals",
+  "description": "DATA frame, counter 42, two signals.",
+  "frame": "4d5201012a000000021165000094410c000fff0000fa4100000000000000000000",
+  "decoded": {
+    "type": 1,
+    "counter": 42,
+    "signals": [
+      {
+        "kh": "0x6511",
+        "value": 18.5,
+        "age_ms": 1200
+      },
+      {
+        "kh": "0xFF0F",
+        "value": 31.25,
+        "age_ms": 0
+      }
+    ]
+  }
+}

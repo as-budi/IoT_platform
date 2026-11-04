@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    Alarm, EcaCondition, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineInstance, MachineState, MachineTransition,
+    Alarm, EcaCondition, EdgeFragment, EdgePlan, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineInstance, MachineState, MachineTransition,
     Rule, RuleAction, RuleExecution, RuleSchedule, RuleState,
 )
 
@@ -87,3 +87,21 @@ class MachineTransitionAdmin(admin.ModelAdmin):
 @admin.register(MachineInstance)
 class MachineInstanceAdmin(admin.ModelAdmin):
     list_display = ("rule", "device", "state", "entered_at", "last_evaluated_at")
+
+
+class EdgeFragmentInline(admin.TabularInline):
+    model = EdgeFragment
+    extra = 0
+    can_delete = False
+    readonly_fields = ("device", "role", "size_bytes", "payload")
+
+
+@admin.register(EdgePlan)
+class EdgePlanAdmin(admin.ModelAdmin):
+    """Rencana micro rule (tahap 26). Dibuat otomatis; hanya untuk dilihat."""
+
+    list_display = ("rule", "strategy", "revision", "rev", "verdict", "is_current", "created_at")
+    list_filter = ("strategy", "verdict", "is_current")
+    readonly_fields = ("rule", "strategy", "revision", "rev", "verdict", "report", "ir", "metrics", "is_current",
+                       "created_at", "created_by")
+    inlines = [EdgeFragmentInline]

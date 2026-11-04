@@ -14,10 +14,17 @@
  * seperti "<script>" tampil sebagai teks dan tidak pernah dijalankan.
  *
  * Halaman lain bisa memakai JsonViewer.create(data) untuk membuat tampilan
- * dari nilai yang sudah di-parse (dipakai editor di halaman impor).
+ * dari nilai yang sudah di-parse (dipakai editor di halaman impor), dan
+ * JsonViewer.initAll(elemen) untuk <pre data-json-viewer> yang ditambahkan kemudian.
  */
 (function () {
   "use strict";
+  // Script ini bisa dimuat lebih dari sekali di satu halaman (mis. kartu JSON aturan dan
+  // bagian "Run on devices", tahap 26): muatan kedua hanya menginisialisasi <pre> yang baru.
+  if (window.JsonViewer) {
+    window.JsonViewer.initAll();
+    return;
+  }
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -128,6 +135,8 @@
   }
 
   function init(pre) {
+    if (pre.dataset.jsonViewerReady) return;
+    pre.dataset.jsonViewerReady = "1";
     let data;
     try {
       data = JSON.parse(pre.textContent);
@@ -138,6 +147,10 @@
     pre.insertAdjacentElement("afterend", create(data));
   }
 
-  window.JsonViewer = { create };
-  document.querySelectorAll("[data-json-viewer]").forEach(init);
+  function initAll(root) {
+    (root || document).querySelectorAll("[data-json-viewer]").forEach(init);
+  }
+
+  window.JsonViewer = { create, initAll };
+  initAll();
 })();

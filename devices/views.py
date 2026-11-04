@@ -276,6 +276,16 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         context.update(device_firmware_context(self.request, device))
         # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
         context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
+        # Micro rule (tahap 26): aturan milik pengguna yang punya bagian di device ini.
+        from rules.edge.limits import visible_to as edge_visible_to
+
+        if edge_visible_to(self.request.user):
+            from rules.edge.services import device_context
+
+            edge = device_context(device)
+            if not self.request.user.is_admin:
+                edge["rows"] = [row for row in edge["rows"] if row["rule"].owner_id == self.request.user.pk]
+            context["edge"] = edge if edge["rows"] else None
         # Keadaan device ini di state machine milik pengguna (tahap 20). Aturan orang
         # lain (mis. pemilik device yang dibagikan) tidak ditampilkan: itu urusan pribadinya.
         from rules.models import MachineInstance

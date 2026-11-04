@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "microrule/fragment-v1",
+  "title": "Micro rule fragment, format microrule/1",
+  "description": "One device's part of a rule. Sections depend on role: src -> publish; eval -> sources, signals, when, clear, timing, on_activate, on_clear, emit (SE only); act -> evaluator, on_activate, on_clear, state_timeout, on_timeout.",
+  "type": "object",
+  "required": ["fmt", "rule", "rev", "strategy", "role", "self"],
+  "properties": {
+    "fmt": {"type": "string", "enum": ["microrule/1"]},
+    "rule": {"type": "integer"},
+    "rev": {"type": "string", "pattern": "^[0-9a-f]{8}$"},
+    "strategy": {"type": "string", "enum": ["actuator", "sensor"]},
+    "role": {"type": "string", "enum": ["src", "eval", "act", "src+eval", "src+act"]},
+    "self": {"type": "integer"},
+    "publish": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "kh", "heartbeat", "min_interval"],
+        "properties": {
+          "key": {"type": "string"},
+          "kh": {"type": "string", "pattern": "^0x[0-9A-F]{4}$"},
+          "heartbeat": {"type": "integer"},
+          "min_interval": {"type": "integer"}
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["p", "mac"],
+        "properties": {"p": {"type": "integer"}, "mac": {"type": "string"}, "key_id": {"type": ["string", "null"]}}
+      }
+    },
+    "signals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["s", "key", "kh", "from"],
+        "properties": {
+          "s": {"type": "integer"}, "key": {"type": "string"}, "kh": {"type": "string"}, "from": {"type": "integer"}
+        }
+      }
+    },
+    "when": {"type": "array", "items": {"type": "array", "items": {"type": "array"}}},
+    "clear": {"type": "array", "items": {"type": "array", "items": {"type": "array"}}},
+    "timing": {
+      "type": "object",
+      "required": ["duration", "cooldown", "max_age", "tick"],
+      "properties": {
+        "duration": {"type": "integer"}, "cooldown": {"type": "integer"},
+        "max_age": {"type": "integer"}, "tick": {"type": "integer"}
+      }
+    },
+    "on_activate": {"type": "array", "items": {"type": "object", "required": ["do"]}},
+    "on_clear": {"type": "array", "items": {"type": "object", "required": ["do"]}},
+    "emit": {
+      "type": "object",
+      "required": ["heartbeat", "repeat", "repeat_gap_ms"],
+      "properties": {"heartbeat": {"type": "integer"}, "repeat": {"type": "integer"}, "repeat_gap_ms": {"type": "integer"}}
+    },
+    "evaluator": {
+      "type": "object",
+      "required": ["p", "mac"],
+      "properties": {"p": {"type": "integer"}, "mac": {"type": "string"}, "key_id": {"type": ["string", "null"]}}
+    },
+    "state_timeout": {"type": "integer"},
+    "on_timeout": {"type": "string", "enum": ["hold", "clear"]}
+  }
+}

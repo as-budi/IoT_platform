@@ -69,6 +69,16 @@ class Rule(models.Model):
     is_enabled = models.BooleanField(
         "enabled", default=True, help_text="Disabled rules are kept but not evaluated."
     )
+    # Micro rule (tahap 26): siapkan aturan ini untuk dijalankan device (lihat rules/edge/).
+    # Sampai tahap 27 hanya rencananya yang dibuat; mesin di platform tidak berubah.
+    edge_enabled = models.BooleanField(
+        "also run on my devices", default=False,
+        help_text="Prepare this rule to run on the devices themselves when the platform is unreachable.",
+    )
+    edge_strategy = models.CharField(
+        "evaluated on", max_length=10, default="actuator",
+        choices=[("actuator", "Actuator evaluates"), ("sensor", "Sensor evaluates")],
+    )
     created_at = models.DateTimeField("created", auto_now_add=True)
     updated_at = models.DateTimeField("updated", auto_now=True)
 
@@ -911,3 +921,68 @@ def alarm_changed(alarm):
             "acknowledged": alarm.is_acknowledged,
         },
     )
+
+
+# --- Micro rule (tahap 26) -----------------------------------------------------------
+
+class EdgePlan(models.Model):
+    """Satu revisi rencana micro rule sebuah aturan untuk satu strategi.
+
+    Dibuat ulang setiap kali aturan dengan `edge_enabled` disimpan; revisi baru hanya
+    bila isinya berubah (`rev` = hash). Revisi lama disimpan sebagai riwayat.
+    """
+
+    class Strategy(models.TextChoices):
+        ACTUATOR = "actuator", "Actuator evaluates"
+        SENSOR = "sensor", "Sensor evaluates"
+
+    class Verdict(models.TextChoices):
+        FULL = "FULL", "Runs on devices"
+        PARTIAL = "PARTIAL", "Partly on devices"
+        NONE = "NONE", "Platform only"
+
+    rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="edge_plans")
+    strategy = models.CharField("strategy", max_length=10, choices=Strategy.choices)
+    revision = models.PositiveIntegerField("revision")
+    rev = models.CharField("version hash", max_length=8)
+    verdict = models.CharField("verdict", max_length=8, choices=Verdict.choices)
+    report = models.JSONField("analysis", default=list)
+    ir = models.JSONField("intermediate representation", default=dict)
+    metrics = models.JSONField("metrics", default=dict, blank=True)
+    is_current = models.BooleanField("current", default=True)
+    created_at = models.DateTimeField("created", auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["rule", "strategy", "-revision"]
+        verbose_name = "edge plan"
+        verbose_name_plural = "edge plans"
+        constraints = [
+            models.UniqueConstraint(fields=["rule", "strategy", "revision"], name="edgeplan_unique_revision"),
+        ]
+
+    def __str__(self):
+        return f"{self.rule} · {self.strategy} r{self.revision} ({self.rev})"
+
+
+class EdgeFragment(models.Model):
+    """Bagian sebuah rencana untuk satu device (lihat rules/edge/compile.py)."""
+
+    plan = models.ForeignKey(EdgePlan, on_delete=models.CASCADE, related_name="fragments")
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="edge_fragments")
+    role = models.CharField("role", max_length=10)       # src, eval, act, src+eval, src+act
+    payload = models.JSONField("fragment")
+    size_bytes = models.PositiveIntegerField("size (bytes)")
+
+    class Meta:
+        ordering = ["plan", "device__name"]
+        verbose_name = "edge fragment"
+        verbose_name_plural = "edge fragments"
+        constraints = [
+            models.UniqueConstraint(fields=["plan", "device"], name="edgefragment_unique_device"),
+        ]
+
+    def __str__(self):
+        return f"{self.plan} → {self.device} ({self.role})"

@@ -107,3 +107,19 @@ def evaluate(groups, readings, now, max_age):
         group_results.append(group_result)
         details.append({"group": number, "result": group_result, "conditions": rows})
     return any_of(group_results), details
+
+
+def decide(when_result, clear_result, has_hysteresis):
+    """Hasil ekspresi -> (boleh aktif?, boleh pulih?).
+
+    Dipakai mesin ECA di cloud (rules/engines/eca.py) dan evaluator micro rule
+    (rules/edge/evaluator.py), supaya keduanya pasti memutuskan dengan cara yang sama.
+      - Dengan histeresis: pulih bila ekspresi clear BENAR; aktif bila ekspresi aktif
+        BENAR dan ekspresi clear tidak benar (mencegah aktif lalu langsung pulih).
+      - Tanpa histeresis: aktif bila ekspresi aktif BENAR, pulih bila SALAH.
+        "Tidak diketahui" tidak memicu keduanya.
+    """
+    if has_hysteresis:
+        clear = clear_result is True
+        return when_result is True and not clear, clear
+    return when_result is True, when_result is False
