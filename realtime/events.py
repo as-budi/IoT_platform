@@ -78,6 +78,7 @@ def telemetry_saved(device, rows, protocol=""):
             "key": variable.key,
             "kind": variable.kind,
             "boolean": variable.is_boolean,
+            "categories": variable.categories if variable.is_categorical else [],
             "value": value,
             "ts": to_ms(ts),
         }

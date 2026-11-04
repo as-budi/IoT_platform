@@ -26,3 +26,26 @@
   </div>
 </div>
 {% endblock %}
+
+{% block extra_js %}
+<script>
+  // Tampilkan isian yang relevan dengan value type: daftar kategori hanya untuk
+  // "Categories"; satuan, minimum, dan maksimum hanya untuk "Number".
+  (function () {
+    const type = document.getElementById("id_value_type");
+    if (!type) return;
+    const box = (id) => { const el = document.getElementById(id); return el && el.closest(".mb-3"); };
+    function update() {
+      const value = type.value;
+      const categories = box("id_categories_text");
+      if (categories) categories.hidden = value !== "CATEGORY";
+      ["id_unit", "id_min_value", "id_max_value"].forEach((id) => {
+        const el = box(id);
+        if (el) el.hidden = value !== "NUMBER";
+      });
+    }
+    type.addEventListener("change", update);
+    update();
+  })();
+</script>
+{% endblock %}

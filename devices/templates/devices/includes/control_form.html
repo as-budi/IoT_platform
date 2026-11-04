@@ -19,6 +19,25 @@
     <button type="submit" name="value" value="0"
             class="btn btn-outline-secondary{% if variable.desired_value == 0 %} active{% endif %}">OFF</button>
   </div>
+  {% elif variable.is_categorical %}
+  {% if variable.categories|length <= 4 %}
+  {# Sedikit kategori: satu tombol per kategori, seperti ON/OFF. Nilai yang dikirim = kode kategori. #}
+  <div class="btn-group w-100 flex-wrap" role="group" aria-label="Set {{ variable.display_name }}">
+    {% for label in variable.categories %}
+    <button type="submit" name="value" value="{{ forloop.counter0 }}"
+            class="btn btn-outline-primary{% if variable.desired_value == forloop.counter0 %} active{% endif %}">{{ label }}</button>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="input-group">
+    <select name="value" class="form-select" aria-label="New value for {{ variable.display_name }}">
+      {% for label in variable.categories %}
+      <option value="{{ forloop.counter0 }}"{% if variable.desired_value == forloop.counter0 %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Set</button>
+  </div>
+  {% endif %}
   {% else %}
   <div class="input-group">
     <input type="number" step="any" name="value" class="form-control" required

@@ -39,6 +39,9 @@ def save_telemetry(device, rows, protocol=""):
             variables[key] = variable
             if created:
                 created_keys.append(key)
+        # Kategori: nama atau kode -> kode 0, 1, ... Kesalahan membatalkan seluruh
+        # transaksi (termasuk variabel yang baru dibuat): payload diterima utuh atau ditolak utuh.
+        rows = [(key, encode_value(variables[key], key, value, created_keys), ts) for key, value, ts in rows]
         Telemetry.objects.bulk_create(
             [Telemetry(variable=variables[key], value=value, ts=ts) for key, value, ts in rows]
         )
@@ -56,3 +59,19 @@ def save_telemetry(device, rows, protocol=""):
         # Serahkan juga ke rule engine (setelah commit; lihat rules/queue.py).
         rule_queue.publish(rule_queue.telemetry_message(device, saved, protocol))
     return created_keys
+
+
+def encode_value(variable, key, value, created_keys=()):
+    """Nilai dari payload -> angka yang disimpan (lihat Variable.encode)."""
+    if not isinstance(value, str) and not variable.is_categorical:
+        return value
+    from .payload import PayloadError
+
+    try:
+        return variable.encode(value)
+    except ValueError as exc:
+        hint = ""
+        if isinstance(value, str) and not variable.is_categorical:
+            hint = (" To send names, set the variable's value type to Categories first." if key not in created_keys
+                    else " To send names, add the variable with the value type Categories first.")
+        raise PayloadError(f"value of '{key}' {exc}.{hint}")

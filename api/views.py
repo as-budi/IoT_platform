@@ -64,8 +64,12 @@ def telemetry(request, token):
         message = str(exc)
         return error(400, message[:1].upper() + message[1:])
 
-    # 4) Simpan.
-    created_keys = save_telemetry(device, rows, protocol=Device.Protocol.HTTP)
+    # 4) Simpan. Nama kategori yang tidak dikenal baru ketahuan di sini (butuh variabelnya).
+    try:
+        created_keys = save_telemetry(device, rows, protocol=Device.Protocol.HTTP)
+    except PayloadError as exc:
+        message = str(exc)
+        return error(400, message[:1].upper() + message[1:])
     return JsonResponse({"saved": len(rows), "new_variables": created_keys})
 
 

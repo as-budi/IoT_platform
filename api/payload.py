@@ -16,7 +16,9 @@ Format yang diterima (sama dengan ThingsBoard):
 3. Daftar dari format 1 atau 2, untuk mengirim beberapa bacaan sekaligus
        [{"ts": 1791436800000, "values": {...}}, {"ts": 1791436860000, "values": {...}}]
 
-Nilai harus angka. true/false diterima dan disimpan sebagai 1/0.
+Nilai harus angka. true/false diterima dan disimpan sebagai 1/0. Teks hanya diterima untuk
+variabel bertipe Categories: nama kategori diubah menjadi kodenya (0, 1, ...) saat disimpan
+(api/services.save_telemetry).
 """
 import math
 import re
@@ -104,6 +106,9 @@ def to_number(raw, key, where=""):
         if not math.isfinite(value):
             raise PayloadError(f"{where}value of '{key}' must be a finite number.")
         return value
+    if isinstance(raw, str) and raw.strip():
+        # Nama kategori; diperiksa terhadap variabelnya saat disimpan.
+        return raw.strip()[:100]
     raise PayloadError(f"{where}value of '{key}' must be a number or true/false, not {type(raw).__name__}.")
 
 

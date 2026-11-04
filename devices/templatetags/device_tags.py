@@ -17,12 +17,39 @@ register = template.Library()
 
 @register.filter
 def show_value(value, variable):
-    """Tampilkan nilai sesuai tipe variabel: ON/OFF untuk boolean, 2 desimal untuk angka."""
+    """Tampilkan nilai sesuai tipe variabel: ON/OFF, label kategori, atau angka 2 desimal."""
     if value is None:
         return "—"
-    if variable.is_boolean:
-        return "ON" if value >= 0.5 else "OFF"
+    if variable.is_discrete:
+        return variable.format_value(value)
     return floatformat(value, 2)
+
+
+@register.filter
+def show_threshold(value, variable):
+    """Ambang kondisi / nilai aksi: label untuk ON/OFF dan kategori bila tepat, selain itu angka."""
+    if value is None:
+        return "—"
+    if variable is not None and variable.is_discrete:
+        labels = variable.value_labels
+        if value == int(value) and 0 <= value < len(labels):
+            return labels[int(value)]
+    return floatformat(value, -2)
+
+
+@register.filter
+def category_label(value, categories):
+    """Kode -> label dari daftar `categories` (untuk data yang sudah berupa dict)."""
+    from devices.models import category_label as label_of
+
+    label = label_of(value, categories)
+    return label if label is not None else ("—" if value is None else f"#{value:g}")
+
+
+@register.filter
+def json_attr(value):
+    """Nilai Python -> teks JSON untuk atribut data-* (di-escape otomatis oleh template)."""
+    return json.dumps(value, ensure_ascii=False)
 
 
 @register.filter

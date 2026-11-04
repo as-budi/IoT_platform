@@ -530,7 +530,8 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         context["live_config"] = {
             "variable": variable.pk,
             "boolean": variable.is_boolean,
-            "unit": "" if variable.is_boolean else variable.unit,
+            "labels": variable.categories if variable.is_categorical else [],
+            "unit": "" if variable.is_discrete else variable.unit,
             # Titik baru hanya ditambahkan ke chart bila chart menampilkan data
             # asli (bukan rata-rata) dan periodenya berakhir di "sekarang".
             "chartLive": not series["bucket_seconds"] and not context["custom_end"],

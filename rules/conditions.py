@@ -94,6 +94,7 @@ def evaluate(groups, readings, now, max_age):
                 "device": condition.variable.device.name,
                 "unit": condition.variable.unit,
                 "boolean": condition.variable.is_boolean,
+                "categories": condition.variable.categories if condition.variable.is_categorical else [],
                 "operator": condition.operator,
                 "operator_label": condition.get_operator_display(),
                 "threshold": condition.threshold,

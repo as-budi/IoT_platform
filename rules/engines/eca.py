@@ -328,7 +328,10 @@ class EcaEngine(RuleEngine):
     def context(self, rule, value, trigger, snapshot, scheduled=None):
         """Nilai untuk placeholder pesan alarm/email dan device asal (originator)."""
         spec = rule.eca
-        values = ", ".join(f"{label} = {fmt(v)}" for label, v in snapshot.get("values", {}).items())
+        # ON/OFF dan kategori tampil sebagai label di pesan (mis. "Door = open"), bukan kode.
+        by_label = {f"{c.variable.device.name} · {c.variable.display_name}": c.variable for c in spec.condition_list()}
+        values = ", ".join(f"{label} = {value_text(by_label.get(label), v)}"
+                           for label, v in snapshot.get("values", {}).items())
         if spec.event == EcaSpec.Event.SCHEDULE:
             # Device asal: device kondisi pertama, atau device target aksi pertama.
             # Bisa None (mis. aturan yang hanya mengirim email); aksi alarm lalu gagal
@@ -345,11 +348,15 @@ class EcaEngine(RuleEngine):
                 "time": schedules.local_text(when),
                 "originator": device,
             }
+        value_label = None
         if spec.event == EcaSpec.Event.TELEMETRY:
             primary = spec.primary_condition()
             device = primary.variable.device
             variable = trigger[0].display_name if trigger else primary.variable.display_name
-            threshold = primary.threshold
+            threshold = threshold_text(primary.variable, primary.threshold)
+            if trigger and trigger[0].is_discrete and value is not None:
+                # {value} di pesan memakai label; nilai angka tetap disimpan di alarm.
+                value_label = trigger[0].format_value(value)
         else:
             device = spec.device
             variable = "no data (s)"
@@ -359,6 +366,7 @@ class EcaEngine(RuleEngine):
             "device": device.name,
             "variable": variable,
             "value": value,
+            "value_label": value_label,
             "threshold": threshold,
             "values": values or "—",
             "originator": device,
@@ -464,12 +472,28 @@ def fmt(number):
     return "—" if number is None else f"{number:g}"
 
 
+def value_text(variable, value):
+    """Nilai terakhir sebagai teks untuk pesan: label untuk ON/OFF dan kategori."""
+    if variable is not None and variable.is_discrete and value is not None:
+        return variable.format_value(value)
+    return fmt(value)
+
+
+def threshold_text(variable, value):
+    """Ambang sebagai teks: label untuk ON/OFF dan kategori (mis. "open"), selain itu angka."""
+    labels = variable.value_labels if variable.is_discrete else []
+    if value is not None and labels and value == int(value) and 0 <= value < len(labels):
+        return labels[int(value)]
+    return fmt(value)
+
+
 def expression_text(groups):
     """[[a, b], [c]] -> "(Soil moisture < 20 AND Temperature > 30) OR Soil moisture < 10"."""
     parts = []
     for conditions_in_group in groups:
         text = " AND ".join(
-            f"{c.variable.display_name} {c.get_operator_display()} {fmt(c.threshold)}" for c in conditions_in_group
+            f"{c.variable.display_name} {c.get_operator_display()} {threshold_text(c.variable, c.threshold)}"
+            for c in conditions_in_group
         )
         parts.append(f"({text})" if len(conditions_in_group) > 1 and len(groups) > 1 else text)
     return " OR ".join(parts) or "—"

@@ -13,14 +13,39 @@ and always for actuators.</p>
     <tr><th class="text-nowrap">Label</th><td>Display name, e.g. "Soil moisture". Blank = the key is shown.</td></tr>
     <tr><th class="text-nowrap">Unit</th><td>e.g. °C, %, V. May be blank.</td></tr>
     <tr><th class="text-nowrap">Kind</th><td><strong>Sensor</strong> (read only) or <strong>Actuator</strong> (can be controlled from the platform).</td></tr>
-    <tr><th class="text-nowrap">Value type</th><td><strong>Number</strong>, or <strong>On / off</strong> (stored as 1 and 0, shown as ON and OFF).</td></tr>
+    <tr><th class="text-nowrap">Value type</th><td><strong>Number</strong>, <strong>On / off</strong> (stored as 1 and 0, shown as ON and OFF), or <strong>Categories</strong> (named states, see <a href="#categories">below</a>).</td></tr>
+    <tr><th class="text-nowrap">Categories</th><td>Only for the value type Categories: one name per line, in order.</td></tr>
     <tr><th class="text-nowrap">Minimum, maximum</th><td>For number actuators: the range a user may request, e.g. 0–180 for a servo. Blank = no limit.</td></tr>
+  </tbody>
+</table>
+
+<h2 id="categories">Categories</h2>
+<p>Use the value type <strong>Categories</strong> for a value that is one of a few named states, such as a door that is
+<em>closed</em>, <em>open</em> or <em>locked</em>, or a mode that is <em>auto</em>, <em>manual</em> or <em>off</em>.</p>
+<ul>
+  <li>Enter the categories one per line, between 2 and 32, each at most 40 characters and not just a number.</li>
+  <li>Each category is stored as a number in the order of the list: the first is <code>0</code>, the second <code>1</code>,
+    and so on. For <code>closed / open / locked</code>: closed = 0, open = 1, locked = 2.</li>
+  <li>Pages, charts, downloads, rules and messages show the names. A downloaded file has both the number and the name.</li>
+  <li>To add a category, add it at the <strong>end</strong> of the list. Renaming keeps the data. Changing the order changes
+    the meaning of data already stored, and a list shorter than the highest number already used is refused.</li>
+</ul>
+<table class="table table-sm">
+  <thead class="table-light"><tr><th>Where</th><th>What happens with categories</th></tr></thead>
+  <tbody>
+    <tr><td>Device sends data</td><td>The name (<code>{"door": "open"}</code>, upper or lower case) or the number (<code>{"door": 1}</code>).
+      An unknown name or a number outside the list is refused, with the list of allowed names in the error.</td></tr>
+    <tr><td>Actuator control</td><td>One button per category (a drop-down list for more than four). The device receives the number, e.g. <code>{"mode": 2}</code>.</td></tr>
+    <tr><td>Rules</td><td>Choose the category from a list in conditions (usually with <code>=</code> or <code>≠</code>) and in Set actuator actions.
+      In alarm and message texts, <code>{value}</code> is the name.</td></tr>
+    <tr><td>Charts</td><td>Drawn as steps with the category names on the vertical axis. When many readings are combined, a point shows the highest number in that period.</td></tr>
   </tbody>
 </table>
 
 <h2 id="values">What a device may send</h2>
 <ul>
-  <li>Values must be numbers. <code>true</code> and <code>false</code> are accepted and stored as 1 and 0. Text values are rejected.</li>
+  <li>Values must be numbers. <code>true</code> and <code>false</code> are accepted and stored as 1 and 0.
+    Text is accepted only for <a href="#categories">category</a> variables, as the name of a category; other text values are rejected.</li>
   <li>One message may contain many keys, and several readings with their own time (<a href="{% url 'userdocs:page' 'device-api' %}#payload">payload formats</a>).</li>
   <li>An actuator reports its real state with the same key, e.g. the pump sends <code>{"pump": 1}</code> after switching on.</li>
 </ul>

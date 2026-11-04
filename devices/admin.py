@@ -17,7 +17,7 @@ class VariableInline(admin.TabularInline):
 
     model = Variable
     extra = 0
-    fields = ("key", "label", "unit", "kind", "value_type")
+    fields = ("key", "label", "unit", "kind", "value_type", "categories")
 
 
 @admin.register(Device)

@@ -7,8 +7,8 @@
 {% endcomment %}
 <div class="dash-var value-card"
      data-live-variable="{{ variable.pk }}"
-     data-boolean="{% if variable.is_boolean %}1{% endif %}"
-     data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}"
+     data-boolean="{% if variable.is_boolean %}1{% endif %}" data-labels="{% if variable.is_categorical %}{{ variable.categories|json_attr }}{% endif %}"
+     data-unit="{% if not variable.is_discrete %}{{ variable.unit }}{% endif %}"
      data-actuator="{% if variable.is_actuator %}1{% endif %}"
      data-desired="{{ variable.desired_value|plain_number }}"
      data-desired-at="{% if variable.desired_at %}{{ variable.desired_at|date:'U' }}000{% endif %}">
@@ -20,7 +20,7 @@
   </div>
   <div class="value{% if variable.last_value is None %} text-muted{% endif %}" data-live="value">
     {{ variable.last_value|show_value:variable }}
-    {% if variable.unit and not variable.is_boolean and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+    {% if variable.unit and not variable.is_discrete and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
   </div>
   <div class="small text-muted" data-live="meta"{% if variable.last_seen %} title="{{ variable.last_seen|date:'d M Y H:i:s' }}"{% endif %}>
     {% if variable.last_seen %}{{ variable.last_seen|timesince }} ago{% else %}No data yet{% endif %}

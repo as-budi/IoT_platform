@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}{% if rule %}Edit {{ rule.name }}{% else %}New ECA rule{% endif %} · IoT Platform{% endblock %}
 
@@ -137,6 +138,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/category_inputs.js' %}"></script>
 <script>
 /*
  * Form ECA:

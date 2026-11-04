@@ -631,7 +631,7 @@ def node_summary(node):
         variable = node.target_variable
         if variable is None:
             return "?"
-        shown = ("ON" if node.value >= 0.5 else "OFF") if variable.is_boolean else fmt(node.value)
+        shown = variable.format_value(node.value) if variable.is_discrete else fmt(node.value)
         return f"{variable.display_name} = {shown}"
     if node.kind == Kind.SEND_COMMAND:
         return f"{node.method} → {node.target_device.name if node.target_device else '?'}"

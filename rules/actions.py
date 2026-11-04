@@ -45,6 +45,8 @@ def render_message(template, context):
     values = {key: ("—" if value is None else value) for key, value in context.items()}
     if isinstance(values.get("value"), float):
         values["value"] = f"{values['value']:g}"
+    if context.get("value_label"):
+        values["value"] = context["value_label"]   # ON/OFF atau nama kategori
     try:
         return template.format_map(SafeDict(values))
     except (ValueError, IndexError):
@@ -52,9 +54,7 @@ def render_message(template, context):
 
 
 def show_value(variable, value):
-    if variable.is_boolean:
-        return "ON" if value >= 0.5 else "OFF"
-    return f"{value:g}{(' ' + variable.unit) if variable.unit else ''}"
+    return variable.format_value(value, unit=True)
 
 
 def allowed_devices(rule):
@@ -90,12 +90,9 @@ def set_actuator(action, rule, context):
     if not allowed_devices(rule).filter(pk=variable.device_id).exists():
         raise ActionError(f"The rule owner has no access to {variable.device}.")
     value = action.value
-    if variable.is_boolean and value not in (0, 1):
-        raise ActionError("On/off actuators accept 0 or 1.")
-    if variable.min_value is not None and value < variable.min_value:
-        raise ActionError(f"Value must be at least {variable.min_value:g}.")
-    if variable.max_value is not None and value > variable.max_value:
-        raise ActionError(f"Value must be at most {variable.max_value:g}.")
+    error = variable.value_error(value)
+    if error:
+        raise ActionError(error)
 
     # Baca ulang dari database: desired bisa saja baru diubah orang lain.
     variable = Variable.objects.get(pk=variable.pk)

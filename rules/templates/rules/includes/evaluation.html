@@ -1,3 +1,4 @@
+{% load device_tags %}
 {% comment %}
   Kotak "Last evaluation": apa yang dilihat rule engine saat terakhir menilai
   aturan ini (RuleState.snapshot, dibuat oleh rules/engines/eca.py).
@@ -22,9 +23,9 @@
       {% for row in group.conditions %}
       <tr>
         {% if forloop.first %}<td rowspan="{{ group.conditions|length }}" class="text-nowrap">{% if not forloop.parentloop.first %}<span class="text-muted">OR </span>{% endif %}#{{ group.group }} {% include "rules/includes/truth.html" with result=group.result %}</td>{% endif %}
-        <td>{% if not forloop.first %}<span class="text-muted">AND </span>{% endif %}{% if row.url %}<a class="var-link" href="{{ row.url }}">{{ row.device }} · {{ row.label }}</a>{% else %}{{ row.device }} · {{ row.label }}{% endif %} {{ row.operator_label }} {{ row.threshold|floatformat:"-2" }}</td>
+        <td>{% if not forloop.first %}<span class="text-muted">AND </span>{% endif %}{% if row.url %}<a class="var-link" href="{{ row.url }}">{{ row.device }} · {{ row.label }}</a>{% else %}{{ row.device }} · {{ row.label }}{% endif %} {{ row.operator_label }} {% if row.categories %}{{ row.threshold|category_label:row.categories }}{% elif row.boolean and row.threshold == 1 %}ON{% elif row.boolean and row.threshold == 0 %}OFF{% else %}{{ row.threshold|floatformat:"-2" }}{% endif %}</td>
         <td class="text-end text-nowrap">
-          {% if row.value is None %}—{% elif row.boolean %}{% if row.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ row.value|floatformat:"-2" }} {{ row.unit }}{% endif %}
+          {% if row.value is None %}—{% elif row.boolean %}{% if row.value >= 0.5 %}ON{% else %}OFF{% endif %}{% elif row.categories %}{{ row.value|category_label:row.categories }}{% else %}{{ row.value|floatformat:"-2" }} {{ row.unit }}{% endif %}
         </td>
         <td class="text-nowrap text-muted">{% if row.age is not None %}{{ row.age }} s{% if row.source == "message" %} · new{% endif %}{% endif %}</td>
         <td class="text-nowrap">{% include "rules/includes/truth.html" with result=row.result %}{% if row.reason %} <span class="text-muted">({{ row.reason }})</span>{% endif %}</td>

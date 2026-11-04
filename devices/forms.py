@@ -2,6 +2,7 @@ import json
 from datetime import timedelta
 
 from django import forms
+from django.db.models import Max
 
 from accounts.forms import BootstrapFormMixin
 
@@ -63,7 +64,19 @@ class DeviceForm(BootstrapFormMixin, forms.ModelForm):
         return cleaned
 
 
+CATEGORY_MAX = 32
+CATEGORY_LABEL_MAX = 40
+
+
 class VariableForm(BootstrapFormMixin, forms.ModelForm):
+    # Value type "Categories": satu label per baris; baris ke-i disimpan sebagai angka i.
+    categories_text = forms.CharField(
+        label="Categories", required=False,
+        widget=forms.Textarea(attrs={"rows": 4, "placeholder": "closed\nopen\nlocked"}),
+        help_text="One category per line, in order. The first is stored as 0, the second as 1, and so on. "
+                  "Add new categories at the end: changing the order changes the meaning of data already stored.",
+    )
+
     class Meta:
         model = Variable
         fields = ("key", "label", "unit", "kind", "value_type", "min_value", "max_value")
@@ -73,10 +86,17 @@ class VariableForm(BootstrapFormMixin, forms.ModelForm):
             "max_value": "Highest value a user may request (number actuators only).",
         }
 
+    field_order = ("key", "label", "unit", "kind", "value_type", "categories_text", "min_value", "max_value")
+
     def __init__(self, *args, device=None, **kwargs):
         """`device` = device pemilik variabel ini (dikirim oleh view)."""
         super().__init__(*args, **kwargs)
         self.device = device
+        if self.instance.pk and self.instance.categories:
+            self.fields["categories_text"].initial = "\n".join(self.instance.categories)
+        self.fields["value_type"].help_text = (
+            "Number: measured values. On / off: 1 and 0. Categories: named states such as closed / open, "
+            "stored as 0, 1, 2, ...")
 
     def clean_key(self):
         """Tolak key yang sudah dipakai variabel lain di device yang sama.
@@ -99,10 +119,44 @@ class VariableForm(BootstrapFormMixin, forms.ModelForm):
         low, high = cleaned.get("min_value"), cleaned.get("max_value")
         if low is not None and high is not None and low > high:
             self.add_error("max_value", "Maximum must be greater than or equal to minimum.")
-        # Batas min/max tidak bermakna untuk nilai ON/OFF.
-        if cleaned.get("value_type") == Variable.ValueType.BOOLEAN:
+        # Batas min/max tidak bermakna untuk nilai ON/OFF dan kategori.
+        value_type = cleaned.get("value_type")
+        if value_type in (Variable.ValueType.BOOLEAN, Variable.ValueType.CATEGORY):
             cleaned["min_value"] = cleaned["max_value"] = None
+        cleaned["categories"] = self.clean_categories(cleaned) if value_type == Variable.ValueType.CATEGORY else []
         return cleaned
+
+    def clean_categories(self, cleaned):
+        """Teks (satu label per baris) -> daftar label yang sah."""
+        labels = [line.strip() for line in (cleaned.get("categories_text") or "").splitlines() if line.strip()]
+        if len(labels) < 2:
+            self.add_error("categories_text", "Enter at least two categories, one per line.")
+            return labels
+        if len(labels) > CATEGORY_MAX:
+            self.add_error("categories_text", f"At most {CATEGORY_MAX} categories.")
+        seen = set()
+        for label in labels:
+            if len(label) > CATEGORY_LABEL_MAX:
+                self.add_error("categories_text", f"\"{label[:20]}…\" is longer than {CATEGORY_LABEL_MAX} characters.")
+            if label.lstrip("-").isdigit():
+                self.add_error("categories_text", f"\"{label}\" is a number; use a name (devices may send the "
+                                                  "number of a category instead of its name).")
+            if label.lower() in seen:
+                self.add_error("categories_text", f"\"{label}\" is listed twice.")
+            seen.add(label.lower())
+        # Data yang sudah tersimpan tidak boleh kehilangan arti: kode terbesar yang
+        # sudah dipakai harus tetap punya kategori.
+        if self.instance.pk:
+            used = [v for v in (self.instance.telemetry.aggregate(m=Max("value"))["m"],
+                                self.instance.desired_value) if v is not None]
+            if used and max(used) >= len(labels):
+                self.add_error("categories_text", f"Stored data already uses code {max(used):g}; keep at least "
+                                                  f"{int(max(used)) + 1} categories.")
+        return labels
+
+    def save(self, commit=True):
+        self.instance.categories = self.cleaned_data.get("categories", [])
+        return super().save(commit)
 
 
 class SetDesiredForm(forms.Form):
@@ -120,17 +174,11 @@ class SetDesiredForm(forms.Form):
 
     def clean_value(self):
         value = self.cleaned_data["value"]
-        v = self.variable
-        if v.is_boolean:
-            if value not in (0, 1):
-                raise forms.ValidationError("Value must be ON (1) or OFF (0).")
-            return value
         # Batas dicek di server, walaupun <input min max> di browser sudah
         # membatasi: isian browser mudah diakali, server tidak.
-        if v.min_value is not None and value < v.min_value:
-            raise forms.ValidationError(f"Value must be at least {v.min_value:g}.")
-        if v.max_value is not None and value > v.max_value:
-            raise forms.ValidationError(f"Value must be at most {v.max_value:g}.")
+        error = self.variable.value_error(value)
+        if error:
+            raise forms.ValidationError(error)
         return value
 
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load device_tags %}
 {% load static %}
 
 {% block title %}{{ rule.name }} · Rules · IoT Platform{% endblock %}
@@ -64,7 +65,7 @@
                 <td class="text-nowrap"><span class="flow-cat flow-cat-{{ item.category|lower }}">{{ item.category }}</span> {{ item.node.get_kind_display }}</td>
                 <td>
                   {% if item.node.kind == "LATEST" and item.node.variable %}{{ item.node.key|default:item.node.variable.key }} ← {% include "rules/includes/variable_link.html" with variable=item.node.variable %}{% if item.node.seconds %} (max {{ item.node.seconds }} s old){% endif %}
-                  {% elif item.node.kind == "SET_ACTUATOR" and item.node.target_variable %}set {% include "rules/includes/variable_link.html" with variable=item.node.target_variable %} to {% if item.node.target_variable.is_boolean %}{% if item.node.value >= 0.5 %}ON{% else %}OFF{% endif %}{% else %}{{ item.node.value|floatformat:"-2" }}{% endif %}
+                  {% elif item.node.kind == "SET_ACTUATOR" and item.node.target_variable %}set {% include "rules/includes/variable_link.html" with variable=item.node.target_variable %} to {% if item.node.target_variable.is_discrete %}{{ item.node.value|show_threshold:item.node.target_variable }}{% else %}{{ item.node.value|floatformat:"-2" }}{% endif %}
                   {% elif item.node.kind == "CREATE_ALARM" %}{{ item.summary }}{% if item.node.message %}: “{{ item.node.message }}”{% endif %}
                   {% else %}{{ item.summary }}{% endif %}
                 </td>

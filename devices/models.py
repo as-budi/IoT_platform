@@ -215,6 +215,19 @@ key_validator = RegexValidator(
 )
 
 
+def category_label(value, categories):
+    """Label untuk kode kategori `value` dari daftar `categories`, atau None."""
+    if value is None or not categories:
+        return None
+    try:
+        index = int(round(float(value)))
+    except (TypeError, ValueError):
+        return None
+    if abs(float(value) - index) > 1e-9 or not 0 <= index < len(categories):
+        return None
+    return categories[index]
+
+
 class Variable(models.Model):
     device = models.ForeignKey(
         Device,
@@ -247,6 +260,7 @@ class Variable(models.Model):
     class ValueType(models.TextChoices):
         NUMBER = "NUMBER", "Number"
         BOOLEAN = "BOOLEAN", "On / off"
+        CATEGORY = "CATEGORY", "Categories"     # daftar label; disimpan sebagai 0, 1, 2, ...
 
     kind = models.CharField("kind", max_length=10, choices=Kind.choices, default=Kind.SENSOR)
     # Nilai boolean tetap disimpan sebagai angka di telemetri: 1 = ON, 0 = OFF.
@@ -257,6 +271,9 @@ class Variable(models.Model):
     # null=True: kolom boleh kosong di database (artinya "tanpa batas").
     min_value = models.FloatField("minimum", null=True, blank=True)
     max_value = models.FloatField("maximum", null=True, blank=True)
+    # Value type CATEGORY: label kategori berurutan. Kategori ke-i disimpan sebagai angka i
+    # (mis. ["closed", "open", "locked"] -> 0, 1, 2), di telemetri, desired state, dan aturan.
+    categories = models.JSONField("categories", default=list, blank=True)
 
     # --- Desired state (hanya untuk aktuator) ---
     desired_value = models.FloatField("desired value", null=True, blank=True)
@@ -308,6 +325,79 @@ class Variable(models.Model):
     @property
     def is_boolean(self):
         return self.value_type == self.ValueType.BOOLEAN
+
+    @property
+    def is_categorical(self):
+        return self.value_type == self.ValueType.CATEGORY
+
+    @property
+    def is_discrete(self):
+        """ON/OFF atau kategori: nilainya label, bukan besaran (tanpa satuan, tanpa rata-rata)."""
+        return self.is_boolean or self.is_categorical
+
+    @property
+    def value_labels(self):
+        """Label untuk kode 0, 1, ...: ["OFF", "ON"] untuk on/off, daftar kategori, atau []."""
+        if self.is_boolean:
+            return ["OFF", "ON"]
+        if self.is_categorical:
+            return list(self.categories or [])
+        return []
+
+    def category_label(self, value):
+        """Label kategori untuk kode `value`, atau None bila bukan kode yang dikenal."""
+        return category_label(value, self.categories if self.is_categorical else [])
+
+    def format_value(self, value, unit=False):
+        """Teks nilai untuk ditampilkan: ON/OFF, label kategori, atau angka (2 desimal)."""
+        if value is None:
+            return "—"
+        if self.is_boolean:
+            return "ON" if value >= 0.5 else "OFF"
+        if self.is_categorical:
+            label = self.category_label(value)
+            return label if label is not None else f"#{value:g}"
+        return f"{value:g} {self.unit}" if unit and self.unit else f"{value:g}"
+
+    def encode(self, raw):
+        """Nilai dari device/pengguna -> angka yang disimpan. Melempar ValueError bila tidak sah.
+
+        Kategori: label (huruf besar/kecil tidak dibedakan) atau kodenya (0, 1, ...).
+        """
+        if self.is_categorical:
+            labels = self.categories or []
+            if isinstance(raw, str):
+                text = raw.strip()
+                for index, label in enumerate(labels):
+                    if label.lower() == text.lower():
+                        return float(index)
+                if text.lstrip("-").isdigit():
+                    raw = int(text)
+                else:
+                    raise ValueError(f"unknown category '{text[:40]}' (allowed: {', '.join(labels)})")
+            code = float(raw)
+            if code != int(code) or not 0 <= code < len(labels):
+                raise ValueError(f"category code must be a whole number from 0 to {len(labels) - 1} "
+                                 f"({', '.join(f'{i} = {label}' for i, label in enumerate(labels))})")
+            return code
+        if isinstance(raw, str):
+            raise ValueError("must be a number or true/false" if not self.is_boolean else "must be 1/0 or true/false")
+        return float(raw)
+
+    def value_error(self, value):
+        """Pesan kesalahan bila `value` tidak boleh diminta untuk aktuator ini, atau None."""
+        if self.is_boolean and value not in (0, 1):
+            return "On/off actuators accept 1 (ON) or 0 (OFF)."
+        if self.is_categorical:
+            count = len(self.categories or [])
+            if value != int(value) or not 0 <= value < count:
+                return f"Choose one of the categories (0 to {count - 1})."
+            return None
+        if self.min_value is not None and value < self.min_value:
+            return f"Must be at least {self.min_value:g}."
+        if self.max_value is not None and value > self.max_value:
+            return f"Must be at most {self.max_value:g}."
+        return None
 
     def _reported(self):
         """(nilai, waktu) laporan terakhir device.

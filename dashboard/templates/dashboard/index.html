@@ -137,7 +137,8 @@
     function setValue(card, value) {
       const valueEl = card.querySelector('[data-live="value"]');
       valueEl.classList.remove("text-muted");
-      valueEl.textContent = LiveFormat.value(value, card.dataset.boolean === "1") + " ";
+      const labels = card.dataset.labels ? JSON.parse(card.dataset.labels) : [];
+      valueEl.textContent = LiveFormat.value(value, card.dataset.boolean === "1", labels) + " ";
       if (card.dataset.unit) {
         const unit = document.createElement("span");
         unit.className = "unit";

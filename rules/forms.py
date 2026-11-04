@@ -48,7 +48,21 @@ LOW = {Operator.LT, Operator.LTE}
 HIGH = {Operator.GT, Operator.GTE}
 
 
+class VariableSelect(forms.Select):
+    """<select> variabel; opsi variabel ON/OFF atau kategori membawa data-labels (JSON),
+    sehingga static/js/category_inputs.js bisa mengganti isian angka dengan pilihan label."""
+
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        variable = getattr(value, "instance", None)
+        if variable is not None and variable.is_discrete:
+            option["attrs"]["data-labels"] = json.dumps(variable.value_labels, ensure_ascii=False)
+        return option
+
+
 class VariableChoiceField(forms.ModelChoiceField):
+    widget = VariableSelect
+
     def label_from_instance(self, variable):
         unit = f" ({variable.unit})" if variable.unit else ""
         return f"{variable.device.name} · {variable.display_name}{unit}"
@@ -138,6 +152,8 @@ class ConditionForm(BootstrapFormMixin, forms.ModelForm):
             Variable.objects.filter(device__in=devices).select_related("device").order_by("device__name", "key")
         )
         self.fields["variable"].empty_label = "— Variable —"
+        # Variabel ON/OFF atau kategori: isian ambang diganti pilihan label (category_inputs.js).
+        self.fields["variable"].widget.attrs["data-category-target"] = "threshold"
         self.fields["operator"].choices = Operator.choices
         self.fields["threshold"].widget.attrs["placeholder"] = "value"
 
@@ -248,6 +264,7 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
         )
         self.fields["target_device"].queryset = devices
         self.fields["target_variable"].empty_label = "— Choose an actuator —"
+        self.fields["target_variable"].widget.attrs["data-category-target"] = "value"
         self.fields["target_device"].empty_label = "— Choose a device —"
         self.fields["kind"].widget.attrs["data-action-kind"] = ""
         # Pilihan khusus state machine (tahap 20) tidak ditawarkan di form ECA.
@@ -288,12 +305,9 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
             require("target_variable", "value")
             variable, value = cleaned.get("target_variable"), cleaned.get("value")
             if variable and value is not None:
-                if variable.is_boolean and value not in (0, 1):
-                    self.add_error("value", "On/off actuators accept 1 (ON) or 0 (OFF).")
-                elif variable.min_value is not None and value < variable.min_value:
-                    self.add_error("value", f"Must be at least {variable.min_value:g}.")
-                elif variable.max_value is not None and value > variable.max_value:
-                    self.add_error("value", f"Must be at most {variable.max_value:g}.")
+                error = variable.value_error(value)
+                if error:
+                    self.add_error("value", error)
         elif kind == Kind.SEND_COMMAND:
             require("target_device", "method")
         elif kind == Kind.TELEGRAM:
@@ -555,6 +569,7 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
         self.fields["target_device"].queryset = action_devices
         self.fields["variable"].empty_label = "— Variable —"
         self.fields["target_variable"].empty_label = "— Choose an actuator —"
+        self.fields["target_variable"].widget.attrs["data-category-target"] = "value"
         self.fields["target_device"].empty_label = "— Choose a device —"
         self.fields["kind"].choices = kind_choices()
         self.fields["kind"].widget.attrs["data-node-kind"] = ""
@@ -604,12 +619,9 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
         if kind == FlowNode.Kind.SET_ACTUATOR:
             variable, value = cleaned.get("target_variable"), cleaned.get("value")
             if variable and value is not None:
-                if variable.is_boolean and value not in (0, 1):
-                    self.add_error("value", "On/off actuators accept 1 (ON) or 0 (OFF).")
-                elif variable.min_value is not None and value < variable.min_value:
-                    self.add_error("value", f"Must be at least {variable.min_value:g}.")
-                elif variable.max_value is not None and value > variable.max_value:
-                    self.add_error("value", f"Must be at most {variable.max_value:g}.")
+                error = variable.value_error(value)
+                if error:
+                    self.add_error("value", error)
         # Kosongkan field milik jenis node lain, supaya data tersimpan rapi.
         used = set(NODE_TYPES[kind].fields)
         for name, blank in NODE_BLANKS.items():

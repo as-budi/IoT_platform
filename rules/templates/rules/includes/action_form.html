@@ -16,7 +16,7 @@
     </div>
     <div class="row g-3" data-for="SET_ACTUATOR">
       <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.target_variable %}</div>
-      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">1 = ON, 0 = OFF for on/off actuators.</div></div>
+      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">On/off and category actuators: choose from the list.</div></div>
     </div>
     <div class="row g-3" data-for="SEND_COMMAND">
       <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.target_device %}</div>

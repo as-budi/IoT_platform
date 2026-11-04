@@ -112,7 +112,7 @@ def desired_changed(sender, instance, created, raw=False, **kwargs):
         return
     variable = instance.variable
     device = variable.device
-    shown = ("ON" if instance.value >= 0.5 else "OFF") if variable.is_boolean else _fmt(instance.value)
+    shown = variable.format_value(instance.value) if variable.is_discrete else _fmt(instance.value)
     # changed_by kosong = bukan orang, melainkan aturan (lihat Variable.set_desired).
     record("actuator.set", f"{variable.display_name} on {device.name} set to {shown}", category=Category.CONTROL,
            owner=device.owner, device=device, actor=instance.changed_by,

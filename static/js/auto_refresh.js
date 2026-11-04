@@ -282,10 +282,17 @@
  * Alat bantu tampilan yang dipakai halaman device dan variabel.
  */
 window.LiveFormat = {
-  // Sama dengan filter show_value: ON/OFF untuk boolean, 2 desimal untuk angka.
-  value(value, isBoolean) {
+  // Sama dengan filter show_value: ON/OFF untuk boolean, label untuk kategori
+  // (`labels` = daftar kategori; kode tak dikenal tampil "#5"), 2 desimal untuk angka.
+  value(value, isBoolean, labels) {
     if (value === null || value === undefined) return "—";
-    return isBoolean ? (value >= 0.5 ? "ON" : "OFF") : Number(value).toFixed(2);
+    if (isBoolean) return value >= 0.5 ? "ON" : "OFF";
+    if (labels && labels.length) {
+      const index = Math.round(Number(value));
+      return Math.abs(Number(value) - index) < 1e-9 && index >= 0 && index < labels.length
+        ? labels[index] : "#" + value;
+    }
+    return Number(value).toFixed(2);
   },
   // Sama dengan format tanggal tabel history: "08 Oct 2026 14:03:22".
   dateTime(ms) {

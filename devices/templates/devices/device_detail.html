@@ -77,7 +77,7 @@
         {# Yang besar adalah nilai REPORTED: keadaan yang benar-benar terjadi. #}
         <div class="value">
           {{ variable.last_value|show_value:variable }}
-          {% if variable.unit and not variable.is_boolean and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+          {% if variable.unit and not variable.is_discrete and variable.last_value is not None %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted">
           {% if variable.last_seen %}Reported {{ variable.last_seen|timesince }} ago{% else %}No report from device yet{% endif %}
@@ -100,7 +100,7 @@
     {# data-live-*: dipakai JavaScript di bawah untuk memperbarui card tanpa memuat ulang. #}
     <div class="card shadow-sm value-card h-100"
          data-live-variable="{{ variable.pk }}" data-live-count="{{ variable.telemetry_count }}"
-         data-boolean="{% if variable.is_boolean %}1{% endif %}" data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}">
+         data-boolean="{% if variable.is_boolean %}1{% endif %}" data-labels="{% if variable.is_categorical %}{{ variable.categories|json_attr }}{% endif %}" data-unit="{% if not variable.is_discrete %}{{ variable.unit }}{% endif %}">
       <div class="card-body">
         <div class="key text-muted">
           {{ variable.display_name }}
@@ -109,7 +109,7 @@
         {% if variable.last_value is not None %}
         <div class="value" data-live="value">
           {{ variable.last_value|show_value:variable }}
-          {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+          {% if variable.unit and not variable.is_discrete %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted" data-live="meta" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
           {{ variable.last_seen|timesince }} ago · {{ variable.telemetry_count|intcomma }} rows
@@ -455,9 +455,10 @@ client.on("connect", () => {
       const card = document.querySelector(`[data-live-variable="${variableId}"]`);
       if (!card) return false;  // variabel baru (dibuat otomatis): perlu muat ulang
       const isBoolean = card.dataset.boolean === "1";
+      const labels = card.dataset.labels ? JSON.parse(card.dataset.labels) : [];
       const valueEl = card.querySelector('[data-live="value"]');
       valueEl.classList.remove("text-muted");
-      valueEl.textContent = LiveFormat.value(latest.value, isBoolean) + " ";
+      valueEl.textContent = LiveFormat.value(latest.value, isBoolean, labels) + " ";
       if (card.dataset.unit) {
         const unit = document.createElement("span");
         unit.className = "unit";

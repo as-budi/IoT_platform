@@ -275,7 +275,8 @@ class CloudCondition:
         from .models import compare
 
         self.variable_id, self.operator, self.threshold = s, operator, threshold
-        self.variable = FakeVariable(display_name=f"s{s}", device=FakeVariable(name="d"), unit="", is_boolean=False)
+        self.variable = FakeVariable(display_name=f"s{s}", device=FakeVariable(name="d"), unit="", is_boolean=False,
+                                     is_categorical=False, categories=[])
         self._compare = compare
 
     def get_operator_display(self):

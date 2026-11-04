@@ -126,6 +126,8 @@ def my_devices(request):
                     "name": variable.display_name,
                     "kind": variable.kind.lower(),
                     "value_type": variable.value_type.lower(),
+                    # Kategori: label untuk kode 0, 1, ... (kosong untuk tipe lain).
+                    "categories": variable.categories if variable.is_categorical else [],
                     "unit": variable.unit,
                     "min": variable.min_value,
                     "max": variable.max_value,

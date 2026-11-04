@@ -44,7 +44,7 @@
         {# data-ts: waktu bacaan dalam milidetik, dipakai pembaruan langsung. #}
         <div class="value" data-live="latest-value" data-ts="{{ latest.ts|date:'U' }}000">
           {{ latest.value|show_value:variable }}
-          {% if variable.unit and not variable.is_boolean %}<span class="unit">{{ variable.unit }}</span>{% endif %}
+          {% if variable.unit and not variable.is_discrete %}<span class="unit">{{ variable.unit }}</span>{% endif %}
         </div>
         <div class="small text-muted" data-live="latest-meta" title="{{ latest.ts|date:'d M Y H:i:s' }}">
           {{ latest.ts|timesince }} ago
@@ -90,7 +90,7 @@
           Last {{ chart.label }}
           {% endif %}
           · {{ chart.rows|intcomma }} reading{{ chart.rows|pluralize }}
-          {% if chart.bucket %}· {% if variable.is_boolean %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
+          {% if chart.bucket %}· {% if variable.is_discrete %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
           {% if chart.source %}<span title="Read from the pre-computed {{ chart.source }} summary table (plus raw data for the last few minutes), not from every reading">· from {{ chart.source }} summaries</span>{% endif %}
         </p>
       </div>
@@ -163,8 +163,8 @@
     {% if chart_points %}
     <div class="chart-box">
       <canvas id="history-chart" role="img"
-              data-variable="{{ variable.display_name }}" data-unit="{% if not variable.is_boolean %}{{ variable.unit }}{% endif %}"
-              data-boolean="{% if variable.is_boolean %}1{% endif %}"
+              data-variable="{{ variable.display_name }}" data-unit="{% if not variable.is_discrete %}{{ variable.unit }}{% endif %}"
+              data-boolean="{% if variable.is_boolean %}1{% endif %}" data-labels="{% if variable.is_categorical %}{{ variable.categories|json_attr }}{% endif %}"
               aria-label="Line chart of {{ variable.display_name }} for the selected period. The same data is listed in the table below."></canvas>
     </div>
     <div class="form-text">
@@ -298,10 +298,13 @@
     const range = JSON.parse(document.getElementById("chart-range").textContent);
     const unit = canvas.dataset.unit;  // dari atribut data-unit di <canvas>
     const isBoolean = canvas.dataset.boolean === "1";
+    // Kategori: label untuk kode 0, 1, ... (kosong untuk angka dan ON/OFF).
+    const categories = canvas.dataset.labels ? JSON.parse(canvas.dataset.labels) : [];
+    const isDiscrete = isBoolean || categories.length > 0;
     const label = canvas.dataset.variable;
 
     const fmtValue = (v) =>
-      isBoolean ? (v >= 0.5 ? "ON" : "OFF") : v.toFixed(2) + (unit ? " " + unit : "");
+      isDiscrete ? LiveFormat.value(v, isBoolean, categories) : v.toFixed(2) + (unit ? " " + unit : "");
     // Label sumbu x menyesuaikan lebar rentang yang sedang terlihat:
     // detik untuk <= 1 jam, jam:menit untuk <= 1 hari, tanggal untuk lebih lama.
     const HOUR = 3600 * 1000;
@@ -360,8 +363,8 @@
           pointHoverBackgroundColor: c.series,
           pointHoverBorderColor: c.surface,
           // Nilai ON/OFF digambar sebagai tangga, bukan garis miring.
-          tension: isBoolean ? 0 : 0.25,
-          stepped: isBoolean ? "before" : false,
+          tension: isDiscrete ? 0 : 0.25,
+          stepped: isDiscrete ? "before" : false,
         }],
       },
       options: {
@@ -430,9 +433,12 @@
           y: {
             ticks: isBoolean
               ? { color: c.ink, stepSize: 1, callback: (v) => (v === 1 ? "ON" : v === 0 ? "OFF" : "") }
+              : categories.length
+              ? { color: c.ink, stepSize: 1, autoSkip: false,
+                  callback: (v) => (Number.isInteger(v) && v >= 0 && v < categories.length ? categories[v] : "") }
               : { color: c.ink, callback: (v) => v + (unit ? " " + unit : "") },
-            min: isBoolean ? 0 : undefined,
-            max: isBoolean ? 1 : undefined,
+            min: isDiscrete ? 0 : undefined,
+            max: isBoolean ? 1 : categories.length ? categories.length - 1 : undefined,
             grid: { color: c.grid },
             border: { display: false },
           },
@@ -511,7 +517,7 @@
       // 1) Card nilai terkini
       const latest = mine[mine.length - 1];
       valueEl.dataset.ts = latest.ts;
-      valueEl.textContent = LiveFormat.value(latest.value, config.boolean) + " ";
+      valueEl.textContent = LiveFormat.value(latest.value, config.boolean, config.labels) + " ";
       if (config.unit) {
         const unit = document.createElement("span");
         unit.className = "unit";
@@ -533,7 +539,7 @@
           row.insertCell().textContent = LiveFormat.dateTime(point.ts);
           const cell = row.insertCell();
           cell.className = "text-end";
-          cell.textContent = LiveFormat.value(point.value, config.boolean);
+          cell.textContent = LiveFormat.value(point.value, config.boolean, config.labels);
         }
         while (tbody.rows.length > config.pageSize) tbody.deleteRow(-1);
       }

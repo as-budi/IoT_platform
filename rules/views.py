@@ -950,9 +950,16 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
             return context
         # Nilai di execution log: (label, nilai, alamat halaman variabel atau None).
         _, urls = variable_urls(rule)
+        from .engines.eca import value_text
+
+        spec_for_labels = getattr(rule, "eca", None)
+        by_label = {f"{c.variable.device.name} · {c.variable.display_name}": c.variable
+                    for c in (spec_for_labels.condition_list() if spec_for_labels else [])}
         for execution in executions:
+            # ON/OFF dan kategori tampil sebagai label (mis. "open"), angka apa adanya.
             execution.value_rows = [
-                (label, value, urls.get(label)) for label, value in (execution.snapshot or {}).items()
+                (label, None if value is None else value_text(by_label.get(label), value), urls.get(label))
+                for label, value in (execution.snapshot or {}).items()
             ]
         spec = getattr(rule, "eca", None)
         condition_variables = []

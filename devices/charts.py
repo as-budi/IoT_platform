@@ -141,7 +141,8 @@ def raw_series(variable, start, end):
     width = max(1, math.ceil(span / CHART_MAX_POINTS))
     # Angka diringkas dengan rata-rata. Untuk ON/OFF rata-rata (mis. 0,4) tidak
     # bermakna, jadi dipakai nilai maksimum: "pernah ON dalam ember ini".
-    summary = Max("value") if variable.is_boolean else Avg("value")
+    # Kategori sama: rata-rata kode (mis. 1,5) tidak bermakna, jadi dipakai kode terbesar.
+    summary = Max("value") if variable.is_discrete else Avg("value")
     buckets = (
         rows.annotate(bucket=BucketIndex(start, width))
         .values("bucket")              # GROUP BY bucket
@@ -195,7 +196,7 @@ def rollup_series(variable, start, end, resolution, done):
         {
             "x": origin_ms + int((idx + 0.5) * width * 1000),
             # ON/OFF: "pernah ON dalam ember ini" (maksimum), angka: rata-rata.
-            "y": high if variable.is_boolean else round(total / n, 6),
+            "y": high if variable.is_discrete else round(total / n, 6),
         }
         for idx, (n, total, high) in sorted(buckets.items())
     ]

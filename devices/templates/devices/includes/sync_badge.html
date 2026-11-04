@@ -7,7 +7,7 @@
 {% with status=variable.sync_status %}
 {% if status %}
 <div class="small mt-1">
-  Requested: <strong>{{ variable.desired_value|show_value:variable }}{% if variable.unit and not variable.is_boolean %} {{ variable.unit }}{% endif %}</strong>
+  Requested: <strong>{{ variable.desired_value|show_value:variable }}{% if variable.unit and not variable.is_discrete %} {{ variable.unit }}{% endif %}</strong>
   {% if status == "SYNCED" %}
   <span class="badge text-bg-success">In sync</span>
   {% elif status == "PENDING" %}

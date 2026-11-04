@@ -52,10 +52,12 @@ def filename(variable, start, end, extension):
 
 
 def headers(variable):
-    unit = f" ({variable.unit})" if variable.unit and not variable.is_boolean else ""
+    unit = f" ({variable.unit})" if variable.unit and not variable.is_discrete else ""
     columns = ["time", "time_utc", f"value{unit}"]
     if variable.is_boolean:
         columns.append("state")
+    elif variable.is_categorical:
+        columns.append("category")
     return columns
 
 
@@ -86,8 +88,8 @@ def csv_lines(variable, queryset):
             utc_text(ts),
             f"{value:g}",
         ]
-        if variable.is_boolean:
-            line.append(state_text(value))
+        if variable.is_discrete:
+            line.append(variable.format_value(value))
         yield writer.writerow(line)
 
 
@@ -178,8 +180,8 @@ def write_xlsx(variable, queryset, target):
                     text_cell(f"B{number}", utc_text(ts)),
                     f'<c r="C{number}"><v>{value!r}</v></c>',
                 ]
-                if variable.is_boolean:
-                    cells.append(text_cell(f"D{number}", state_text(value)))
+                if variable.is_discrete:
+                    cells.append(text_cell(f"D{number}", variable.format_value(value)))
                 sheet.write(f'<row r="{number}">{"".join(cells)}</row>\n'.encode())
                 count += 1
             sheet.write(SHEET_TAIL.encode())

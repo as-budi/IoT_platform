@@ -13,7 +13,7 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
 </table>
 <ul>
   <li>Keys: letters, digits and underscores, starting with a letter, at most 50 characters. New keys become new variables.</li>
-  <li>Values: numbers; <code>true</code>/<code>false</code> are stored as 1/0. Text is rejected.</li>
+  <li>Values: numbers; <code>true</code>/<code>false</code> are stored as 1/0. Text only as the name of a category, for variables with the value type <a href="{% url 'userdocs:page' 'variables' %}#categories">Categories</a> (stored as its number); other text is rejected.</li>
   <li>At most 1000 values per message. A time in seconds instead of milliseconds, or more than 5 minutes in the future, is rejected.</li>
   <li>A message is saved completely or rejected completely, never partly.</li>
 </ul>

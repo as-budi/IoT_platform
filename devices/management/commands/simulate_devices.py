@@ -82,7 +82,12 @@ class Command(BaseCommand):
                 previous = variable.latest
                 reported = previous.value if previous else (0 if variable.is_boolean else reported)
                 if reported == variable.desired_value:
-                    reported = 1 - reported if variable.is_boolean else reported + 1
+                    if variable.is_boolean:
+                        reported = 1 - reported
+                    elif variable.is_categorical:
+                        reported = (reported + 1) % max(len(variable.categories), 1)
+                    else:
+                        reported = reported + 1
             # Disimpan lewat jalur yang sama dengan API, sehingga dashboard
             # yang terbuka ikut diberi kabar lewat WebSocket.
             save_telemetry(variable.device, [(variable.key, reported, timezone.now())])

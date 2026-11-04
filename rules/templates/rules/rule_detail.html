@@ -126,7 +126,7 @@
           <td><span class="badge rule-state{% if execution.transition == "ACTIVATE" %} rule-state-active{% elif execution.transition == "SKIPPED" %} rule-state-skipped{% endif %}">{{ execution.get_transition_display }}</span></td>
           <td class="text-end">{% if execution.value is not None %}{{ execution.value|floatformat:"-2" }}{% else %}—{% endif %}</td>
           <td class="small">
-            {% if execution.value_rows %}<div class="text-muted mb-1">Values: {% for label, value, url in execution.value_rows %}{% if url %}<a class="var-link" href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %} = {% if value is None %}—{% else %}{{ value|floatformat:"-2" }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
+            {% if execution.value_rows %}<div class="text-muted mb-1">Values: {% for label, value, url in execution.value_rows %}{% if url %}<a class="var-link" href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %} = {% if value is None %}—{% else %}{{ value }}{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}</div>{% endif %}
             {% for result in execution.results %}
             <div class="{% if not result.ok %}text-danger{% elif execution.transition == "SKIPPED" %}text-muted{% endif %}">{% if execution.transition == "SKIPPED" %}⏭{% elif result.ok %}✓{% else %}✗{% endif %} {{ result.action }}: {{ result.detail }}</div>
             {% empty %}<span class="text-muted">no actions</span>{% endfor %}
