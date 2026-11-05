@@ -14,7 +14,9 @@ from sharing.models import DeviceShare
 
 from .models import EcaCondition, EcaSpec, Rule, RuleAction, RuleDelivery, RulePublication
 from .portable import export_rule
-from .publish import handle_ack, publish_rule, rule_body, rule_rev, withdraw_rule
+from .publish import (
+    compact_body, handle_ack, message_size, publish_rule, rule_body, rule_message, rule_rev, withdraw_rule,
+)
 
 User = get_user_model()
 PREFIX = "test-prefix"
@@ -79,12 +81,14 @@ class PublishTests(PublishData):
         deliveries = {d.device.name: d for d in publication.deliveries.all()}
         self.assertEqual(set(deliveries), {"Pump", "Soil probe"})
         payload = deliveries["Pump"].payload
-        self.assertEqual(payload["type"], "rule")
-        self.assertEqual(payload["publish"]["id"], 1)
-        self.assertEqual(payload["device"], {"name": "Pump", "mac": "AA:BB:CC:00:00:02"})
-        self.assertEqual(payload["ack"], topics.rule_ack(PREFIX, self.pump.access_token, rule.pk))
-        self.assertEqual(payload["rule"]["devices"][0]["mac"], "AA:BB:CC:00:00:02")
-        self.assertGreater(publication.size_bytes, 200)
+        # Full: JSON halaman aturan (tanpa exported_at) + "publish" di depan; tanpa amplop lain.
+        body = export_rule(rule)
+        body.pop("exported_at")
+        self.assertEqual(payload, {"publish": {"id": 1, "rev": rule_rev(rule_body(rule))}, **body})
+        self.assertEqual(list(payload)[:2], ["publish", "format"])
+        self.assertEqual(deliveries["Soil probe"].payload, payload)          # sama untuk semua device
+        self.assertFalse(publication.compact)
+        self.assertEqual(publication.size_bytes, message_size(payload))
 
         sent = self.flush()
         self.assertEqual({t for t, _, _ in sent}, {topics.rules(PREFIX, d.access_token, rule.pk)
@@ -117,6 +121,32 @@ class PublishTests(PublishData):
         self.assertEqual(status["Soil probe"], ("SKIPPED", "The device is inactive."))
         self.assertIn("Operator access", status["Budi fan"][1])
         self.assertEqual(len(self.flush()), 1)
+
+    def test_compact_message(self):
+        rule = self.make_rule(extra_device=self.sensor)
+        full = rule_body(rule)
+        compact = compact_body(full)
+        # Tanpa format/description/nilai kosong; device sebagai indeks di "devices".
+        self.assertNotIn("format", compact)
+        self.assertNotIn("description", compact)
+        self.assertNotIn("device", compact["eca"])                          # null di Full
+        self.assertEqual(compact["devices"], full["devices"])
+        names = [d["name"] for d in full["devices"]]
+        condition = compact["eca"]["when"][0][0]
+        self.assertEqual(names[condition["device"]], "Soil probe")
+        self.assertEqual([names[a["device"]] for a in compact["actions"]], ["Pump", "Soil probe"])
+        self.assertNotIn("params", compact["actions"][1])                   # {} di Full
+        publication = publish_rule(rule, compact=True)
+        self.assertTrue(publication.compact)
+        self.assertEqual(publication.deliveries.first().payload, rule_message(full, rule_rev(full), 1, compact=True))
+        self.assertLess(publication.size_bytes, message_size(rule_message(full, "x" * 8, 1)))
+
+    def test_compact_keeps_names_when_not_unique(self):
+        body = {"name": "x", "devices": [{"name": "Fan", "mac": None}, {"name": "Fan", "mac": "AA"}],
+                "eca": {"when": [[{"device": "Fan", "variable": "t"}]]}}
+        compact = compact_body(body)
+        self.assertEqual(compact["eca"]["when"][0][0]["device"], "Fan")
+        self.assertEqual(compact["devices"], [{"name": "Fan"}, {"name": "Fan", "mac": "AA"}])
 
     def test_republish_withdraw_and_delete(self):
         rule = self.make_rule()
@@ -177,6 +207,11 @@ class PageTests(PublishData):
         status = self.client.get(reverse("rules:publish_status", args=[rule.pk]))
         self.assertContains(status, "Received")
         self.assertContains(status, "1/2 received · 1 waiting")
+        self.assertContains(status, "Message sent in publish #1 (full,")
+        response = self.client.post(reverse("rules:publish", args=[rule.pk]), {"format": "compact"})
+        self.assertTrue(RulePublication.objects.get(rule=rule, number=2).compact)
+        page = self.client.get(reverse("rules:detail", args=[rule.pk]))
+        self.assertContains(page, '<option value="compact" selected>')
         self.client.post(reverse("rules:withdraw", args=[rule.pk]))
         self.assertTrue(RulePublication.objects.filter(rule=rule, action="WITHDRAW").exists())
 

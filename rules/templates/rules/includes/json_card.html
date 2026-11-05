@@ -21,7 +21,14 @@
       {% if publish %}
       <div class="d-flex flex-wrap align-items-center gap-2">
         <span class="badge text-bg-light border fw-normal" title="Sends this JSON, unchanged, to the devices in the rule. Devices do not run the rule yet.">test</span>
-        <form method="post" action="{% url 'rules:publish' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary">{% if publish.published %}Publish again{% else %}Publish to devices{% endif %}</button></form>
+        <form method="post" action="{% url 'rules:publish' rule.pk %}" class="d-flex gap-2">{% csrf_token %}
+          {# Bentuk pesan: Full = JSON di tab JSON; Compact = tanpa nilai kosong, device sebagai indeks (rules/publish.py). #}
+          <select name="format" class="form-select form-select-sm w-auto" aria-label="Message format" title="Full: the JSON in the JSON tab. Compact: no empty values, no description, devices written as their position in &quot;devices&quot;.">
+            <option value="full"{% if not publish.compact %} selected{% endif %}>Full · {{ publish.size }} B</option>
+            <option value="compact"{% if publish.compact %} selected{% endif %}>Compact · {{ publish.size_compact }} B</option>
+          </select>
+          <button class="btn btn-sm btn-primary text-nowrap">{% if publish.published %}Publish again{% else %}Publish to devices{% endif %}</button>
+        </form>
         {% if publish.published %}<form method="post" action="{% url 'rules:withdraw' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Withdraw</button></form>{% endif %}
       </div>
       {% endif %}

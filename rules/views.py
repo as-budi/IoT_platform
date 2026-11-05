@@ -1354,10 +1354,12 @@ class RulePublishView(LoginRequiredMixin, View):
             count = publication.deliveries.count()
             messages.success(request, f"Removing the rule JSON from {count} device topic{'s' if count != 1 else ''}.")
         else:
-            publication = publish_rule(rule, request.user)
+            compact = request.POST.get("format") == "compact"
+            publication = publish_rule(rule, request.user, compact=compact)
             queued = publication.deliveries.filter(status="QUEUED").count()
             skipped = publication.deliveries.filter(status="SKIPPED").count()
-            text = f"Publish #{publication.number}: sending the rule JSON to {queued} device{'s' if queued != 1 else ''}."
+            text = (f"Publish #{publication.number}: sending the {'compact' if compact else 'full'} rule JSON "
+                    f"({publication.size_bytes} bytes) to {queued} device{'s' if queued != 1 else ''}.")
             if skipped:
                 text += f" {skipped} skipped (see the table)."
             messages.success(request, text)

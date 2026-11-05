@@ -1,6 +1,6 @@
 {# Tab "Devices" di kartu JSON (rules/includes/json_card.html): publish JSON aturan ke device, #}
 {# percobaan sebelum tahap 27. Konteks: publish (rules/publish.py status_context).             #}
-<p class="small text-muted mb-2">Publish sends the JSON, unchanged, to every device in this rule over MQTT, wrapped with the publish number and the receiving device. The table shows which devices confirm that they received it. Devices do not run the rule yet. <a href="{% url 'userdocs:page' 'device-api' %}#rules">Topics and replies</a></p>
+<p class="small text-muted mb-2">Publish sends one message to every device in this rule over MQTT: the rule JSON with a <code>"publish"</code> key added in front, either <strong>Full</strong> (the JSON tab as it is) or <strong>Compact</strong> (no empty values or description, devices written as their position in <code>"devices"</code>). Each device finds itself by its MAC address in <code>"devices"</code>. The table shows which devices confirm that they received it. Devices do not run the rule yet. <a href="{% url 'userdocs:page' 'device-api' %}#rules">Topics and replies</a></p>
 <div data-publish-status data-url="{% url 'rules:publish_status' rule.pk %}">
   {% include "rules/includes/publish_status.html" %}
 </div>
@@ -33,7 +33,11 @@
       if (!box.querySelector("[data-publish-waiting]")) return;
       try {
         const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
-        if (response.ok) { box.innerHTML = await response.text(); updateBadge(); }
+        if (response.ok) {
+          box.innerHTML = await response.text();
+          updateBadge();
+          if (window.JsonViewer) JsonViewer.initAll(box);   // "Message sent" yang baru
+        }
       } catch (err) { /* dicoba lagi */ }
       setTimeout(refresh, 3000);
     }

@@ -1,20 +1,22 @@
 """
 Publish JSON aturan ke device (percobaan sebelum tahap 27).
 
-Tombol "Publish to devices" di halaman aturan mengirim JSON aturan UTUH (bentuk yang sama
-dengan kartu JSON / Export, termasuk daftar device dan MAC address-nya), tanpa
+Tombol "Publish to devices" di kartu JSON halaman aturan mengirim JSON aturan, tanpa
 dekomposisi, ke SEMUA device yang dipakai aturan:
 
     <prefix>/<token>/rules/<rule id>        platform -> device, QoS 1, retained
     <prefix>/<token>/rules/<rule id>/ack    device -> platform, tanda terima
 
-Isi pesan ke device:
+Pesannya SAMA untuk semua device: JSON aturan dengan satu kunci tambahan "publish" di depan.
 
-    {"type": "rule",
-     "publish": {"id": 3, "rev": "9f3a1c07", "at": "2026-11-04T20:15:00+07:00"},
-     "device": {"name": "Pump node", "mac": "AA:BB:CC:00:00:03"},
-     "ack": "<prefix>/<token>/rules/12/ack",
-     "rule": { ...JSON aturan... }}
+  Full     JSON di halaman aturan (tanpa exported_at):
+             {"publish": {"id": 3, "rev": "9f3a1c07"}, "format": "iot-platform.rule", "version": 1,
+              "model": "ECA", "name": ..., "devices": [{"name": "Pump", "mac": "AA:.."}], "eca": {...}, ...}
+  Compact  sama, tetapi tanpa "format", "description", dan nilai kosong (null, "", [], {}),
+           dan nama device di kondisi/aksi diganti indeksnya di "devices" ("device": 0).
+           Kira-kira 25% lebih kecil daripada Full.
+
+Device mengenali dirinya lewat MAC-nya di "devices"; topik ack = topik pesan + "/ack".
 
 Tanda terima dari device:  {"publish": 3, "ok": true}
                     atau   {"publish": 3, "ok": false, "error": "payload too large"}
@@ -23,6 +25,8 @@ Retained: device yang sedang mati menerima JSON terakhir begitu tersambung dan s
 "Withdraw" (dan menghapus aturan) mengirim pesan kosong retained, yang menghapus JSON itu
 dari broker. Pengiriman dilakukan mqtt_bridge (pola outbox, mqtt_bridge/outbox.py).
 """
+import json
+
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Max
@@ -32,7 +36,7 @@ from django.utils import timezone
 
 from mqtt_bridge import topics
 
-from .edge.ir import canonical, digest
+from .edge.ir import digest
 from .models import Rule, RuleDelivery, RulePublication
 from .portable import export_rule, rule_devices
 
@@ -54,16 +58,60 @@ def rule_rev(body):
     return digest(body)
 
 
-def device_payload(rule, body, rev, publication, device):
-    prefix = settings.MQTT_TOPIC_PREFIX
-    return {
-        "type": "rule",
-        "publish": {"id": publication.number, "rev": rev,
-                    "at": timezone.localtime(publication.created_at).isoformat(timespec="seconds")},
-        "device": {"name": device.name, "mac": device.mac_address or None},
-        "ack": topics.rule_ack(prefix, device.access_token, rule.pk),
-        "rule": body,
-    }
+# Kunci yang berisi nama device (diganti indeks di pesan Compact).
+DEVICE_KEYS = ("device", "target_device")
+EMPTY = (None, "", [], {})
+
+
+def _prune(value):
+    """Buang nilai kosong (null, "", [], {}) dari object, berulang ke dalam."""
+    if isinstance(value, dict):
+        pruned = {k: _prune(v) for k, v in value.items()}
+        return {k: v for k, v in pruned.items() if v not in EMPTY}
+    if isinstance(value, list):
+        return [_prune(v) for v in value]
+    return value
+
+
+def _index_devices(value, index):
+    """Nama device di "device"/"target_device" -> posisinya di daftar "devices"."""
+    if isinstance(value, dict):
+        return {k: (index[v] if k in DEVICE_KEYS and isinstance(v, str) and v in index else _index_devices(v, index))
+                for k, v in value.items()}
+    if isinstance(value, list):
+        return [_index_devices(v, index) for v in value]
+    return value
+
+
+def compact_body(body):
+    """JSON aturan -> bentuk Compact (lihat docstring modul)."""
+    data = {k: v for k, v in body.items() if k not in ("format", "description", "devices")}
+    names = [d["name"] for d in body.get("devices", [])]
+    # Indeks hanya bila nama device unik (device milik orang lain bisa bernama sama).
+    if len(set(names)) == len(names):
+        data = _index_devices(data, {name: i for i, name in enumerate(names)})
+    data = _prune(data)
+    devices = [{k: v for k, v in d.items() if v not in EMPTY} for d in body.get("devices", [])]
+    # "devices" tetap di tempat semula (setelah header) supaya mudah dibaca.
+    out = {}
+    for key in body:
+        if key == "devices":
+            out["devices"] = devices
+        elif key in data:
+            out[key] = data[key]
+    return out
+
+
+def rule_message(body, rev, number, compact=False):
+    """Pesan untuk device: {"publish": {"id", "rev"}} + JSON aturan (Full atau Compact)."""
+    return {"publish": {"id": number, "rev": rev}, **(compact_body(body) if compact else body)}
+
+
+def message_size(message):
+    """Ukuran pesan seperti yang dikirim mqtt_bridge (outbox.encode), dalam byte."""
+    from mqtt_bridge.outbox import encode
+
+    return len(encode(message).encode("utf-8"))
 
 
 def skip_reason(rule, device):
@@ -80,22 +128,22 @@ def _next_number(rule):
     return (RulePublication.objects.filter(rule=rule).aggregate(n=Max("number"))["n"] or 0) + 1
 
 
-def publish_rule(rule, user=None):
+def publish_rule(rule, user=None, compact=False):
     """Antrekan JSON aturan untuk semua device-nya. Mengembalikan RulePublication."""
     prefix = settings.MQTT_TOPIC_PREFIX
     body = rule_body(rule)
     rev = rule_rev(body)
     with transaction.atomic():
+        number = _next_number(rule)
+        payload = rule_message(body, rev, number, compact)
         publication = RulePublication.objects.create(
-            rule=rule, number=_next_number(rule), action=RulePublication.Action.PUBLISH, rev=rev,
+            rule=rule, number=number, action=RulePublication.Action.PUBLISH, rev=rev, compact=compact,
+            size_bytes=message_size(payload),
             created_by=user if user is not None and user.is_authenticated else None,
         )
         # Kiriman lama yang belum terkirim tidak perlu dikirim lagi.
         RuleDelivery.objects.filter(rule=rule, status=Status.QUEUED).update(status=Status.SUPERSEDED)
-        size = 0
         for device in rule_devices(rule):
-            payload = device_payload(rule, body, rev, publication, device)
-            size = max(size, len(canonical(payload).encode("utf-8")))
             reason = skip_reason(rule, device)
             RuleDelivery.objects.create(
                 publication=publication, rule=rule, rule_number=rule.pk, device=device,
@@ -103,8 +151,6 @@ def publish_rule(rule, user=None):
                 payload=None if reason else payload,
                 status=Status.SKIPPED if reason else Status.QUEUED, detail=reason,
             )
-        publication.size_bytes = size
-        publication.save(update_fields=["size_bytes"])
     return publication
 
 
@@ -182,6 +228,9 @@ def status_context(rule):
                      "protocol": device.get_last_protocol_display() if device.last_protocol else "",
                      "mqtt": device.last_protocol == "MQTT" or device.mqtt_connected})
     waiting = any(d.status in WAITING for d in deliveries.values())
+    message = None
+    if last_publish is not None and last is last_publish:
+        message = next((d.payload for d in deliveries.values() if d.payload is not None), None)
     # Ringkasan untuk badge di judul kartu (publish terakhir; SKIPPED tidak dihitung).
     counted = [d for d in deliveries.values() if d.status not in (Status.SKIPPED, Status.SUPERSEDED)]
     summary = {
@@ -204,8 +253,13 @@ def status_context(rule):
         "changed": bool(last_publish and last_publish.rev != current_rev and last and
                         last.action == RulePublication.Action.PUBLISH),
         "published": bool(last and last.action == RulePublication.Action.PUBLISH),
-        "size": len(canonical(device_payload(rule, body, current_rev, RulePublication(number=0,
-                    created_at=timezone.now()), devices[0])).encode()) if devices else 0,
+        # Perkiraan ukuran publish berikutnya untuk kedua bentuk pesan.
+        "size": message_size(rule_message(body, current_rev, 0)),
+        "size_compact": message_size(rule_message(body, current_rev, 0, compact=True)),
+        "compact": bool(last_publish and last_publish.compact),
+        # Pesan yang dikirim pada publish terakhir (sama untuk semua device), untuk tab Devices.
+        "message": message,
+        "message_json": json.dumps(message, indent=2, ensure_ascii=False) if message else "",
         "buffer": DEVICE_BUFFER_BYTES,
         "topic_example": topics.rules(settings.MQTT_TOPIC_PREFIX, "<token>", rule.pk),
     }

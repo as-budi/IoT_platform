@@ -2,7 +2,7 @@
 
 Percobaan sebelum firmware micro rule: apakah **semua device yang dipakai sebuah aturan mampu
 menerima JSON aturan utuh** lewat MQTT. Tidak ada fragmentasi atau dekomposisi — setiap device
-menerima JSON yang sama dengan kartu JSON / Export, ditambah amplop kecil.
+menerima JSON yang sama dengan kartu JSON / Export, ditambah kunci `publish` (lihat bagian 3).
 
 ## 1. Perubahan JSON aturan
 
@@ -31,7 +31,7 @@ tepat setelah kunci header:
 
 | Topik | Arah | QoS | Retained | Isi |
 |---|---|---|---|---|
-| `<prefix>/<token>/rules/<rule id>` | platform → device | 1 | ya | amplop + JSON aturan; pesan kosong = dicabut |
+| `<prefix>/<token>/rules/<rule id>` | platform → device | 1 | ya | JSON aturan + `publish` (Full/Compact); pesan kosong = dicabut |
 | `<prefix>/<token>/rules/<rule id>/ack` | device → platform | 1 | tidak | tanda terima |
 
 `<token>` = access token device (sama dengan topik telemetri/command). Karena retained, device
@@ -49,21 +49,55 @@ dan halaman dokumentasi pengguna *Device API* juga menampilkan `rules` dan `rule
 
 ## 3. Isi pesan
 
-Platform → device:
+Semua device aturan menerima **pesan yang sama**: JSON aturan dengan satu kunci `publish` di
+depan. Tidak ada amplop lain — nama dan MAC penerima tidak ditulis dua kali, dan topik ack tidak
+ikut dikirim (device cukup menambahkan `/ack` ke topik pesan).
+
+Ada dua bentuk, dipilih di sebelah tombol Publish (`RulePublication.compact`):
+
+**Full** — JSON di tab JSON halaman aturan, tanpa `exported_at`:
 
 ```json
-{"type": "rule",
- "publish": {"id": 3, "rev": "9f3a1c07", "at": "2026-11-04T20:15:00+07:00"},
- "device": {"name": "Pump node", "mac": "AA:BB:CC:00:00:03"},
- "ack": "iot/<token>/rules/12/ack",
- "rule": { ...JSON aturan seperti Export, tanpa exported_at... }}
+{"publish": {"id": 3, "rev": "9f3a1c07"},
+ "format": "iot-platform.rule", "version": 1, "model": "ECA", "name": "Irrigation",
+ "description": "", "enabled": true,
+ "devices": [{"name": "Pump", "mac": "AA:BB:CC:00:00:02"}, {"name": "Soil probe", "mac": "AA:BB:CC:00:00:01"}],
+ "eca": {"event": "TELEMETRY", "device": null, "silence_seconds": null, ...,
+         "when": [[{"device": "Soil probe", "variable": "soil", "operator": "<", "threshold": 20.0}]]},
+ "actions": [{"kind": "SET_ACTUATOR", "run_on": "ACTIVATE", "device": "Pump", "variable": "pump", "value": 1.0}]}
 ```
 
-- `publish.id` — nomor publish per aturan (1, 2, 3, ...), dipakai untuk mencocokkan ack.
-- `publish.rev` — hash isi aturan (sama selama aturan tidak diubah).
-- `device` — identitas penerima, supaya device bisa memeriksa bahwa pesan memang untuknya.
+**Compact** — Full tanpa `format`, `description`, dan nilai kosong (`null`, `""`, `[]`, `{}`),
+dan `"device"` / `"target_device"` di kondisi, aksi, node, dan state machine ditulis sebagai
+indeks di `devices` (0 = device pertama):
 
-Device → platform (ack):
+```json
+{"publish": {"id": 4, "rev": "9f3a1c07"}, "version": 1, "model": "ECA", "name": "Irrigation", "enabled": true,
+ "devices": [{"name": "Pump", "mac": "AA:BB:CC:00:00:02"}, {"name": "Soil probe", "mac": "AA:BB:CC:00:00:01"}],
+ "eca": {"event": "TELEMETRY", ..., "when": [[{"device": 1, "variable": "soil", "operator": "<", "threshold": 20.0}]]},
+ "actions": [{"kind": "SET_ACTUATOR", "run_on": "ACTIVATE", "device": 0, "variable": "pump", "value": 1.0}]}
+```
+
+Bila ada dua device bernama sama (mis. device milik pengguna lain), nama tidak diganti indeks.
+
+- `publish.id` — nomor publish per aturan (1, 2, 3, ...), dipakai untuk mencocokkan ack.
+- `publish.rev` — hash isi aturan (bentuk Full); sama untuk Full dan Compact selama aturan tidak
+  diubah.
+- Device mengenali dirinya lewat MAC-nya di `devices`. Template ESP32 dan MQTT client membalas
+  `ok: false` bila ada MAC di `devices` tetapi MAC-nya sendiri tidak termasuk.
+
+Ukuran pada 19 aturan contoh `seed_edge_rules` (total, satu pesan per aturan):
+
+| Bentuk | Byte | Hemat |
+|---|---|---|
+| amplop lama (`type`, `device`, `ack`, `rule: {...}`) | 23.305 | – |
+| Full | 19.877 | 15% |
+| Compact | 14.085 | 40% |
+
+`size_bytes` dihitung dengan `mqtt_bridge.outbox.encode()` — bentuk yang benar-benar dikirim
+(karakter non-ASCII ditulis `\uXXXX`) — sehingga sama dengan `size` yang dilaporkan device.
+
+Device → platform (ack), di topik pesan + `/ack`:
 
 ```json
 {"publish": 3, "ok": true, "size": 1432}
@@ -72,6 +106,9 @@ Device → platform (ack):
 
 `publish` boleh dihilangkan (dipakai publish terakhir). `size` (opsional) = byte yang dibaca
 device, ditampilkan di kolom keterangan.
+
+Tab Devices di kartu JSON menampilkan pesan yang dikirim pada publish terakhir (*Message sent in
+publish #n*), sehingga mudah dibandingkan dengan log device.
 
 ## 4. Alur dan status
 
@@ -103,7 +140,7 @@ Publish baru sebelum terkirim ─► kiriman lama SUPERSEDED
 
 | Bagian | File |
 |---|---|
-| Model + migrasi | `rules/models.py` (`RulePublication`, `RuleDelivery`), `rules/migrations/0008_rule_publication.py` |
+| Model + migrasi | `rules/models.py` (`RulePublication`, `RuleDelivery`), `rules/migrations/0008_rule_publication.py`, `0009_publication_compact.py` |
 | Logika | `rules/publish.py`, `rules/portable.py`, `rules/apps.py` |
 | Halaman | `rules/views.py`, `rules/urls.py`, `rules/templates/rules/includes/json_card.html`, `publish_card.html`, `publish_badge.html`, `publish_status.html`, `rule_detail.html`, `static/css/app.css`, `rules/admin.py` |
 | MQTT | `mqtt_bridge/topics.py`, `outbox.py`, `handlers.py`, `management/commands/mqtt_bridge.py`, `mqtt_accounts.py` |
@@ -118,8 +155,10 @@ Publish baru sebelum terkirim ─► kiriman lama SUPERSEDED
 1. `mqtt.setBufferSize(8192)` — PubSubClient diam-diam membuang pesan yang lebih besar dari
    buffer, jadi ini batas ukuran JSON aturan.
 2. Subscribe `<base>/rules/+` QoS 1.
-3. Pesan masuk: kosong → aturan dicabut; selain itu di-parse dengan ArduinoJson, lalu
-   membalas ke `.../rules/<id>/ack` `{"publish", "size", "ok"}` (atau `ok:false` + `error`).
+3. Pesan masuk: kosong → aturan dicabut; selain itu di-parse dengan ArduinoJson, mencari
+   dirinya di `devices` lewat `WiFi.macAddress()`, lalu membalas ke `.../rules/<id>/ack`
+   `{"publish", "size", "ok", "rule"}` (atau `ok:false` + `error`, mis. JSON rusak atau MAC
+   tidak ada di aturan).
 
 Firmware belum menjalankan aturan — tahap ini hanya membuktikan penerimaan.
 
@@ -132,7 +171,7 @@ publish dapat diuji tanpa perangkat keras.
 ## 8. Update server
 
 ```bash
-sudo /srv/iot/app/deploy/scripts/update.sh            # pull, pip, migrate (rules 0008), static, restart
+sudo /srv/iot/app/deploy/scripts/update.sh            # pull, pip, migrate (rules 0008, 0009), static, restart
 sudo systemctl start iot-mqtt-accounts.service         # tulis ulang ACL sekarang (atau tunggu timer 2 menit)
 ```
 

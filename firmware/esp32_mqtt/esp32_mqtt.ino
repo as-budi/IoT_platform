@@ -17,8 +17,9 @@
  *     ESP32 restarts into it; the running firmware stays intact until then. Each
  *     step is reported, and the new firmware reports its version after it starts,
  *     which is how the platform knows the update succeeded.
- *   - Receives the JSON of a rule sent with "Publish to devices" on the rule page and
- *     confirms it on .../rules/<rule id>/ack, e.g. {"publish": 3, "ok": true, "size": 2154}.
+ *   - Receives the JSON of a rule sent with "Publish to devices" on the rule page, finds
+ *     itself in the rule's "devices" by MAC address, and confirms it on
+ *     .../rules/<rule id>/ack, e.g. {"publish": 3, "ok": true, "size": 2154}.
  *     It does not run the rule yet.
  *
  * Before uploading
@@ -251,9 +252,14 @@ void handleCommand(const String& id, JsonDocument& command) {
 }
 
 // ---- rule JSON ("Publish to devices" on a rule page) -------------------------------------
-// The platform sends the whole rule as JSON to <prefix>/<token>/rules/<rule id> (retained),
-// and waits for a reply on .../ack. This sketch only confirms that the JSON arrived and could
-// be read; it does not run the rule. An empty message means the rule was withdrawn.
+// The platform sends the rule as JSON to <prefix>/<token>/rules/<rule id> (retained), and
+// waits for a reply on the same topic + "/ack". Every device of the rule gets the SAME message:
+//   {"publish": {"id": 3, "rev": "9f3a1c07"}, "model": "ECA", "name": "...",
+//    "devices": [{"name": "Pump", "mac": "AA:BB:CC:00:00:03"}, ...], "eca": {...}, "actions": [...]}
+// In a "compact" message, "device" in conditions and actions is the position in "devices"
+// (0, 1, ...) instead of the device name. This board finds itself by its MAC address.
+// This sketch only confirms that the JSON arrived and could be read; it does not run the rule.
+// An empty message means the rule was withdrawn (no reply).
 
 void handleRule(const String& ruleId, byte* payload, unsigned int length) {
   if (length == 0) {
@@ -269,10 +275,25 @@ void handleRule(const String& ruleId, byte* payload, unsigned int length) {
     reply["ok"] = false;
     reply["error"] = String("JSON error: ") + error.c_str();
   } else {
-    reply["ok"] = true;
-    reply["rule"] = (const char*)(doc["rule"]["name"] | "");
-    Serial.printf("   rule %s \"%s\" received (%u bytes, %u devices)\n", ruleId.c_str(),
-                  (const char*)(doc["rule"]["name"] | "?"), length, (unsigned)doc["rule"]["devices"].size());
+    // Find this board in "devices" by its Wi-Fi MAC address.
+    JsonArray devices = doc["devices"].as<JsonArray>();
+    String mine = WiFi.macAddress();
+    int self = -1;
+    bool anyMac = false;
+    for (size_t i = 0; i < devices.size(); i++) {
+      const char* mac = devices[i]["mac"] | "";
+      if (*mac) anyMac = true;
+      if (mine.equalsIgnoreCase(mac)) self = (int)i;
+    }
+    if (anyMac && self < 0) {
+      reply["ok"] = false;
+      reply["error"] = "MAC " + mine + " is not in the rule";
+    } else {
+      reply["ok"] = true;
+      reply["rule"] = (const char*)(doc["name"] | "");
+      Serial.printf("   rule %s \"%s\" received (%u bytes, %u devices, this board is #%d)\n", ruleId.c_str(),
+                    (const char*)(doc["name"] | "?"), length, (unsigned)devices.size(), self);
+    }
   }
   publishJson(topicRules + ruleId + "/ack", reply);
 }

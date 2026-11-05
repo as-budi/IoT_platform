@@ -69,18 +69,23 @@ with the same key, e.g. <code>{"lamp": 1}</code>, so the platform can show <em>I
 The device then counts as online while the connection is open, and as offline as soon as the broker notices the connection is gone,
 instead of after {{ limits.offline_seconds }} seconds without data.</p>
 <h3 id="rules">Rule JSON</h3>
-<p>On an ECA rule page, <em>Publish to devices</em> sends the rule as JSON to every device used by the rule
-(MQTT devices only), to test whether the devices receive it. Devices do not run the rule yet.</p>
-<pre>{"type": "rule",
- "publish": {"id": 3, "rev": "9f3a1c07", "at": "2026-11-04T20:15:00+07:00"},
- "device": {"name": "Pump node", "mac": "AA:BB:CC:00:00:03"},
- "ack": "{{ mqtt.rule_ack }}",
- "rule": { the JSON shown on the rule page, including "devices" with their MAC addresses }}</pre>
+<p>On an ECA rule page, <em>Publish to devices</em> (in the JSON card) sends the rule as JSON to every device used by the rule
+(MQTT devices only), to test whether the devices receive it. Devices do not run the rule yet.
+Every device receives the <strong>same message</strong>: the rule JSON with a <code>"publish"</code> key added in front.</p>
+<pre>{"publish": {"id": 3, "rev": "9f3a1c07"},
+ "format": "iot-platform.rule", "version": 1, "model": "ECA", "name": "Irrigation", ...,
+ "devices": [{"name": "Pump node", "mac": "AA:BB:CC:00:00:03"}, {"name": "Soil probe", "mac": "AA:BB:CC:00:00:01"}],
+ "eca": {...}, "actions": [...]}</pre>
 <ul>
+  <li><strong>Full</strong> is the JSON shown on the rule page (without <code>exported_at</code>).
+    <strong>Compact</strong> leaves out <code>format</code>, <code>description</code> and empty values
+    (<code>null</code>, <code>""</code>, <code>[]</code>, <code>{}</code>), and writes <code>"device"</code> in conditions and actions as the
+    position in <code>"devices"</code> (<code>"device": 0</code> is the first device). It is about a third smaller.</li>
+  <li>A device finds itself in <code>"devices"</code> by its MAC address.</li>
   <li>The message is retained: a device that is off receives the latest JSON as soon as it connects and subscribes.</li>
-  <li>Reply on the <code>ack</code> topic with <code>{"publish": &lt;publish id&gt;, "ok": true}</code>, or
+  <li>Reply on the same topic followed by <code>/ack</code> (<code>{{ mqtt.rule_ack }}</code>) with <code>{"publish": &lt;publish id&gt;, "ok": true}</code>, or
     <code>{"publish": ..., "ok": false, "error": "..."}</code> if the JSON could not be used. <code>"size"</code> (bytes read) is optional.
-    The rule page shows each device's reply.</li>
+    The rule page shows each device's reply and the message that was sent.</li>
   <li>The JSON is usually 1–5 KB. The MQTT library of the ESP32 drops messages larger than its buffer without any error;
     the MQTT firmware template sets the buffer to 8192 bytes.</li>
   <li><em>Withdraw</em>, or deleting the rule, sends an empty retained message to the same topic.</li>

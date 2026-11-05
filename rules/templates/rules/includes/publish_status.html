@@ -4,13 +4,13 @@
 {% if p.waiting %}<span data-publish-waiting hidden></span>{% endif %}
 {% if p.last %}
 <p class="small mb-2">
-  {% if p.last.action == "PUBLISH" %}Publish <strong>#{{ p.last.number }}</strong>, version <code>{{ p.last.rev }}</code>, {{ p.last.size_bytes }} bytes{% else %}<strong>Withdrawn</strong> (#{{ p.last.number }}){% endif %}
+  {% if p.last.action == "PUBLISH" %}Publish <strong>#{{ p.last.number }}</strong>, version <code>{{ p.last.rev }}</code>, {{ p.last.compact|yesno:"compact,full" }}, {{ p.last.size_bytes }} bytes{% else %}<strong>Withdrawn</strong> (#{{ p.last.number }}){% endif %}
   · {{ p.last.created_at|date:"d M Y H:i:s" }}{% if p.last.created_by %} by {{ p.last.created_by.username }}{% endif %}
   {% if p.waiting %}<span class="text-muted">· updating…</span>{% endif %}
 </p>
 {% if p.changed %}<div class="alert alert-warning small py-2 mb-2">The rule has changed since this publish (now version <code>{{ p.current_rev }}</code>). Publish again to send the new JSON.</div>{% endif %}
 {% else %}
-<p class="small text-muted mb-2">Not published yet. The JSON is about {{ p.size }} bytes per device.</p>
+<p class="small text-muted mb-2">Not published yet. The message is {{ p.size }} bytes (full) or {{ p.size_compact }} bytes (compact).</p>
 {% endif %}
 {% if p.size > p.buffer %}<div class="alert alert-warning small py-2 mb-2">The JSON is {{ p.size }} bytes. An ESP32 with the MQTT firmware template receives messages up to {{ p.buffer }} bytes; larger messages are dropped without a reply.</div>{% endif %}
 <div class="table-responsive">
@@ -45,4 +45,11 @@
 </p>
 {% endif %}
 <p class="small text-muted mt-2 mb-0">Topic: <code>{{ p.topic_example }}</code> (retained), reply to <code>…/ack</code>.</p>
+{% if p.message %}
+{# Pesan yang benar-benar dikirim (sama untuk semua device), ditampilkan dengan json_viewer.js. #}
+<details class="mt-2 publish-message">
+  <summary class="small">Message sent in publish #{{ p.last.number }} ({{ p.last.compact|yesno:"compact,full" }}, {{ p.last.size_bytes }} bytes)</summary>
+  <pre class="rule-json-code mt-2 mb-0" data-json-viewer>{{ p.message_json }}</pre>
+</details>
+{% endif %}
 {% endwith %}

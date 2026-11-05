@@ -941,6 +941,9 @@ class RulePublication(models.Model):
     action = models.CharField("action", max_length=8, choices=Action.choices, default=Action.PUBLISH)
     rev = models.CharField("version hash", max_length=8, blank=True)
     size_bytes = models.PositiveIntegerField("size (bytes)", default=0)
+    # Bentuk pesan (rules/publish.py rule_message): False = Full (JSON halaman aturan),
+    # True = Compact (tanpa nilai kosong, device ditulis sebagai indeks di "devices").
+    compact = models.BooleanField("compact message", default=False)
     created_at = models.DateTimeField("created", auto_now_add=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"

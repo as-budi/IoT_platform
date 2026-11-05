@@ -119,7 +119,7 @@ class RuleDeliveryInline(admin.TabularInline):
 class RulePublicationAdmin(admin.ModelAdmin):
     """Publish JSON aturan ke device (percobaan). Dibuat dari halaman aturan; hanya untuk dilihat."""
 
-    list_display = ("rule", "number", "action", "rev", "size_bytes", "created_at", "created_by")
-    list_filter = ("action",)
-    readonly_fields = ("rule", "number", "action", "rev", "size_bytes", "created_at", "created_by")
+    list_display = ("rule", "number", "action", "rev", "compact", "size_bytes", "created_at", "created_by")
+    list_filter = ("action", "compact")
+    readonly_fields = ("rule", "number", "action", "rev", "compact", "size_bytes", "created_at", "created_by")
     inlines = [RuleDeliveryInline]
