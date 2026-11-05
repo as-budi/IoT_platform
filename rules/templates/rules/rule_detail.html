@@ -105,6 +105,8 @@
 
 {% if rule_json %}{% include "rules/includes/json_card.html" %}{% endif %}
 
+{% if publish %}{% include "rules/includes/publish_card.html" %}{% endif %}
+
 {% if edge %}{% include "rules/includes/edge_plan.html" %}{% endif %}
 
 {% if alarms %}

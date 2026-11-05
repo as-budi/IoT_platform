@@ -27,7 +27,7 @@ class TopicTests(SimpleTestCase):
         self.assertEqual(topics.status("p", "TOK"), "p/TOK/status")
         self.assertEqual(
             topics.subscriptions("p"),
-            ["p/+/telemetry", "p/+/commands/+/response", "p/+/firmware", "p/+/status"],
+            ["p/+/telemetry", "p/+/commands/+/response", "p/+/firmware", "p/+/status", "p/+/rules/+/ack"],
         )
 
     def test_parse_topics(self):

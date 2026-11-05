@@ -17,6 +17,7 @@ from collections import defaultdict
 
 from devices.control import command_payload, plain
 from devices.models import Command, CommandStatus, Variable
+from django.utils import timezone
 
 from . import topics
 
@@ -40,7 +41,9 @@ class Outbox:
 
         Mengembalikan (jumlah pesan desired, jumlah command) yang terkirim.
         """
-        return self.flush_desired(publish), self.flush_commands(publish)
+        desired, commands = self.flush_desired(publish), self.flush_commands(publish)
+        self.flush_rules(publish)
+        return desired, commands
 
     # --- Pola 1: desired state ----------------------------------------------
 
@@ -104,6 +107,28 @@ class Outbox:
             if not publish(topic, payload, retain=False):
                 break
             command.mark_sent()
+            sent += 1
+        return sent
+
+
+    # --- JSON aturan (tombol Publish di halaman aturan) ----------------------------------
+
+    def flush_rules(self, publish):
+        """Kirim RuleDelivery berstatus QUEUED, retained, ke <prefix>/<token>/rules/<id>.
+
+        payload None = pesan retained dihapus (Withdraw atau aturan dihapus): broker menerima
+        pesan kosong retained sebagai "hapus pesan yang tersimpan di topik ini".
+        """
+        from rules.models import RuleDelivery
+
+        queued = RuleDelivery.objects.filter(status=RuleDelivery.Status.QUEUED).order_by("pk")
+        sent = 0
+        for delivery in queued:
+            if not publish(delivery.topic, delivery.payload, retain=True):
+                break
+            delivery.status = RuleDelivery.Status.SENT if delivery.payload is not None else RuleDelivery.Status.CLEARED
+            delivery.sent_at = timezone.now()
+            delivery.save(update_fields=["status", "sent_at"])
             sent += 1
         return sent
 

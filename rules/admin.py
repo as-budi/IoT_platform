@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    Alarm, EcaCondition, EdgeFragment, EdgePlan, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineInstance, MachineState, MachineTransition,
+    Alarm, EcaCondition, EdgeFragment, EdgePlan, RuleDelivery, RulePublication, EcaSpec, FlowLink, FlowNode, FlowSpec, MachineInstance, MachineState, MachineTransition,
     Rule, RuleAction, RuleExecution, RuleSchedule, RuleState,
 )
 
@@ -105,3 +105,21 @@ class EdgePlanAdmin(admin.ModelAdmin):
     readonly_fields = ("rule", "strategy", "revision", "rev", "verdict", "report", "ir", "metrics", "is_current",
                        "created_at", "created_by")
     inlines = [EdgeFragmentInline]
+
+
+class RuleDeliveryInline(admin.TabularInline):
+    model = RuleDelivery
+    extra = 0
+    can_delete = False
+    fields = ("device", "mac", "status", "detail", "sent_at", "acked_at")
+    readonly_fields = fields
+
+
+@admin.register(RulePublication)
+class RulePublicationAdmin(admin.ModelAdmin):
+    """Publish JSON aturan ke device (percobaan). Dibuat dari halaman aturan; hanya untuk dilihat."""
+
+    list_display = ("rule", "number", "action", "rev", "size_bytes", "created_at", "created_by")
+    list_filter = ("action",)
+    readonly_fields = ("rule", "number", "action", "rev", "size_bytes", "created_at", "created_by")
+    inlines = [RuleDeliveryInline]

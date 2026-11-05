@@ -10,6 +10,8 @@ Semua topik diawali MQTT_TOPIC_PREFIX (dari .env), lalu access token device:
     <prefix>/<token>/errors                    platform -> device  pesan kesalahan
     <prefix>/<token>/firmware                  device -> platform  versi firmware & progres OTA (tahap 9)
     <prefix>/<token>/status                    device -> platform  "online" / "offline" (retained, Last Will; tahap 16)
+    <prefix>/<token>/rules/<rule id>           platform -> device  JSON aturan utuh (retained; kosong = dihapus)
+    <prefix>/<token>/rules/<rule id>/ack       device -> platform  tanda terima JSON aturan
 
 Mengapa ada prefix? Broker publik dipakai bersama oleh siapa saja di internet.
 Prefix yang unik mencegah topik kita bertabrakan dengan topik orang lain.
@@ -21,6 +23,7 @@ TELEMETRY = "telemetry"
 COMMAND_RESPONSE = "command_response"
 FIRMWARE = "firmware"
 STATUS = "status"
+RULE_ACK = "rule_ack"
 
 
 def device_base(prefix, token):
@@ -55,6 +58,14 @@ def status(prefix, token):
     return f"{device_base(prefix, token)}/status"
 
 
+def rules(prefix, token, rule_id):
+    return f"{device_base(prefix, token)}/rules/{rule_id}"
+
+
+def rule_ack(prefix, token, rule_id):
+    return f"{rules(prefix, token, rule_id)}/ack"
+
+
 def subscriptions(prefix):
     """Topik yang didengarkan platform. `+` = wildcard tepat satu level topik."""
     return [
@@ -62,6 +73,7 @@ def subscriptions(prefix):
         f"{prefix}/+/commands/+/response",
         f"{prefix}/+/firmware",
         f"{prefix}/+/status",
+        f"{prefix}/+/rules/+/ack",
     ]
 
 
@@ -92,4 +104,6 @@ def parse(topic, prefix):
         and parts[3] == "response"
     ):
         return (COMMAND_RESPONSE, parts[0], int(parts[2]))
+    if len(parts) == 4 and parts[0] and parts[1] == "rules" and parts[2].isdigit() and parts[3] == "ack":
+        return (RULE_ACK, parts[0], int(parts[2]))
     return None

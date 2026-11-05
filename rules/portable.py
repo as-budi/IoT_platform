@@ -233,8 +233,54 @@ def export_machine(rule):
     }
 
 
+def rule_devices(rule):
+    """Semua device yang dipakai aturan (kondisi, event, aksi, device rule chain/state machine),
+    urut nama. Dipakai daftar "devices" di JSON dan untuk Publish ke device."""
+    found = {}
+
+    def add(device):
+        if device is not None:
+            found[device.pk] = device
+
+    if rule.model == RuleModel.ECA:
+        spec = getattr(rule, "eca", None)
+        if spec is not None:
+            add(spec.device)
+            for condition in spec.conditions.select_related("variable__device"):
+                add(condition.variable.device)
+    elif rule.model == RuleModel.FLOW:
+        spec = getattr(rule, "flow", None)
+        add(spec.device if spec else None)
+        for node in rule.nodes.select_related("variable__device", "target_variable__device", "target_device"):
+            add(node.variable.device if node.variable_id else None)
+            add(node.target_variable.device if node.target_variable_id else None)
+            add(node.target_device)
+    elif rule.model == RuleModel.STATE_MACHINE:
+        spec = getattr(rule, "machine", None)
+        add(spec.device if spec else None)
+    for action in rule.actions.select_related("target_variable__device", "target_device"):
+        add(action.target_variable.device if action.target_variable_id else None)
+        add(action.target_device)
+    return sorted(found.values(), key=lambda d: (d.name.lower(), d.pk))
+
+
+def _with_devices(rule, data):
+    """Sisipkan daftar device beserta MAC address-nya setelah kepala JSON.
+
+    Hanya keterangan: impor tidak memakainya (device dicari lewat nama di bagian lain).
+    MAC null = device belum melaporkan MAC address (tahap 24).
+    """
+    devices = [{"name": d.name, "mac": d.mac_address or None} for d in rule_devices(rule)]
+    head = {key: data[key] for key in _header(rule)}
+    return {**head, "devices": devices, **{k: v for k, v in data.items() if k not in head}}
+
+
 def export_rule(rule):
     """Aturan ECA, FLOW, atau STATE_MACHINE -> dict yang siap di-json.dumps()."""
+    return _with_devices(rule, _export_body(rule))
+
+
+def _export_body(rule):
     if rule.model == RuleModel.FLOW:
         return export_flow(rule)
     if rule.model == RuleModel.STATE_MACHINE:

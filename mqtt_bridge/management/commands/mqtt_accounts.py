@@ -74,6 +74,8 @@ pattern write {prefix}/%u/commands/+/response
 pattern read  {prefix}/%u/desired
 pattern read  {prefix}/%u/commands/+
 pattern read  {prefix}/%u/errors
+pattern read  {prefix}/%u/rules/+
+pattern write {prefix}/%u/rules/+/ack
 """
 
 

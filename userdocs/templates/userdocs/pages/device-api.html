@@ -58,6 +58,8 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
     <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message from the device was rejected: <code>{"error": "...", "topic": "..."}</code></td></tr>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.firmware }}</code></td><td>firmware report and update progress (<a href="{% url 'userdocs:page' 'firmware-updates' %}#report">firmware report</a>)</td></tr>
     <tr id="mqtt-status"><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.status }}</code></td><td><code>online</code> after connecting and <code>offline</code> as Last Will, both retained (optional)</td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.rules }}</code></td><td>the JSON of a rule, sent with <em>Publish to devices</em> (<a href="#rules">rule JSON</a>); retained; an empty message means the rule was withdrawn</td></tr>
+    <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.rule_ack }}</code></td><td>confirmation, e.g. <code>{"publish": 3, "ok": true}</code></td></tr>
   </tbody>
 </table>
 <p>Use QoS 1 for telemetry, desired states, commands and responses. After switching an actuator, publish its new state as telemetry
@@ -66,6 +68,23 @@ with the same key, e.g. <code>{"lamp": 1}</code>, so the platform can show <em>I
 <p>Connect with a Last Will message <code>offline</code> (retained, QoS 1) on the status topic, then publish <code>online</code> (retained) there.
 The device then counts as online while the connection is open, and as offline as soon as the broker notices the connection is gone,
 instead of after {{ limits.offline_seconds }} seconds without data.</p>
+<h3 id="rules">Rule JSON</h3>
+<p>On an ECA rule page, <em>Publish to devices</em> sends the rule as JSON to every device used by the rule
+(MQTT devices only), to test whether the devices receive it. Devices do not run the rule yet.</p>
+<pre>{"type": "rule",
+ "publish": {"id": 3, "rev": "9f3a1c07", "at": "2026-11-04T20:15:00+07:00"},
+ "device": {"name": "Pump node", "mac": "AA:BB:CC:00:00:03"},
+ "ack": "{{ mqtt.rule_ack }}",
+ "rule": { the JSON shown on the rule page, including "devices" with their MAC addresses }}</pre>
+<ul>
+  <li>The message is retained: a device that is off receives the latest JSON as soon as it connects and subscribes.</li>
+  <li>Reply on the <code>ack</code> topic with <code>{"publish": &lt;publish id&gt;, "ok": true}</code>, or
+    <code>{"publish": ..., "ok": false, "error": "..."}</code> if the JSON could not be used. <code>"size"</code> (bytes read) is optional.
+    The rule page shows each device's reply.</li>
+  <li>The JSON is usually 1–5 KB. The MQTT library of the ESP32 drops messages larger than its buffer without any error;
+    the MQTT firmware template sets the buffer to 8192 bytes.</li>
+  <li><em>Withdraw</em>, or deleting the rule, sends an empty retained message to the same topic.</li>
+</ul>
 <h3 id="mqtt-tools">Trying MQTT from a computer</h3>
 <p>With the Mosquitto command-line tools (or a graphical client such as MQTTX):</p>
 <pre>mosquitto_pub -h {{ mqtt.host }} -p {{ mqtt.port }}{% if mqtt.tls %} --tls-use-os-certs{% endif %}{% if mqtt.login %} -u {{ token }} -P {{ token }}{% endif %} -t "{{ mqtt.telemetry }}" -m '{"temperature": 25.1}'</pre>

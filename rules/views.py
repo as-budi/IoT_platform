@@ -982,6 +982,7 @@ class RuleDetailView(LoginRequiredMixin, TemplateView):
         )
         context.update(self.live(rule))
         context["edge"] = edge_context(rule, self.request.user)
+        context["publish"] = publish_context(rule, self.request.user)
         return context
 
     def live(self, rule):
@@ -1313,3 +1314,61 @@ class EdgePlanCompileView(LoginRequiredMixin, View):
             compile_and_store(rule, request.user)
             messages.success(request, "Device plan updated.")
         return redirect(reverse("rules:detail", args=[rule.pk]) + "#edge")
+
+
+# --- Publish JSON aturan ke device (percobaan sebelum tahap 27) ------------------------
+
+def publish_context(rule, user):
+    """Kartu "Send to devices" di halaman aturan ECA; None bila tidak tampil untuk `user`."""
+    from .edge.limits import visible_to
+    from .publish import status_context
+
+    if not visible_to(user) or rule.model != RuleModel.ECA or getattr(rule, "eca", None) is None:
+        return None
+    return status_context(rule)
+
+
+def _publish_rule(request, pk):
+    from .edge.limits import visible_to
+
+    if not visible_to(request.user):
+        raise Http404("Publishing rules is not enabled.")
+    rule = get_object_or_404(visible_rules(request.user), pk=pk)
+    if rule.model != RuleModel.ECA:
+        raise Http404("Only ECA rules can be published for now.")
+    return rule
+
+
+class RulePublishView(LoginRequiredMixin, View):
+    """POST /rules/<pk>/publish/ (Publish) dan /rules/<pk>/withdraw/ (Withdraw)."""
+
+    http_method_names = ["post"]
+    withdraw = False
+
+    def post(self, request, pk):
+        from .publish import publish_rule, withdraw_rule
+
+        rule = _publish_rule(request, pk)
+        if self.withdraw:
+            publication = withdraw_rule(rule, request.user)
+            count = publication.deliveries.count()
+            messages.success(request, f"Removing the rule JSON from {count} device topic{'s' if count != 1 else ''}.")
+        else:
+            publication = publish_rule(rule, request.user)
+            queued = publication.deliveries.filter(status="QUEUED").count()
+            skipped = publication.deliveries.filter(status="SKIPPED").count()
+            text = f"Publish #{publication.number}: sending the rule JSON to {queued} device{'s' if queued != 1 else ''}."
+            if skipped:
+                text += f" {skipped} skipped (see the table)."
+            messages.success(request, text)
+        return redirect(reverse("rules:detail", args=[rule.pk]) + "#publish")
+
+
+def publish_status(request, pk):
+    """GET /rules/<pk>/publish/status/: isi tabel status (diperbarui JavaScript halaman)."""
+    if not request.user.is_authenticated:
+        raise Http404()
+    rule = _publish_rule(request, pk)
+    from .publish import status_context
+
+    return render(request, "rules/includes/publish_status.html", {"rule": rule, "publish": status_context(rule)})

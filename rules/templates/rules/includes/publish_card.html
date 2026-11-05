@@ -1,0 +1,34 @@
+{# Publish JSON aturan ke device (percobaan sebelum tahap 27). Konteks: publish (rules/publish.py status_context). #}
+<div class="card shadow-sm mb-4" id="publish">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+      <div>
+        <h2 class="h6 text-muted text-uppercase mb-1">Send to devices <span class="badge text-bg-light border text-lowercase fw-normal">test</span></h2>
+        <p class="small text-muted mb-0">Sends the JSON above, unchanged, to every device in this rule over MQTT, and shows which devices confirm that they received it. Devices do not run the rule yet. <a href="{% url 'userdocs:page' 'device-api' %}#rules">Topics and replies</a></p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <form method="post" action="{% url 'rules:publish' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary">{% if publish.published %}Publish again{% else %}Publish to devices{% endif %}</button></form>
+        {% if publish.published %}<form method="post" action="{% url 'rules:withdraw' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Withdraw</button></form>{% endif %}
+      </div>
+    </div>
+    <div data-publish-status data-url="{% url 'rules:publish_status' rule.pk %}">
+      {% include "rules/includes/publish_status.html" %}
+    </div>
+  </div>
+</div>
+<script>
+  // Selama ada pengiriman yang belum dijawab, perbarui tabel setiap 3 detik.
+  (function () {
+    const box = document.querySelector("[data-publish-status]");
+    if (!box) return;
+    async function refresh() {
+      if (!box.querySelector("[data-publish-waiting]")) return;
+      try {
+        const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
+        if (response.ok) box.innerHTML = await response.text();
+      } catch (err) { /* dicoba lagi */ }
+      setTimeout(refresh, 3000);
+    }
+    setTimeout(refresh, 3000);
+  })();
+</script>

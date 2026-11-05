@@ -1297,3 +1297,12 @@ a.user-chip.active {
 .edge-arrow { fill: var(--app-muted); }
 .edge-size { height: 0.4rem; }
 .edge-json-row td { background: transparent; }
+
+/* ---------- Publish JSON aturan ke device ---------- */
+.publish-status { border: 1px solid var(--app-border); background: var(--app-surface-2); color: var(--bs-body-color); font-weight: 500; }
+.publish-status-received { background: rgba(11, 138, 11, 0.12); color: #0b6e0b; border-color: rgba(11, 138, 11, 0.3); }
+.publish-status-rejected { background: rgba(192, 57, 43, 0.1); color: #a8322a; border-color: rgba(192, 57, 43, 0.3); }
+.publish-status-sent, .publish-status-queued { background: var(--app-accent-soft); color: var(--app-accent); border-color: rgba(42, 120, 214, 0.3); }
+.publish-status-skipped, .publish-status-superseded, .publish-status-cleared { color: var(--app-muted); }
+[data-bs-theme="dark"] .publish-status-received { color: #4cc94c; }
+[data-bs-theme="dark"] .publish-status-rejected { color: #ff6b6b; }

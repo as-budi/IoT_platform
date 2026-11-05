@@ -20,6 +20,10 @@ urlpatterns = [
     path("import/", views.RuleImportView.as_view(), name="import"),
     path("<int:pk>/evaluation/", views.rule_evaluation, name="evaluation"),
     path("<int:pk>/edit/", views.edit_rule, name="edit"),
+    # Publish JSON aturan ke device (percobaan sebelum tahap 27).
+    path("<int:pk>/publish/", views.RulePublishView.as_view(), name="publish"),
+    path("<int:pk>/withdraw/", views.RulePublishView.as_view(withdraw=True), name="withdraw"),
+    path("<int:pk>/publish/status/", views.publish_status, name="publish_status"),
     # Micro rule (tahap 26): unduh rencana fragmen dan buat ulang rencana tersimpan.
     path("<int:pk>/edge/compile/", views.EdgePlanCompileView.as_view(), name="edge_compile"),
     path("<int:pk>/edge/<slug:strategy>/", views.EdgePlanDownloadView.as_view(), name="edge_download"),

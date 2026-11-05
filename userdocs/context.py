@@ -49,6 +49,8 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
             "errors": mqtt_topics.errors(prefix, token),
             "firmware": mqtt_topics.firmware(prefix, token),
             "status": mqtt_topics.status(prefix, token),
+            "rules": mqtt_topics.rules(prefix, token, "+"),
+            "rule_ack": mqtt_topics.rule_ack(prefix, token, "<rule id>"),
         },
         "coap": {
             "host": coap_server,

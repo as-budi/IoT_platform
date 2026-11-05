@@ -451,7 +451,10 @@ class ScheduleFormTests(EcaScheduleData):
         self.assertEqual(rule.flow.trigger, FlowSpec.Trigger.SCHEDULE)
         self.assertEqual((rule.schedule.kind, rule.schedule.weekdays, rule.schedule.interval_minutes),
                          ("INTERVAL", "56", 120))
-        self.assertEqual(without_timestamp(export_rule(rule)), without_timestamp(data))
+        exported = without_timestamp(export_rule(rule))
+        # Daftar devices (nama + MAC) ditambahkan oleh ekspor; tidak ada di JSON impor.
+        self.assertEqual(exported.pop("devices"), [{"name": "Greenhouse Node", "mac": None}])
+        self.assertEqual(exported, without_timestamp(data))
         page = self.client.get(reverse("rules:detail", args=[rule.pk]))
         self.assertContains(page, "every 120 min, Sat–Sun")
 

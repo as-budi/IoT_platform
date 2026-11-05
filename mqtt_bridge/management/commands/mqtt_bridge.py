@@ -134,7 +134,9 @@ class Command(BaseCommand):
         def publish(topic, payload, retain):
             if not client.is_connected():
                 return False
-            info = client.publish(topic, encode(payload), qos=1, retain=retain)
+            # payload None = pesan kosong (menghapus pesan retained di topik itu).
+            data = b"" if payload is None else encode(payload)
+            info = client.publish(topic, data, qos=1, retain=retain)
             if info.rc != mqtt.MQTT_ERR_SUCCESS:
                 return False
             # QoS 1: tunggu sampai broker menjawab "sudah kuterima" (PUBACK).
@@ -145,7 +147,8 @@ class Command(BaseCommand):
                 return False
             if not info.is_published():
                 return False
-            self.log(f"→ {topic}  {encode(payload)}")
+            shown = "(empty: retained message removed)" if payload is None else encode(payload)
+            self.log(f"→ {topic}  {shown[:300]}")
             return True
 
         # --- mulai ---------------------------------------------------------------

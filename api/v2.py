@@ -48,6 +48,9 @@ def _topics(token):
         "errors": mqtt_topics.errors(prefix, token),
         "firmware": mqtt_topics.firmware(prefix, token),
         "status": mqtt_topics.status(prefix, token),
+        # JSON aturan dari tombol Publish (retained) dan tanda terimanya.
+        "rules": mqtt_topics.rules(prefix, token, "+"),
+        "rule_ack": mqtt_topics.rule_ack(prefix, token, "{id}"),
     }
 
 

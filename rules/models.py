@@ -923,6 +923,86 @@ def alarm_changed(alarm):
     )
 
 
+# --- Publish JSON aturan ke device (percobaan sebelum tahap 27) -----------------------
+
+class RulePublication(models.Model):
+    """Satu kali "Publish" (atau "Withdraw") JSON sebuah aturan ke device-devicenya.
+
+    JSON dikirim utuh, tanpa dekomposisi, ke topik retained <prefix>/<token>/rules/<rule id>
+    setiap device; device menjawab di .../rules/<rule id>/ack. Lihat rules/publish.py.
+    """
+
+    class Action(models.TextChoices):
+        PUBLISH = "PUBLISH", "Publish"
+        WITHDRAW = "WITHDRAW", "Withdraw"
+
+    rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="publications")
+    number = models.PositiveIntegerField("number")
+    action = models.CharField("action", max_length=8, choices=Action.choices, default=Action.PUBLISH)
+    rev = models.CharField("version hash", max_length=8, blank=True)
+    size_bytes = models.PositiveIntegerField("size (bytes)", default=0)
+    created_at = models.DateTimeField("created", auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["rule", "-number"]
+        verbose_name = "rule publication"
+        verbose_name_plural = "rule publications"
+        constraints = [models.UniqueConstraint(fields=["rule", "number"], name="rulepublication_unique_number")]
+
+    def __str__(self):
+        return f"{self.rule} · {self.get_action_display()} #{self.number}"
+
+
+class RuleDelivery(models.Model):
+    """Satu pesan ke satu device (outbox; dikirim oleh mqtt_bridge, lihat mqtt_bridge/outbox.py).
+
+    `payload` None = hapus pesan retained (Withdraw, atau aturan dihapus). Baris tetap ada
+    walaupun aturannya dihapus (rule/publication SET_NULL), supaya penghapusan tetap terkirim.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = "QUEUED", "Waiting to be sent"
+        SENT = "SENT", "Sent, no reply yet"
+        RECEIVED = "RECEIVED", "Received"
+        REJECTED = "REJECTED", "Device reported a problem"
+        CLEARED = "CLEARED", "Removed from the device topic"
+        SKIPPED = "SKIPPED", "Not sent"
+        SUPERSEDED = "SUPERSEDED", "Replaced by a newer publish"
+
+    publication = models.ForeignKey(RulePublication, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="deliveries")
+    rule = models.ForeignKey(Rule, null=True, blank=True, on_delete=models.SET_NULL, related_name="deliveries")
+    rule_number = models.PositiveIntegerField("rule id")          # tetap ada setelah aturan dihapus
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="rule_deliveries")
+    mac = models.CharField("MAC address", max_length=17, blank=True)
+    topic = models.CharField("topic", max_length=255)
+    payload = models.JSONField("payload", null=True, blank=True)
+    status = models.CharField("status", max_length=10, choices=Status.choices, default=Status.QUEUED)
+    detail = models.CharField("detail", max_length=255, blank=True)
+    queued_at = models.DateTimeField("queued", auto_now_add=True)
+    sent_at = models.DateTimeField("sent", null=True, blank=True)
+    acked_at = models.DateTimeField("reply", null=True, blank=True)
+
+    class Meta:
+        ordering = ["pk"]
+        verbose_name = "rule delivery"
+        verbose_name_plural = "rule deliveries"
+        indexes = [models.Index(fields=["status"], name="ruledelivery_status")]
+
+    def __str__(self):
+        return f"rule {self.rule_number} → {self.device} ({self.status})"
+
+    @property
+    def reply_seconds(self):
+        """Waktu dari terkirim ke broker sampai tanda terima device (detik), atau None."""
+        if self.sent_at and self.acked_at:
+            return max(0.0, (self.acked_at - self.sent_at).total_seconds())
+        return None
+
+
 # --- Micro rule (tahap 26) -----------------------------------------------------------
 
 class EdgePlan(models.Model):

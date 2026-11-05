@@ -70,6 +70,10 @@ def handle_message(topic, payload, prefix):
             return handle_telemetry(device, data)
         if kind == topics.FIRMWARE:
             return handle_firmware(device, data)
+        if kind == topics.RULE_ACK:
+            from rules.publish import handle_ack
+
+            return Result(True, handle_ack(device, command_id, data), device)
         return handle_command_response(device, command_id, data)
     except PayloadError as exc:
         message = str(exc)

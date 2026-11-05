@@ -17,6 +17,9 @@
  *     ESP32 restarts into it; the running firmware stays intact until then. Each
  *     step is reported, and the new firmware reports its version after it starts,
  *     which is how the platform knows the update succeeded.
+ *   - Receives the JSON of a rule sent with "Publish to devices" on the rule page and
+ *     confirms it on .../rules/<rule id>/ack, e.g. {"publish": 3, "ok": true, "size": 2154}.
+ *     It does not run the rule yet.
  *
  * Before uploading
  *   1. On the platform: create the device and add a variable with key "lamp",
@@ -90,7 +93,7 @@ WiFiClient network;
 #endif
 PubSubClient mqtt(network);
 
-String topicTelemetry, topicDesired, topicCommands, topicErrors, topicFirmware, topicStatus;
+String topicTelemetry, topicDesired, topicCommands, topicErrors, topicFirmware, topicStatus, topicRules;
 bool lampOn = false;
 unsigned long lastSend = 0;
 
@@ -247,8 +250,40 @@ void handleCommand(const String& id, JsonDocument& command) {
   publishJson(topicCommands + id + "/response", result);
 }
 
+// ---- rule JSON ("Publish to devices" on a rule page) -------------------------------------
+// The platform sends the whole rule as JSON to <prefix>/<token>/rules/<rule id> (retained),
+// and waits for a reply on .../ack. This sketch only confirms that the JSON arrived and could
+// be read; it does not run the rule. An empty message means the rule was withdrawn.
+
+void handleRule(const String& ruleId, byte* payload, unsigned int length) {
+  if (length == 0) {
+    Serial.printf("   rule %s withdrawn\n", ruleId.c_str());
+    return;
+  }
+  JsonDocument doc;
+  JsonDocument reply;
+  DeserializationError error = deserializeJson(doc, payload, length);
+  reply["publish"] = error ? 0 : (long)(doc["publish"]["id"] | 0);
+  reply["size"] = length;
+  if (error) {
+    reply["ok"] = false;
+    reply["error"] = String("JSON error: ") + error.c_str();
+  } else {
+    reply["ok"] = true;
+    reply["rule"] = (const char*)(doc["rule"]["name"] | "");
+    Serial.printf("   rule %s \"%s\" received (%u bytes, %u devices)\n", ruleId.c_str(),
+                  (const char*)(doc["rule"]["name"] | "?"), length, (unsigned)doc["rule"]["devices"].size());
+  }
+  publishJson(topicRules + ruleId + "/ack", reply);
+}
+
 void onMessage(char* topic, byte* payload, unsigned int length) {
   String t(topic);
+  if (t.startsWith(topicRules)) {          // may be large: do not print the whole JSON
+    Serial.printf("<- %s  (%u bytes)\n", topic, length);
+    handleRule(t.substring(topicRules.length()), payload, length);
+    return;
+  }
   Serial.printf("<- %s  %.*s\n", topic, (int)length, (const char*)payload);
   JsonDocument doc;
   if (deserializeJson(doc, payload, length)) {
@@ -293,6 +328,7 @@ void connectMqtt() {
       mqtt.subscribe(topicDesired.c_str(), 1);
       mqtt.subscribe((topicCommands + "+").c_str(), 1);
       mqtt.subscribe(topicErrors.c_str(), 0);
+      mqtt.subscribe((topicRules + "+").c_str(), 1);   // rule JSON (retained)
       // On every connection (including the restart after an update): report the version.
       reportFirmwareVersion();
     } else {
@@ -315,6 +351,7 @@ void setup() {
   topicErrors    = base + "/errors";
   topicFirmware  = base + "/firmware";
   topicStatus    = base + "/status";
+  topicRules     = base + "/rules/";
 
   connectWifi();
 #if USE_TLS
@@ -322,7 +359,9 @@ void setup() {
 #endif
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setCallback(onMessage);
-  mqtt.setBufferSize(1024);  // the ota command contains a long URL
+  // Largest message the ESP32 can receive. Rule JSON can be several kilobytes; a larger
+  // message is dropped by the library without any error.
+  mqtt.setBufferSize(8192);
 }
 
 void loop() {

@@ -27,6 +27,7 @@ Penjelasan konsep:
 - [docs/tahap-25-dokumentasi-pengguna.md](docs/tahap-25-dokumentasi-pengguna.md) — halaman bersih untuk pengguna umum, dokumentasi pengguna `/docs/` dengan pencarian, dan peta pemindahan keterangan pengembang
 - [docs/tahap-26-micro-rule-model-dan-compiler.md](docs/tahap-26-micro-rule-model-dan-compiler.md) — micro rule: aturan ECA dipecah menjadi fragmen untuk device (ESP-NOW), dua strategi evaluasi (aktuator / sensor), evaluator referensi, simulator, dan test vector firmware
 - [docs/tahap-26-tambahan-variabel-kategori.md](docs/tahap-26-tambahan-variabel-kategori.md) — value type Categories: label kategori disimpan sebagai 0, 1, 2, ... di telemetri, kontrol, aturan, chart, dan unduhan
+- [docs/tahap-26-tambahan-publish-rule.md](docs/tahap-26-tambahan-publish-rule.md) — publish JSON aturan utuh (dengan MAC device) ke semua device aturan lewat MQTT `rules/<id>` dan tanda terima `rules/<id>/ack`
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat
