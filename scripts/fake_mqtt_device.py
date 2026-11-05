@@ -152,6 +152,12 @@ class FakeDevice:
         method = command.get("method")
         params = command.get("params") or {}
         print(f"{now()}  ← command {command_id}: {method} {params}")
+        # Seperti template firmware: command yang sudah kedaluwarsa tidak dijalankan dan tidak
+        # dijawab (toleransi 2 detik untuk jam yang sedikit meleset).
+        expires_at = command.get("expires_at")
+        if isinstance(expires_at, (int, float)) and time.time() > expires_at + 2:
+            print(f"{now()}    expired {time.time() - expires_at:.0f} s ago: not run")
+            return
         if method == "ping":
             result = {"success": True, "pong": int(time.time() * 1000)}
         elif method == "reboot":

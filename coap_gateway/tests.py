@@ -107,7 +107,12 @@ class DesiredAndCommandTests(CoapTestData):
     def test_commands_are_delivered_and_marked_sent(self):
         command = self.command(params={"times": 3})
         reply = handle("GET", [self.token, "commands"])
-        self.assertEqual(reply.body, {"commands": [{"id": command.pk, "method": "reboot", "params": {"times": 3}}]})
+        [sent] = reply.body["commands"]
+        self.assertEqual({k: sent[k] for k in ("id", "method", "params")},
+                         {"id": command.pk, "method": "reboot", "params": {"times": 3}})
+        # Batas waktu ikut dikirim, sama dengan MQTT.
+        self.assertEqual(sent["expires_at"], int(command.expires_at.timestamp()))
+        self.assertGreater(sent["ttl"], 0)
         command.refresh_from_db()
         self.assertEqual(command.status, CommandStatus.SENT)
         # Masih ikut dikirim sampai device melaporkan hasilnya.

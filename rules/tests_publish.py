@@ -26,7 +26,7 @@ class Broker:
     def __init__(self):
         self.messages = []
 
-    def publish(self, topic, payload, retain):
+    def publish(self, topic, payload, retain, expiry=None):
         self.messages.append((topic, payload, retain))
         return True
 

@@ -14,6 +14,7 @@ Harganya: jeda paling lama satu putaran pemeriksaan (~1 detik).
 """
 import json
 from collections import defaultdict
+from datetime import timedelta
 
 from devices.control import command_payload, plain
 from devices.models import Command, CommandStatus, Variable
@@ -21,7 +22,10 @@ from django.utils import timezone
 
 from . import topics
 
-
+# Jeda setelah device menjadi online sebelum command dikirim: device yang baru tersambung
+# mengirim "online" dan subscribe hampir bersamaan; tanpa jeda, command bisa tiba sebelum
+# langganannya terpasang dan hilang (clean session).
+ONLINE_GRACE = timedelta(seconds=2)
 
 
 class Outbox:
@@ -37,7 +41,8 @@ class Outbox:
         self.sent_desired.clear()
 
     def flush(self, publish):
-        """Kirim semua yang tertunda. `publish(topic, payload_dict, retain)` -> True bila berhasil.
+        """Kirim semua yang tertunda. `publish(topic, payload, retain, expiry=None)` -> True bila berhasil.
+        `expiry` = Message Expiry Interval MQTT 5 dalam detik (hanya command).
 
         Mengembalikan (jumlah pesan desired, jumlah command) yang terkirim.
         """
@@ -86,25 +91,38 @@ class Outbox:
     # --- Pola 2: command ------------------------------------------------------
 
     def flush_commands(self, publish):
-        """Kirim command berstatus QUEUED, lalu ubah statusnya menjadi SENT.
+        """Kirim command berstatus QUEUED ke device yang ONLINE, lalu ubah statusnya menjadi SENT.
 
-            <prefix>/<token>/commands/12   {"id": 12, "method": "reboot", "params": {}}
+            <prefix>/<token>/commands/12
+            {"id": 12, "method": "reboot", "params": {}, "expires_at": 1762412345, "ttl": 297}
 
         Command TIDAK di-retain: aksi sekali jalan tidak boleh diulang hanya
         karena device tersambung ulang.
+
+        Device yang offline (Device.is_online False) tidak dikirimi: device memakai clean session,
+        jadi pesan yang dikirim saat ia offline hilang begitu saja padahal statusnya sudah SENT.
+        Command tetap QUEUED dan dikirim begitu device online lagi (selama belum kedaluwarsa).
+        Setelah device online, ditunggu ONLINE_GRACE detik supaya device sempat subscribe.
+
+        Pesan diberi batas umur MQTT 5 (Message Expiry Interval = sisa detik): broker membuang
+        pesan yang tertahan di antrean (device dengan persistent session) setelah batas itu.
         """
         # Command kedaluwarsa tidak boleh dikirim sama sekali.
         Command.objects.expire_due()
+        now = timezone.now()
         queued = (
-            Command.objects.filter(status=CommandStatus.QUEUED, device__is_active=True)
+            Command.objects.filter(status=CommandStatus.QUEUED, device__is_active=True, device__is_online=True)
+            .exclude(device__status_changed_at__gt=now - ONLINE_GRACE)
             .select_related("device")
             .order_by("created_at", "pk")
         )
         sent = 0
         for command in queued:
-            payload = command_payload(command)
+            payload = command_payload(command, now)
+            if payload["ttl"] < 1:
+                continue                     # kurang dari 1 detik lagi: biarkan kedaluwarsa
             topic = topics.command(self.prefix, command.device.access_token, command.pk)
-            if not publish(topic, payload, retain=False):
+            if not publish(topic, payload, retain=False, expiry=payload["ttl"]):
                 break
             command.mark_sent()
             sent += 1

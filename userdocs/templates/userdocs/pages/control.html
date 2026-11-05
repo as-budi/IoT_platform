@@ -5,7 +5,7 @@
   <thead class="table-light"><tr><th></th><th>Requested state</th><th>Command</th></tr></thead>
   <tbody>
     <tr><td>Examples</td><td>pump ON/OFF, fan speed 60, servo 90°</td><td>reboot, blink, open valve for N seconds</td></tr>
-    <tr><td>Device offline</td><td>the request waits and is applied when the device comes back</td><td>the command expires if it is not picked up in time</td></tr>
+    <tr><td>Device offline</td><td>the request waits and is applied when the device comes back</td><td>the command waits and is sent when the device comes back, unless it expires first</td></tr>
     <tr><td>Clicking several times</td><td>only the latest value counts</td><td>every click is a new command</td></tr>
     <tr><td>Proof it worked</td><td>the device reports the same value</td><td>status and response of the command</td></tr>
   </tbody>
@@ -33,11 +33,15 @@ How a device receives requested states is described in the <a href="{% url 'user
   <li><strong>Parameters</strong>: JSON for the action, e.g. <code>{"times": 5}</code>. Use <code>{}</code> for none.</li>
   <li><strong>Expires after</strong>: 1 minute, 5 minutes, 1 hour or 1 day. A command that has not finished before it expires is never run later.</li>
 </ol>
+<p>Over MQTT, a command is sent only while the device is online, so a device that is off does not miss it: it receives the command
+when it comes back, if the command has not expired by then. Each command tells the device when it expires
+(<code>expires_at</code>, see <a href="{% url 'userdocs:page' 'device-api' %}#command-expiry">Device API</a>), so a device with a correct clock
+can also refuse one that arrives too late.</p>
 <p>The table below the form shows each command with its status and the device's response:</p>
 <table class="table table-sm">
   <tbody>
-    <tr><th>Queued</th><td>waiting for the device</td></tr>
-    <tr><th>Sent</th><td>delivered to the device, no answer yet</td></tr>
+    <tr><th>Queued</th><td>waiting for the device (over MQTT: until the device is online)</td></tr>
+    <tr><th>Sent</th><td>sent to the device (MQTT) or picked up by it (CoAP), no answer yet</td></tr>
     <tr><th>Succeeded</th><td>the device answered with success</td></tr>
     <tr><th>Failed</th><td>the device answered with an error, see the response</td></tr>
     <tr><th>Expired</th><td>not finished in time; it will not run any more</td></tr>

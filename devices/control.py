@@ -6,12 +6,17 @@ supaya MQTT dan CoAP dijamin berperilaku identik:
 
     desired_state(device)            -> {"pump": 1, "fan_speed": 40}
     pending_commands(device)         -> command yang belum selesai & belum kedaluwarsa
-    command_payload(command)         -> {"id": 12, "method": "...", "params": {...}}
+    command_payload(command)         -> {"id": 12, "method": "...", "params": {...},
+                                         "expires_at": 1762412345, "ttl": 297}
     record_command_result(device, id, data)  -> catat hasil dari device
 
 Fungsi di sini tidak tahu apa-apa tentang jaringan; masukan dan keluarannya
 berupa objek Python biasa.
 """
+import math
+
+from django.utils import timezone
+
 from api.payload import PayloadError
 
 from .models import CommandStatus, Variable
@@ -38,8 +43,26 @@ def desired_signature(device):
     return tuple(actuators_with_desired(device).values_list("key", "desired_version"))
 
 
-def command_payload(command):
-    return {"id": command.pk, "method": command.method, "params": command.params}
+def command_ttl(command, now=None):
+    """Sisa detik sebelum command kedaluwarsa (dibulatkan ke bawah, minimal 0)."""
+    now = now or timezone.now()
+    return max(0, math.floor((command.expires_at - now).total_seconds()))
+
+
+def command_payload(command, now=None):
+    """Pesan command untuk device (MQTT dan CoAP sama).
+
+    expires_at  batas waktu dalam Unix time (detik sejak 1970, UTC), dibulatkan ke bawah, supaya
+                device yang jamnya sinkron (NTP) bisa menolak command yang sudah kedaluwarsa,
+                mis. karena tertahan di antrean broker atau baru diproses belakangan.
+    ttl         sisa detik saat pesan dibuat, untuk device tanpa jam: hitung mundur sejak pesan
+                diterima (sedikit lebih ketat karena waktu tempuh pesan tidak dihitung).
+    """
+    return {
+        "id": command.pk, "method": command.method, "params": command.params,
+        "expires_at": math.floor(command.expires_at.timestamp()),
+        "ttl": command_ttl(command, now),
+    }
 
 
 def pending_commands(device):

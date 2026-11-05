@@ -8,6 +8,7 @@
  *   - Follows the requested state of the actuator "lamp": switches the LED on or
  *     off and reports the new state back.
  *   - Runs the commands "blink" {"times": 5} and "ping" and sends the result back.
+ *     A command that has already expired ("expires_at", clock from NTP) is not run.
  *   - Announces "online" when it connects; the broker announces "offline" for it
  *     when the connection is lost (MQTT Last Will).
  *   - Reports its firmware version, board and Wi-Fi MAC address every time it
@@ -50,6 +51,7 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+#include <time.h>
 #include <HTTPClient.h>
 #include <HTTPUpdate.h>
 
@@ -212,8 +214,35 @@ void handleDesired(JsonDocument& desired) {
   }
 }
 
+// ---- command expiry --------------------------------------------------------------------------
+// Every command carries "expires_at" (Unix time in seconds, UTC) and "ttl" (seconds left when
+// the platform sent it). The platform does not send expired commands, and the MQTT broker drops
+// commands that expire while waiting in its queue; this check catches the rest, e.g. a command
+// that arrived late. The clock is set by NTP (configTime in setup). Until the clock is set, a
+// command is run as before.
+const long CLOCK_TOLERANCE_S = 2;     // allowance for a clock that is slightly off
+
+bool clockIsSet() {
+  return time(nullptr) > 1700000000;  // later than November 2023: NTP has answered
+}
+
+// Seconds since the command expired (> 0 = expired), or 0 when unknown / still valid.
+template <typename T>
+long secondsExpired(const T& command) {
+  long expiresAt = command["expires_at"] | 0L;
+  if (expiresAt <= 0 || !clockIsSet()) return 0;
+  long late = (long)time(nullptr) - expiresAt;
+  return late > CLOCK_TOLERANCE_S ? late : 0;
+}
+
 void handleCommand(const String& id, JsonDocument& command) {
   const char* method = command["method"] | "";
+  long late = secondsExpired(command);
+  if (late > 0) {
+    // Not run and not answered: the platform has already marked the command Expired.
+    Serial.printf("   command %s (%s) expired %ld s ago: not run\n", id.c_str(), method, late);
+    return;
+  }
   JsonDocument result;
   if (strcmp(method, "ota") == 0) {
     long update = command["params"]["update"] | 0L;
@@ -343,13 +372,15 @@ void connectMqtt() {
     if (mqtt.connect(clientId.c_str(), ACCESS_TOKEN, ACCESS_TOKEN,
                      topicStatus.c_str(), 1, true, "offline")) {
       Serial.println("ok");
-      mqtt.publish(topicStatus.c_str(), "online", true);   // retained: the session has started
       // Subscribe after EVERY connection. The broker keeps (retains) the requested state,
       // so it arrives right after subscribing and the lamp returns to the requested state.
       mqtt.subscribe(topicDesired.c_str(), 1);
       mqtt.subscribe((topicCommands + "+").c_str(), 1);
       mqtt.subscribe(topicErrors.c_str(), 0);
       mqtt.subscribe((topicRules + "+").c_str(), 1);   // rule JSON (retained)
+      // "online" AFTER subscribing: the platform sends waiting commands as soon as the device
+      // is online, so the subscription to commands must already be in place.
+      mqtt.publish(topicStatus.c_str(), "online", true);   // retained: the session has started
       // On every connection (including the restart after an update): report the version.
       reportFirmwareVersion();
     } else {
@@ -375,6 +406,8 @@ void setup() {
   topicRules     = base + "/rules/";
 
   connectWifi();
+  // Clock from the internet (UTC), used to skip commands that have expired.
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
 #if USE_TLS
   network.setCACert(ROOT_CA);
 #endif

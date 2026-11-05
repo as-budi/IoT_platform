@@ -293,6 +293,10 @@ MQTT_TOPIC_PREFIX = os.getenv("MQTT_TOPIC_PREFIX", "django-iot-demo").strip("/")
 MQTT_CLIENT_ID = os.getenv("MQTT_CLIENT_ID", "")
 # Detik antar "ping" ke broker untuk menjaga koneksi tetap hidup.
 MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
+# Versi MQTT koneksi mqtt_bridge: "5" (bawaan) atau "3.1.1" untuk broker lama. Dengan MQTT 5,
+# command dikirim dengan Message Expiry Interval sehingga broker membuang command yang sudah
+# kedaluwarsa (lihat docs/tahap-26-tambahan-command-expiry.md). Device tidak terpengaruh.
+MQTT_PROTOCOL = "3.1.1" if os.getenv("MQTT_PROTOCOL", "5").strip() in ("3", "3.1.1", "311") else "5"
 
 # Alamat broker yang dipakai DEVICE, untuk ditampilkan di tab MQTT halaman device.
 # Bisa berbeda dari MQTT_HOST di atas (alamat yang dipakai mqtt_bridge). Contoh di

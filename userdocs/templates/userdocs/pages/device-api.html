@@ -53,7 +53,7 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
   <tbody>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.telemetry }}</code></td><td>telemetry, see <a href="#payload">payload</a></td></tr>
     <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested states of all actuators, e.g. <code>{"lamp": 1, "fan_speed": 40}</code>; kept by the broker (retained), so a device receives it right after subscribing</td></tr>
-    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id": 12, "method": "blink", "params": {"times": 5}}</code>; not retained</td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id": 12, "method": "blink", "params": {"times": 5}, "expires_at": 1762412345, "ttl": 297}</code>; not retained, sent only while the device is online (<a href="#command-expiry">expiry</a>)</td></tr>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code> or <code>{"success": false, "error": "..."}</code></td></tr>
     <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message from the device was rejected: <code>{"error": "...", "topic": "..."}</code></td></tr>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.firmware }}</code></td><td>firmware report and update progress (<a href="{% url 'userdocs:page' 'firmware-updates' %}#report">firmware report</a>)</td></tr>
@@ -68,6 +68,19 @@ with the same key, e.g. <code>{"lamp": 1}</code>, so the platform can show <em>I
 <p>Connect with a Last Will message <code>offline</code> (retained, QoS 1) on the status topic, then publish <code>online</code> (retained) there.
 The device then counts as online while the connection is open, and as offline as soon as the broker notices the connection is gone,
 instead of after {{ limits.offline_seconds }} seconds without data.</p>
+<h3 id="command-expiry">Command expiry</h3>
+<p>Every command, over MQTT and CoAP, says when it expires:</p>
+<ul>
+  <li><code>expires_at</code>: the deadline as Unix time (seconds since 1970, UTC).</li>
+  <li><code>ttl</code>: seconds left when the platform sent the command.</li>
+</ul>
+<p>A device should not run a command after <code>expires_at</code> and does not need to answer it; the platform has already marked it
+<em>Expired</em> and ignores late answers. To compare, the device needs the time, e.g. from NTP
+(<code>configTime(0, 0, "pool.ntp.org")</code> on an ESP32); the firmware templates do this and allow 2 seconds for a clock that is slightly off.
+Until its clock is set, a device can run commands as they arrive.</p>
+<p>The platform also protects devices that do not check the time: it never sends an expired command, sends MQTT commands only while the
+device is online (announce it with <code>online</code> on the status topic <em>after</em> subscribing to commands), and gives each MQTT command
+a message expiry, so the broker drops a command that is still waiting in its queue when it expires.</p>
 <h3 id="rules">Rule JSON</h3>
 <p>On an ECA rule page, <em>Publish to devices</em> (in the JSON card) sends the rule as JSON to every device used by the rule
 (MQTT devices only), to test whether the devices receive it. Devices do not run the rule yet.
@@ -102,7 +115,7 @@ Every device receives the <strong>same message</strong>: the rule JSON with a <c
   <tbody>
     <tr><td>POST</td><td><code>{{ coap.base }}/telemetry</code></td><td>telemetry, see <a href="#payload">payload</a>; answer <code>2.04 Changed</code></td></tr>
     <tr><td class="text-nowrap">GET (+ Observe)</td><td><code>{{ coap.base }}/desired</code></td><td>requested states, e.g. <code>{"pump": 1}</code>; with Observe the server sends changes by itself</td></tr>
-    <tr><td class="text-nowrap">GET (+ Observe)</td><td><code>{{ coap.base }}/commands</code></td><td>open commands: <code>{"commands": [{"id", "method", "params"}]}</code></td></tr>
+    <tr><td class="text-nowrap">GET (+ Observe)</td><td><code>{{ coap.base }}/commands</code></td><td>open commands: <code>{"commands": [{"id", "method", "params", "expires_at", "ttl"}]}</code></td></tr>
     <tr><td>POST</td><td><code>{{ coap.base }}/commands/&lt;id&gt;/response</code></td><td><code>{"success": true, ...}</code></td></tr>
     <tr><td>POST</td><td><code>{{ coap.base }}/firmware</code></td><td>firmware report and update progress</td></tr>
   </tbody>

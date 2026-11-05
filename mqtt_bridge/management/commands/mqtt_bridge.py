@@ -52,6 +52,8 @@ class Command(BaseCommand):
         # perintah lain tetap jalan walaupun paho-mqtt belum dipasang.
         try:
             import paho.mqtt.client as mqtt
+            from paho.mqtt.packettypes import PacketTypes
+            from paho.mqtt.properties import Properties
         except ImportError:
             raise CommandError("paho-mqtt is not installed. Run: pip install paho-mqtt")
 
@@ -69,11 +71,23 @@ class Command(BaseCommand):
         just_connected = threading.Event()
 
         # CallbackAPIVersion.VERSION2 = bentuk callback paho-mqtt 2.x.
-        client = mqtt.Client(
-            mqtt.CallbackAPIVersion.VERSION2,
-            client_id=settings.MQTT_CLIENT_ID,  # kosong = dibuat acak
-            clean_session=True,
-        )
+        # MQTT 5 (bawaan, .env MQTT_PROTOCOL=5): command dikirim dengan Message Expiry Interval,
+        # sehingga broker membuang command yang tertahan di antrean setelah kedaluwarsa.
+        # Device boleh tetap MQTT 3.1.1; batas umur pesan dijalankan oleh broker.
+        use_v5 = settings.MQTT_PROTOCOL == "5"
+        if use_v5:
+            client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION2,
+                client_id=settings.MQTT_CLIENT_ID,  # kosong = dibuat acak
+                protocol=mqtt.MQTTv5,
+            )
+        else:
+            client = mqtt.Client(
+                mqtt.CallbackAPIVersion.VERSION2,
+                client_id=settings.MQTT_CLIENT_ID,
+                clean_session=True,
+                protocol=mqtt.MQTTv311,
+            )
         if settings.MQTT_USERNAME:
             client.username_pw_set(settings.MQTT_USERNAME, settings.MQTT_PASSWORD)
         if settings.MQTT_TLS:
@@ -131,7 +145,7 @@ class Command(BaseCommand):
 
         # --- publish dari thread utama -----------------------------------------
 
-        def publish(topic, payload, retain):
+        def publish(topic, payload, retain, expiry=None):
             if not client.is_connected():
                 return False
             # payload None = pesan kosong (menghapus pesan retained di topik itu).
@@ -142,7 +156,11 @@ class Command(BaseCommand):
                 data = payload.encode("utf-8")
             else:
                 data = encode(payload)
-            info = client.publish(topic, data, qos=1, retain=retain)
+            properties = None
+            if use_v5 and expiry:
+                properties = Properties(PacketTypes.PUBLISH)
+                properties.MessageExpiryInterval = int(expiry)
+            info = client.publish(topic, data, qos=1, retain=retain, properties=properties)
             if info.rc != mqtt.MQTT_ERR_SUCCESS:
                 return False
             # QoS 1: tunggu sampai broker menjawab "sudah kuterima" (PUBACK).
@@ -154,13 +172,18 @@ class Command(BaseCommand):
             if not info.is_published():
                 return False
             shown = "(empty: retained message removed)" if payload is None else encode(payload)
-            self.log(f"→ {topic}  {shown[:300]}")
+            self.log(f"→ {topic}  {shown[:300]}" + (f"  (expires in {int(expiry)} s)" if expiry else ""))
             return True
 
         # --- mulai ---------------------------------------------------------------
 
-        self.log(f"Connecting to {settings.MQTT_HOST}:{settings.MQTT_PORT} (prefix '{prefix}')…")
-        client.connect_async(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=settings.MQTT_KEEPALIVE)
+        self.log(f"Connecting to {settings.MQTT_HOST}:{settings.MQTT_PORT} with MQTT {'5' if use_v5 else '3.1.1'} "
+                 f"(prefix '{prefix}')…")
+        if use_v5:
+            client.connect_async(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=settings.MQTT_KEEPALIVE,
+                                 clean_start=True)
+        else:
+            client.connect_async(settings.MQTT_HOST, settings.MQTT_PORT, keepalive=settings.MQTT_KEEPALIVE)
         client.loop_start()  # menjalankan thread jaringan di latar belakang
         try:
             while True:

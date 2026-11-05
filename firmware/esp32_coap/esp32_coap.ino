@@ -9,6 +9,7 @@
  *     LED on or off accordingly and reports the new state back.
  *   - Asks for new commands every 2 seconds, runs "blink" and "ping" and sends
  *     the result back.
+ *     A command that has already expired ("expires_at", clock from NTP) is not run.
  *   - Reports its firmware version, board and Wi-Fi MAC address at start-up and
  *     every 10 minutes (POST api/v1/<token>/firmware).
  *
@@ -37,6 +38,7 @@
 #include <WiFiUdp.h>
 #include <coap-simple.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 // ---- fill in this part -------------------------------------------------------
 const char* WIFI_SSID     = "your-wifi-name";
@@ -116,13 +118,40 @@ void handleDesired(JsonDocument& desired) {
   postJson(pathTelemetry, report);
 }
 
+// ---- command expiry --------------------------------------------------------------------------
+// Every command carries "expires_at" (Unix time in seconds, UTC) and "ttl" (seconds left when
+// the platform sent it). The platform does not send expired commands, and the MQTT broker drops
+// commands that expire while waiting in its queue; this check catches the rest, e.g. a command
+// that arrived late. The clock is set by NTP (configTime in setup). Until the clock is set, a
+// command is run as before.
+const long CLOCK_TOLERANCE_S = 2;     // allowance for a clock that is slightly off
+
+bool clockIsSet() {
+  return time(nullptr) > 1700000000;  // later than November 2023: NTP has answered
+}
+
+// Seconds since the command expired (> 0 = expired), or 0 when unknown / still valid.
+template <typename T>
+long secondsExpired(const T& command) {
+  long expiresAt = command["expires_at"] | 0L;
+  if (expiresAt <= 0 || !clockIsSet()) return 0;
+  long late = (long)time(nullptr) - expiresAt;
+  return late > CLOCK_TOLERANCE_S ? late : 0;
+}
+
 void handleCommands(JsonDocument& data) {
-  // {"commands": [{"id": 12, "method": "blink", "params": {"times": 5}}, ...]}
+  // {"commands": [{"id": 12, "method": "blink", "params": {"times": 5},
+  //                "expires_at": 1762412345, "ttl": 297}, ...]}
   for (JsonObject command : data["commands"].as<JsonArray>()) {
     long id = command["id"] | 0;
     if (id <= lastCommandId) continue;      // already run before
     lastCommandId = id;
     const char* method = command["method"] | "";
+    long late = secondsExpired(command);
+    if (late > 0) {
+      Serial.printf("   command %ld (%s) expired %ld s ago: not run\n", id, method, late);
+      continue;                             // the platform has already marked it Expired
+    }
     JsonDocument result;
     if (strcmp(method, "blink") == 0) {
       int times = command["params"]["times"] | 3;
@@ -179,6 +208,8 @@ void setup() {
   pathCommands  = base + "/commands";
 
   connectWifi();
+  // Clock from the internet (UTC), used to skip commands that have expired.
+  configTime(0, 0, "pool.ntp.org", "time.google.com");
   Serial.printf("MAC address: %s\n", WiFi.macAddress().c_str());
   // SERVER_HOST may be an IP address or a domain name; both become an IPAddress.
   while (!WiFi.hostByName(SERVER_HOST, SERVER_IP)) {

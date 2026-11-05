@@ -1,5 +1,6 @@
 """Tes jembatan MQTT. Tidak butuh broker: koneksi diganti fungsi tiruan."""
 import json
+import math
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -180,11 +181,13 @@ class FakeBroker:
     def __init__(self, connected=True):
         self.connected = connected
         self.messages = []
+        self.expiry = {}
 
-    def publish(self, topic, payload, retain):
+    def publish(self, topic, payload, retain, expiry=None):
         if not self.connected:
             return False
         self.messages.append((topic, payload, retain))
+        self.expiry[topic] = expiry
         return True
 
 
@@ -192,6 +195,9 @@ class OutboxTests(MqttTestData):
     def setUp(self):
         self.outbox = Outbox(PREFIX)
         self.broker = FakeBroker()
+        # Command hanya dikirim ke device yang online (sudah lebih dari ONLINE_GRACE).
+        Device.objects.filter(pk__in=[self.device.pk, self.other.pk]).update(
+            is_online=True, status_changed_at=timezone.now() - timedelta(minutes=1))
 
     def flush(self):
         return self.outbox.flush(self.broker.publish)
@@ -234,7 +240,12 @@ class OutboxTests(MqttTestData):
         self.assertEqual(self.flush(), (0, 1))
         topic, payload, retain = self.broker.messages[0]
         self.assertEqual(topic, topics.command(PREFIX, self.device.access_token, command.pk))
-        self.assertEqual(payload, {"id": command.pk, "method": "reboot", "params": {"seconds": 5}})
+        expires_at = math.floor(command.expires_at.timestamp())
+        self.assertEqual(payload, {"id": command.pk, "method": "reboot", "params": {"seconds": 5},
+                                   "expires_at": expires_at, "ttl": payload["ttl"]})
+        self.assertTrue(295 <= payload["ttl"] <= 300)
+        # MQTT 5 Message Expiry Interval = sisa detik, supaya broker membuang pesan yang tertahan.
+        self.assertEqual(self.broker.expiry[topic], payload["ttl"])
         self.assertFalse(retain)
         command.refresh_from_db()
         self.assertEqual(command.status, CommandStatus.SENT)
@@ -246,6 +257,28 @@ class OutboxTests(MqttTestData):
         command = self.make_command(expires_at=timezone.now() - timedelta(seconds=1))
         self.flush()
         self.assertEqual(self.broker.messages, [])
+        command.refresh_from_db()
+        self.assertEqual(command.status, CommandStatus.EXPIRED)
+
+    def test_command_waits_until_device_is_online(self):
+        Device.objects.filter(pk=self.device.pk).update(is_online=False)
+        command = self.make_command()
+        self.assertEqual(self.flush(), (0, 0))
+        command.refresh_from_db()
+        self.assertEqual(command.status, CommandStatus.QUEUED)          # tidak hilang di broker
+        # Baru saja online: tunggu sebentar supaya device sempat subscribe.
+        Device.objects.filter(pk=self.device.pk).update(is_online=True, status_changed_at=timezone.now())
+        self.assertEqual(self.flush(), (0, 0))
+        Device.objects.filter(pk=self.device.pk).update(status_changed_at=timezone.now() - timedelta(seconds=3))
+        self.assertEqual(self.flush(), (0, 1))
+
+    def test_command_that_expires_while_offline_is_never_sent(self):
+        Device.objects.filter(pk=self.device.pk).update(is_online=False)
+        command = self.make_command(expires_at=timezone.now() + timedelta(seconds=30))
+        self.flush()
+        Command.objects.filter(pk=command.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+        Device.objects.filter(pk=self.device.pk).update(is_online=True, status_changed_at=timezone.now() - timedelta(minutes=1))
+        self.assertEqual(self.flush(), (0, 0))
         command.refresh_from_db()
         self.assertEqual(command.status, CommandStatus.EXPIRED)
 
