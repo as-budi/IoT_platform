@@ -168,7 +168,7 @@ def handle_ack(device, rule_id, data):
 
 
 def status_context(rule):
-    """Data untuk rules/includes/publish_card.html."""
+    """Data untuk bagian publish di kartu JSON (json_card.html, publish_card.html, publish_badge.html)."""
     publications = list(RulePublication.objects.filter(rule=rule).order_by("-number")[:5])
     last = publications[0] if publications else None
     last_publish = next((p for p in publications if p.action == RulePublication.Action.PUBLISH), None)
@@ -182,6 +182,14 @@ def status_context(rule):
                      "protocol": device.get_last_protocol_display() if device.last_protocol else "",
                      "mqtt": device.last_protocol == "MQTT" or device.mqtt_connected})
     waiting = any(d.status in WAITING for d in deliveries.values())
+    # Ringkasan untuk badge di judul kartu (publish terakhir; SKIPPED tidak dihitung).
+    counted = [d for d in deliveries.values() if d.status not in (Status.SKIPPED, Status.SUPERSEDED)]
+    summary = {
+        "total": len(counted),
+        "received": sum(d.status == Status.RECEIVED for d in counted),
+        "rejected": sum(d.status == Status.REJECTED for d in counted),
+        "waiting": sum(d.status in WAITING for d in counted),
+    }
     counts = {}
     for d in deliveries.values():
         counts[d.status] = counts.get(d.status, 0) + 1
@@ -191,6 +199,7 @@ def status_context(rule):
         "rows": rows,
         "waiting": waiting,
         "counts": counts,
+        "summary": summary,
         "current_rev": current_rev,
         "changed": bool(last_publish and last_publish.rev != current_rev and last and
                         last.action == RulePublication.Action.PUBLISH),

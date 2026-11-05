@@ -1,4 +1,5 @@
-{# Isi kartu "Send to devices": ringkasan publish terakhir dan status per device. #}
+{# Isi tab "Devices" di kartu JSON: ringkasan publish terakhir dan status per device. #}
+<template data-publish-badge-source>{% include "rules/includes/publish_badge.html" %}</template>
 {% with p=publish %}
 {% if p.waiting %}<span data-publish-waiting hidden></span>{% endif %}
 {% if p.last %}

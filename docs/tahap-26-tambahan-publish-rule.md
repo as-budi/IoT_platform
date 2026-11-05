@@ -86,10 +86,17 @@ Publish baru sebelum terkirim ─► kiriman lama SUPERSEDED
 - **SKIPPED**: device nonaktif, atau pemilik aturan tidak punya akses Operator ke device.
 - Status SENT tanpa ack berarti broker sudah menerima pesan tetapi device belum menjawab
   (mati, belum subscribe, atau firmware belum mendukung).
-- Halaman aturan menampilkan kartu **Publish to devices**: tombol Publish / Withdraw, tabel
-  device (MAC, koneksi terakhir, status, waktu kirim, waktu balas), ukuran pesan terhadap
-  buffer 8192 byte, dan peringatan bila aturan sudah diubah sejak publish terakhir. Kartu
-  memuat ulang statusnya setiap 3 detik selama masih ada kiriman yang menunggu.
+- Publish menyatu dengan **kartu JSON** di halaman aturan (satu kartu):
+  - judul kartu memuat badge ringkasan publish terakhir (*Not published*, *2/3 received ·
+    1 waiting*, *Withdrawn*, *changed*), tetap terlihat walau kartu tertutup;
+  - baris tombol: Copy / Open raw / Download di kiri, Publish / Withdraw di kanan;
+  - dua tab: **JSON** (viewer) dan **Devices** (tabel MAC, koneksi terakhir, status, waktu kirim,
+    waktu balas, ukuran pesan terhadap buffer 8192 byte, peringatan bila aturan sudah diubah);
+  - selama ada kiriman yang menunggu (dan setelah redirect ke `#publish`), kartu terbuka dengan
+    tab Devices aktif; tabel dan badge dimuat ulang setiap 3 detik.
+- Tombol, tab Devices, dan badge hanya tampil untuk aturan ECA bila `MICRO_RULES` mengizinkan
+  pengguna itu (`all` / `admin` / `off`, sama dengan "Run on devices"). Selain itu kartu hanya
+  berisi JSON seperti sebelumnya (juga untuk aturan Flow dan State machine).
 - Riwayat ada di Django admin → *Rule publications*.
 
 ## 5. File yang berubah
@@ -98,7 +105,7 @@ Publish baru sebelum terkirim ─► kiriman lama SUPERSEDED
 |---|---|
 | Model + migrasi | `rules/models.py` (`RulePublication`, `RuleDelivery`), `rules/migrations/0008_rule_publication.py` |
 | Logika | `rules/publish.py`, `rules/portable.py`, `rules/apps.py` |
-| Halaman | `rules/views.py`, `rules/urls.py`, `rules/templates/rules/includes/publish_card.html`, `publish_status.html`, `rule_detail.html`, `static/css/app.css`, `rules/admin.py` |
+| Halaman | `rules/views.py`, `rules/urls.py`, `rules/templates/rules/includes/json_card.html`, `publish_card.html`, `publish_badge.html`, `publish_status.html`, `rule_detail.html`, `static/css/app.css`, `rules/admin.py` |
 | MQTT | `mqtt_bridge/topics.py`, `outbox.py`, `handlers.py`, `management/commands/mqtt_bridge.py`, `mqtt_accounts.py` |
 | Lainnya | `api/v2.py`, `userdocs/context.py`, `userdocs/templates/userdocs/pages/device-api.html` |
 | Firmware | `firmware/esp32_mqtt/esp32_mqtt.ino` — subscribe `rules/+`, buffer 8192, balas ack |

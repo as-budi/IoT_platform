@@ -1,0 +1,7 @@
+{# Ringkasan status publish di judul kartu JSON (tetap terlihat walau kartu tertutup). Konteks: publish. #}
+{% with s=publish.summary %}
+{% if not publish.last %}<span class="badge publish-status publish-status-cleared">Not published</span>
+{% elif publish.last.action == "WITHDRAW" %}<span class="badge publish-status publish-status-cleared">{% if publish.waiting %}Withdrawing…{% else %}Withdrawn{% endif %}</span>
+{% else %}<span class="badge publish-status {% if s.rejected %}publish-status-rejected{% elif s.total and s.received == s.total %}publish-status-received{% else %}publish-status-sent{% endif %}" title="Publish #{{ publish.last.number }}">{{ s.received }}/{{ s.total }} received{% if s.waiting %} · {{ s.waiting }} waiting{% endif %}{% if s.rejected %} · {{ s.rejected }} rejected{% endif %}</span>{% if publish.changed %} <span class="badge publish-status publish-status-cleared" title="The rule has changed since this publish.">changed</span>{% endif %}
+{% endif %}
+{% endwith %}

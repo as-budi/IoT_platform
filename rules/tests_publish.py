@@ -155,7 +155,11 @@ class PageTests(PublishData):
     def test_card_publish_and_status(self):
         rule = self.make_rule()
         page = self.client.get(reverse("rules:detail", args=[rule.pk]))
-        self.assertContains(page, "Send to devices")
+        # Satu kartu: JSON + tombol Publish + tab Devices + badge ringkasan di judul.
+        self.assertContains(page, "Publish to devices")
+        self.assertContains(page, 'id="rule-devices-tab"')
+        self.assertContains(page, "Not published")
+        self.assertNotContains(page, 'id="publish" open')
         self.assertContains(page, "AA:BB:CC:00:00:02")                       # di JSON dan di tabel
         response = self.client.post(reverse("rules:publish", args=[rule.pk]))
         self.assertRedirects(response, reverse("rules:detail", args=[rule.pk]) + "#publish",
@@ -163,17 +167,28 @@ class PageTests(PublishData):
         status = self.client.get(reverse("rules:publish_status", args=[rule.pk]))
         self.assertContains(status, "Waiting to be sent")
         self.assertContains(status, "data-publish-waiting")
+        self.assertContains(status, "0/2 received · 2 waiting")             # badge baru untuk judul
+        # Masih menunggu: kartu terbuka dengan tab Devices aktif.
+        page = self.client.get(reverse("rules:detail", args=[rule.pk]))
+        self.assertContains(page, 'id="publish" open')
+        self.assertContains(page, 'class="nav-link active" id="rule-devices-tab"')
         self.flush()
         handle_ack(self.pump, rule.pk, {"publish": 1})
         status = self.client.get(reverse("rules:publish_status", args=[rule.pk]))
         self.assertContains(status, "Received")
+        self.assertContains(status, "1/2 received · 1 waiting")
         self.client.post(reverse("rules:withdraw", args=[rule.pk]))
         self.assertTrue(RulePublication.objects.filter(rule=rule, action="WITHDRAW").exists())
 
     def test_hidden_and_forbidden(self):
         rule = self.make_rule()
         with override_settings(MICRO_RULES={"VISIBILITY": "off"}):
-            self.assertNotContains(self.client.get(reverse("rules:detail", args=[rule.pk])), "Send to devices")
+            page = self.client.get(reverse("rules:detail", args=[rule.pk]))
+            # Kartu JSON tetap ada, tanpa tombol, tab, maupun badge publish.
+            self.assertContains(page, 'id="rule-json"')
+            self.assertNotContains(page, "Publish to devices")
+            self.assertNotContains(page, "rule-devices-tab")
+            self.assertNotContains(page, "data-publish-badge")
             self.assertEqual(self.client.post(reverse("rules:publish", args=[rule.pk])).status_code, 404)
         self.client.force_login(self.budi)
         self.assertEqual(self.client.post(reverse("rules:publish", args=[rule.pk])).status_code, 404)

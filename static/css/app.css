@@ -860,6 +860,13 @@ a.user-chip.active {
 .rule-json > summary {
   cursor: pointer;
   list-style: none;
+  flex-wrap: wrap;
+}
+
+/* Badge ringkasan publish di judul kartu JSON: boleh turun baris di layar sempit. */
+.rule-json [data-publish-badge] .badge {
+  white-space: normal;
+  text-align: left;
 }
 
 .rule-json > summary::-webkit-details-marker {

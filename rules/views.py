@@ -1319,7 +1319,7 @@ class EdgePlanCompileView(LoginRequiredMixin, View):
 # --- Publish JSON aturan ke device (percobaan sebelum tahap 27) ------------------------
 
 def publish_context(rule, user):
-    """Kartu "Send to devices" di halaman aturan ECA; None bila tidak tampil untuk `user`."""
+    """Bagian publish di kartu JSON aturan ECA (tombol, badge, tab Devices); None bila tidak tampil untuk `user`."""
     from .edge.limits import visible_to
     from .publish import status_context
 

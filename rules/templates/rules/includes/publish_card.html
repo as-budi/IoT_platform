@@ -1,31 +1,39 @@
-{# Publish JSON aturan ke device (percobaan sebelum tahap 27). Konteks: publish (rules/publish.py status_context). #}
-<div class="card shadow-sm mb-4" id="publish">
-  <div class="card-body">
-    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
-      <div>
-        <h2 class="h6 text-muted text-uppercase mb-1">Send to devices <span class="badge text-bg-light border text-lowercase fw-normal">test</span></h2>
-        <p class="small text-muted mb-0">Sends the JSON above, unchanged, to every device in this rule over MQTT, and shows which devices confirm that they received it. Devices do not run the rule yet. <a href="{% url 'userdocs:page' 'device-api' %}#rules">Topics and replies</a></p>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        <form method="post" action="{% url 'rules:publish' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary">{% if publish.published %}Publish again{% else %}Publish to devices{% endif %}</button></form>
-        {% if publish.published %}<form method="post" action="{% url 'rules:withdraw' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Withdraw</button></form>{% endif %}
-      </div>
-    </div>
-    <div data-publish-status data-url="{% url 'rules:publish_status' rule.pk %}">
-      {% include "rules/includes/publish_status.html" %}
-    </div>
-  </div>
+{# Tab "Devices" di kartu JSON (rules/includes/json_card.html): publish JSON aturan ke device, #}
+{# percobaan sebelum tahap 27. Konteks: publish (rules/publish.py status_context).             #}
+<p class="small text-muted mb-2">Publish sends the JSON, unchanged, to every device in this rule over MQTT, wrapped with the publish number and the receiving device. The table shows which devices confirm that they received it. Devices do not run the rule yet. <a href="{% url 'userdocs:page' 'device-api' %}#rules">Topics and replies</a></p>
+<div data-publish-status data-url="{% url 'rules:publish_status' rule.pk %}">
+  {% include "rules/includes/publish_status.html" %}
 </div>
 <script>
-  // Selama ada pengiriman yang belum dijawab, perbarui tabel setiap 3 detik.
   (function () {
+    const card = document.getElementById("publish");
     const box = document.querySelector("[data-publish-status]");
-    if (!box) return;
+    if (!card || !box) return;
+
+    // Setelah Publish/Withdraw halaman kembali ke #publish: buka kartu dan tab Devices.
+    function showDevices() {
+      card.open = true;
+      const tab = document.getElementById("rule-devices-tab");
+      if (tab && window.bootstrap) bootstrap.Tab.getOrCreateInstance(tab).show();
+    }
+    if (location.hash === "#publish") {
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", showDevices);
+      else showDevices();
+    }
+
+    // Ringkasan status di judul kartu ikut diperbarui dari isi tabel terbaru.
+    function updateBadge() {
+      const source = box.querySelector("template[data-publish-badge-source]");
+      const badge = card.querySelector("[data-publish-badge]");
+      if (source && badge) badge.innerHTML = source.innerHTML;
+    }
+
+    // Selama ada pengiriman yang belum dijawab, perbarui tabel setiap 3 detik.
     async function refresh() {
       if (!box.querySelector("[data-publish-waiting]")) return;
       try {
         const response = await fetch(box.dataset.url, { credentials: "same-origin", cache: "no-store" });
-        if (response.ok) box.innerHTML = await response.text();
+        if (response.ok) { box.innerHTML = await response.text(); updateBadge(); }
       } catch (err) { /* dicoba lagi */ }
       setTimeout(refresh, 3000);
     }

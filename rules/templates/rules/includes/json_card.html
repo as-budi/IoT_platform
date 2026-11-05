@@ -1,18 +1,52 @@
 {% load static %}
 {# Definisi aturan dalam JSON: bentuk yang sama dengan file Export dan yang diterima Import (tahap 13). #}
-<details class="card shadow-sm mb-4 rule-json">
+{# Bila `publish` ada (aturan ECA dan MICRO_RULES mengizinkan pengguna ini, views.publish_context), #}
+{# kartu ini juga memuat tombol Publish/Withdraw dan tab Devices berisi status penerimaan.           #}
+{# Tanpa `publish` (Flow, State machine, MICRO_RULES=off) kartu hanya berisi JSON.                    #}
+<details class="card shadow-sm mb-4 rule-json" id="publish"{% if publish.waiting %} open{% endif %}>
   <summary class="card-body py-2 d-flex align-items-center justify-content-between gap-2">
     <span class="h6 text-muted text-uppercase mb-0 rule-json-title">JSON</span>
-    <span class="small text-muted">Device and variable names, not database ids</span>
+    <span class="d-flex flex-wrap align-items-center justify-content-end gap-2">
+      <span class="small text-muted d-none d-sm-inline">Device and variable names, not database ids</span>
+      {% if publish %}<span data-publish-badge>{% include "rules/includes/publish_badge.html" %}</span>{% endif %}
+    </span>
   </summary>
   <div class="card-body pt-0">
-    <div class="d-flex flex-wrap gap-2 mb-2">
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-json>Copy</button>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}" target="_blank" rel="noopener">Open raw</a>
-      <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Download</a>
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+      <div class="d-flex flex-wrap gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-copy-json>Copy</button>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}" target="_blank" rel="noopener">Open raw</a>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'rules:json' rule.pk %}?download=1">Download</a>
+      </div>
+      {% if publish %}
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <span class="badge text-bg-light border fw-normal" title="Sends this JSON, unchanged, to the devices in the rule. Devices do not run the rule yet.">test</span>
+        <form method="post" action="{% url 'rules:publish' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-primary">{% if publish.published %}Publish again{% else %}Publish to devices{% endif %}</button></form>
+        {% if publish.published %}<form method="post" action="{% url 'rules:withdraw' rule.pk %}">{% csrf_token %}<button class="btn btn-sm btn-outline-secondary">Withdraw</button></form>{% endif %}
+      </div>
+      {% endif %}
     </div>
-    {# Teks asli (untuk Copy). static/js/json_viewer.js menggantinya dengan tampilan bernomor baris. #}
+    {% if publish %}
+    <ul class="nav nav-tabs mb-2" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link{% if not publish.waiting %} active{% endif %}" id="rule-json-tab" data-bs-toggle="tab" data-bs-target="#rule-json-pane" type="button" role="tab" aria-controls="rule-json-pane" aria-selected="{{ publish.waiting|yesno:'false,true' }}">JSON</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link{% if publish.waiting %} active{% endif %}" id="rule-devices-tab" data-bs-toggle="tab" data-bs-target="#rule-devices-pane" type="button" role="tab" aria-controls="rule-devices-pane" aria-selected="{{ publish.waiting|yesno:'true,false' }}">Devices <span class="text-muted">({{ publish.rows|length }})</span></button>
+      </li>
+    </ul>
+    <div class="tab-content">
+      <div class="tab-pane fade{% if not publish.waiting %} show active{% endif %}" id="rule-json-pane" role="tabpanel" aria-labelledby="rule-json-tab">
+        {# Teks asli (untuk Copy). static/js/json_viewer.js menggantinya dengan tampilan bernomor baris. #}
+        <pre class="rule-json-code mb-0" id="rule-json" data-json-viewer>{{ rule_json }}</pre>
+      </div>
+      <div class="tab-pane fade{% if publish.waiting %} show active{% endif %}" id="rule-devices-pane" role="tabpanel" aria-labelledby="rule-devices-tab">
+        {% include "rules/includes/publish_card.html" %}
+      </div>
+    </div>
+    {% else %}
     <pre class="rule-json-code mb-0" id="rule-json" data-json-viewer>{{ rule_json }}</pre>
+    {% endif %}
   </div>
 </details>
 <script src="{% static 'js/json_viewer.js' %}"></script>
