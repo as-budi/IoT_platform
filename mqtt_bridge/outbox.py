@@ -116,6 +116,7 @@ class Outbox:
     def flush_rules(self, publish):
         """Kirim RuleDelivery berstatus QUEUED, retained, ke <prefix>/<token>/rules/<id>.
 
+        payload berupa teks JSON yang sudah jadi (dikirim apa adanya, urutan kunci tetap).
         payload None = pesan retained dihapus (Withdraw atau aturan dihapus): broker menerima
         pesan kosong retained sebagai "hapus pesan yang tersimpan di topik ini".
         """

@@ -107,6 +107,15 @@ Device → platform (ack), di topik pesan + `/ack`:
 `publish` boleh dihilangkan (dipakai publish terakhir). `size` (opsional) = byte yang dibaca
 device, ditampilkan di kolom keterangan.
 
+**Urutan kunci.** `RuleDelivery.payload` adalah teks JSON yang sudah jadi (TextField), dan
+`mqtt_bridge` mengirimnya apa adanya. Sebelumnya kolom ini JSONField; kolom JSON MySQL menyusun
+ulang kunci object (urut panjang kunci lalu abjad: `mac`, `name`, ..., `devices`, `enabled`,
+`publish`, `version`, `description`, `run_on_devices`), sehingga `publish` muncul hampir di akhir
+pesan yang benar-benar dikirim. SQLite (dipakai tes) tidak melakukan ini, jadi tes memeriksa
+bahwa payload disimpan sebagai teks yang diawali `{"publish":`. Catatan untuk tahap 27:
+`EdgeFragment.payload` juga JSONField; bila urutan kunci fragmen penting di device, simpan
+sebagai teks juga.
+
 Tab Devices di kartu JSON menampilkan pesan yang dikirim pada publish terakhir (*Message sent in
 publish #n*), sehingga mudah dibandingkan dengan log device.
 
@@ -140,7 +149,7 @@ Publish baru sebelum terkirim ─► kiriman lama SUPERSEDED
 
 | Bagian | File |
 |---|---|
-| Model + migrasi | `rules/models.py` (`RulePublication`, `RuleDelivery`), `rules/migrations/0008_rule_publication.py`, `0009_publication_compact.py` |
+| Model + migrasi | `rules/models.py` (`RulePublication`, `RuleDelivery`), `rules/migrations/0008_rule_publication.py`, `0009_publication_compact.py`, `0010_delivery_payload_text.py` |
 | Logika | `rules/publish.py`, `rules/portable.py`, `rules/apps.py` |
 | Halaman | `rules/views.py`, `rules/urls.py`, `rules/templates/rules/includes/json_card.html`, `publish_card.html`, `publish_badge.html`, `publish_status.html`, `rule_detail.html`, `static/css/app.css`, `rules/admin.py` |
 | MQTT | `mqtt_bridge/topics.py`, `outbox.py`, `handlers.py`, `management/commands/mqtt_bridge.py`, `mqtt_accounts.py` |
@@ -171,7 +180,7 @@ publish dapat diuji tanpa perangkat keras.
 ## 8. Update server
 
 ```bash
-sudo /srv/iot/app/deploy/scripts/update.sh            # pull, pip, migrate (rules 0008, 0009), static, restart
+sudo /srv/iot/app/deploy/scripts/update.sh            # pull, pip, migrate (rules 0008–0010), static, restart
 sudo systemctl start iot-mqtt-accounts.service         # tulis ulang ACL sekarang (atau tunggu timer 2 menit)
 ```
 

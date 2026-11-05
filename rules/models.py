@@ -964,6 +964,10 @@ class RuleDelivery(models.Model):
 
     `payload` None = hapus pesan retained (Withdraw, atau aturan dihapus). Baris tetap ada
     walaupun aturannya dihapus (rule/publication SET_NULL), supaya penghapusan tetap terkirim.
+
+    `payload` disimpan sebagai TEKS JSON persis seperti yang dikirim, bukan JSONField: kolom
+    JSON MySQL menyusun ulang kunci object (urut panjang lalu abjad), sehingga "publish" tidak
+    lagi di depan dan pesan yang dikirim berbeda dengan yang disusun platform.
     """
 
     class Status(models.TextChoices):
@@ -982,12 +986,19 @@ class RuleDelivery(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="rule_deliveries")
     mac = models.CharField("MAC address", max_length=17, blank=True)
     topic = models.CharField("topic", max_length=255)
-    payload = models.JSONField("payload", null=True, blank=True)
+    payload = models.TextField("payload (JSON as sent)", null=True, blank=True)
     status = models.CharField("status", max_length=10, choices=Status.choices, default=Status.QUEUED)
     detail = models.CharField("detail", max_length=255, blank=True)
     queued_at = models.DateTimeField("queued", auto_now_add=True)
     sent_at = models.DateTimeField("sent", null=True, blank=True)
     acked_at = models.DateTimeField("reply", null=True, blank=True)
+
+    @property
+    def message(self):
+        """Isi pesan sebagai dict (urutan kunci tetap seperti dikirim), atau None."""
+        import json
+
+        return json.loads(self.payload) if self.payload else None
 
     class Meta:
         ordering = ["pk"]

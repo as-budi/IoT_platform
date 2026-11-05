@@ -80,20 +80,25 @@ class PublishTests(PublishData):
         self.assertEqual(publication.number, 1)
         deliveries = {d.device.name: d for d in publication.deliveries.all()}
         self.assertEqual(set(deliveries), {"Pump", "Soil probe"})
-        payload = deliveries["Pump"].payload
+        # Disimpan dan dikirim sebagai teks: "publish" tetap di depan apa pun database-nya.
+        self.assertTrue(deliveries["Pump"].payload.startswith('{"publish":{"id":1,"rev":'))
+        payload = deliveries["Pump"].message
         # Full: JSON halaman aturan (tanpa exported_at) + "publish" di depan; tanpa amplop lain.
         body = export_rule(rule)
         body.pop("exported_at")
         self.assertEqual(payload, {"publish": {"id": 1, "rev": rule_rev(rule_body(rule))}, **body})
         self.assertEqual(list(payload)[:2], ["publish", "format"])
-        self.assertEqual(deliveries["Soil probe"].payload, payload)          # sama untuk semua device
+        self.assertEqual(deliveries["Soil probe"].payload, deliveries["Pump"].payload)   # sama untuk semua device
         self.assertFalse(publication.compact)
         self.assertEqual(publication.size_bytes, message_size(payload))
+        self.assertEqual(publication.size_bytes, len(deliveries["Pump"].payload.encode()))
 
         sent = self.flush()
         self.assertEqual({t for t, _, _ in sent}, {topics.rules(PREFIX, d.access_token, rule.pk)
                                                    for d in (self.pump, self.sensor)})
         self.assertTrue(all(retain for _, _, retain in sent))
+        # Bridge menerima teks yang sudah jadi, bukan dict yang di-encode ulang.
+        self.assertTrue(all(isinstance(text, str) and text.startswith('{"publish":') for _, text, _ in sent))
         self.assertEqual(RuleDelivery.objects.filter(status="SENT").count(), 2)
         self.assertEqual(self.flush(), [])                             # tidak dikirim dua kali
 
@@ -138,7 +143,7 @@ class PublishTests(PublishData):
         self.assertNotIn("params", compact["actions"][1])                   # {} di Full
         publication = publish_rule(rule, compact=True)
         self.assertTrue(publication.compact)
-        self.assertEqual(publication.deliveries.first().payload, rule_message(full, rule_rev(full), 1, compact=True))
+        self.assertEqual(publication.deliveries.first().message, rule_message(full, rule_rev(full), 1, compact=True))
         self.assertLess(publication.size_bytes, message_size(rule_message(full, "x" * 8, 1)))
 
     def test_compact_keeps_names_when_not_unique(self):
@@ -155,7 +160,7 @@ class PublishTests(PublishData):
         self.assertEqual(RuleDelivery.objects.filter(status="SUPERSEDED").count(), 2)
         messages = self.flush()
         self.assertEqual(len(messages), 2)
-        self.assertTrue(all(payload["publish"]["id"] == second.number for _, payload, _ in messages))
+        self.assertTrue(all(json.loads(payload)["publish"]["id"] == second.number for _, payload, _ in messages))
 
         withdraw_rule(rule)
         cleared = self.flush()

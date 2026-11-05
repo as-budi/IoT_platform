@@ -135,7 +135,13 @@ class Command(BaseCommand):
             if not client.is_connected():
                 return False
             # payload None = pesan kosong (menghapus pesan retained di topik itu).
-            data = b"" if payload is None else encode(payload)
+            # str = teks JSON yang sudah jadi (JSON aturan): dikirim apa adanya, urutan kunci tetap.
+            if payload is None:
+                data = b""
+            elif isinstance(payload, str):
+                data = payload.encode("utf-8")
+            else:
+                data = encode(payload)
             info = client.publish(topic, data, qos=1, retain=retain)
             if info.rc != mqtt.MQTT_ERR_SUCCESS:
                 return False

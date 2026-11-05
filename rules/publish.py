@@ -107,11 +107,16 @@ def rule_message(body, rev, number, compact=False):
     return {"publish": {"id": number, "rev": rev}, **(compact_body(body) if compact else body)}
 
 
-def message_size(message):
-    """Ukuran pesan seperti yang dikirim mqtt_bridge (outbox.encode), dalam byte."""
+def message_text(message):
+    """Teks JSON pesan, persis seperti yang dikirim mqtt_bridge (ringkas, tanpa spasi)."""
     from mqtt_bridge.outbox import encode
 
-    return len(encode(message).encode("utf-8"))
+    return encode(message)
+
+
+def message_size(message):
+    """Ukuran pesan yang dikirim, dalam byte."""
+    return len(message_text(message).encode("utf-8"))
 
 
 def skip_reason(rule, device):
@@ -135,10 +140,11 @@ def publish_rule(rule, user=None, compact=False):
     rev = rule_rev(body)
     with transaction.atomic():
         number = _next_number(rule)
-        payload = rule_message(body, rev, number, compact)
+        # Disimpan sebagai teks yang siap dikirim (urutan kunci tidak boleh berubah, lihat RuleDelivery).
+        payload = message_text(rule_message(body, rev, number, compact))
         publication = RulePublication.objects.create(
             rule=rule, number=number, action=RulePublication.Action.PUBLISH, rev=rev, compact=compact,
-            size_bytes=message_size(payload),
+            size_bytes=len(payload.encode("utf-8")),
             created_by=user if user is not None and user.is_authenticated else None,
         )
         # Kiriman lama yang belum terkirim tidak perlu dikirim lagi.
@@ -230,7 +236,7 @@ def status_context(rule):
     waiting = any(d.status in WAITING for d in deliveries.values())
     message = None
     if last_publish is not None and last is last_publish:
-        message = next((d.payload for d in deliveries.values() if d.payload is not None), None)
+        message = next((d.message for d in deliveries.values() if d.payload is not None), None)
     # Ringkasan untuk badge di judul kartu (publish terakhir; SKIPPED tidak dihitung).
     counted = [d for d in deliveries.values() if d.status not in (Status.SKIPPED, Status.SUPERSEDED)]
     summary = {
