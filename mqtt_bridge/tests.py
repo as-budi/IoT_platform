@@ -228,6 +228,39 @@ class OutboxTests(MqttTestData):
         self.flush()
         self.assertEqual(self.broker.messages[0][1], {"fan_speed": 42.5, "lamp": 1})
 
+    def test_only_the_changed_actuator_is_sent(self):
+        fan = Variable.objects.create(device=self.device, key="fan_speed", kind=Variable.Kind.ACTUATOR)
+        self.lamp.set_desired(1, self.budi)
+        fan.set_desired(40, self.budi)
+        self.flush()
+        self.lamp.set_desired(0, self.budi)
+        self.assertEqual(self.flush(), (1, 0))
+        self.assertEqual(self.broker.messages[-1], (topics.desired(PREFIX, self.device.access_token), {"lamp": 0}, True))
+
+    def test_device_coming_online_gets_every_actuator(self):
+        fan = Variable.objects.create(device=self.device, key="fan_speed", kind=Variable.Kind.ACTUATOR)
+        self.lamp.set_desired(1, self.budi)
+        fan.set_desired(40, self.budi)
+        self.flush()
+        # Offline, lalu online lagi: setelah ONLINE_GRACE semua aktuator dikirim ulang.
+        Device.objects.filter(pk=self.device.pk).update(is_online=True, status_changed_at=timezone.now())
+        self.assertEqual(self.flush(), (0, 0))          # masih dalam ONLINE_GRACE
+        Device.objects.filter(pk=self.device.pk).update(status_changed_at=timezone.now() - timedelta(seconds=5))
+        self.assertEqual(self.flush(), (1, 0))
+        self.assertEqual(self.broker.messages[-1][1], {"fan_speed": 40, "lamp": 1})
+        self.assertEqual(self.flush(), (0, 0))
+
+    def test_mode_all_always_sends_every_actuator(self):
+        self.outbox = Outbox(PREFIX, desired_mode="all")
+        fan = Variable.objects.create(device=self.device, key="fan_speed", kind=Variable.Kind.ACTUATOR)
+        self.lamp.set_desired(1, self.budi)
+        fan.set_desired(40, self.budi)
+        self.flush()
+        self.assertEqual(self.flush(), (0, 0))
+        self.lamp.set_desired(0, self.budi)
+        self.flush()
+        self.assertEqual(self.broker.messages[-1][1], {"fan_speed": 40, "lamp": 0})
+
     def test_inactive_device_gets_nothing(self):
         self.lamp.set_desired(1, self.budi)
         self.make_command()

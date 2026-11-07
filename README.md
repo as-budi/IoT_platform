@@ -32,6 +32,7 @@ Penjelasan konsep:
 - [docs/tahap-26-tambahan-status-online.md](docs/tahap-26-tambahan-status-online.md) — device MQTT tidak lagi "online" selamanya: `online` retained diabaikan, batas diam sesi MQTT (`DEVICE_MQTT_SILENT_SECONDS`), detak firmware
 - [docs/tahap-26-tambahan-gaya-filkom.md](docs/tahap-26-tambahan-gaya-filkom.md) — gaya tampilan FILKOM (navy-oranye) di samping gaya Standard; keduanya berbagi tata letak, logo dan identitas Robotic and Embedded System Laboratory, dipilih per akun; bawaan lewat `UI_STYLE`
 - [docs/tahap-26-tambahan-zoom-diagram.md](docs/tahap-26-tambahan-zoom-diagram.md) — diagram rule flow dan state machine dapat di-zoom (tombol, Ctrl/⌘ + scroll, Fit, layar penuh) dan digeser
+- [docs/tahap-26-tambahan-hasil-uji-esp32.md](docs/tahap-26-tambahan-hasil-uji-esp32.md) — perbaikan dari uji ESP32: command expired otomatis, hapus firmware dari daftar, desired hanya aktuator yang diubah (`MQTT_DESIRED_MESSAGE`), chart tanpa smoothing + moving average + warna, Data history bisa dilipat, Excel log aktivitas
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat

@@ -61,6 +61,20 @@ def as_json(value):
 
 
 @register.filter
+def duration_ms(value):
+    """182.4 -> "182 ms", 2350 -> "2.35 s", 125000 -> "2 min 5 s" (round trip time command)."""
+    if value is None:
+        return ""
+    if value < 1000:
+        return f"{value:.0f} ms"
+    seconds = value / 1000
+    if seconds < 60:
+        return f"{seconds:.2f} s"
+    minutes, rest = divmod(round(seconds), 60)
+    return f"{minutes} min {rest} s"
+
+
+@register.filter
 def plain_number(value):
     """Angka tanpa format lokal (titik desimal, tanpa pemisah ribuan).
 

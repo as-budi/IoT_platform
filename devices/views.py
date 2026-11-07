@@ -1,3 +1,4 @@
+import re
 import secrets
 
 from django.conf import settings
@@ -97,6 +98,12 @@ def with_latest_values(variables):
         telemetry_count=count_rows(rows),
     )
 
+
+# Chart halaman variabel (tahap 26): jumlah titik rata-rata bergerak yang bisa dipilih,
+# dan warna siap pilih (tetap terbaca di mode terang dan gelap).
+SMOOTHING_OPTIONS = (3, 5, 10, 20, 50)
+CHART_PALETTE = ("#2a78d6", "#1f9d55", "#e8710a", "#d93a3a", "#7b5cd6", "#0f9fb5", "#c2428f", "#c99a06")
+HEX_COLOR_RE = re.compile(r"^#[0-9a-f]{6}$")
 
 def data_version(device, variable=None):
     """"Sidik jari" data sebuah device (atau satu variabelnya), berupa teks pendek.
@@ -355,6 +362,10 @@ def device_updates(request, pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not logged in."}, status=401)
     device = get_object_or_404(visible_devices(request.user), pk=pk)
+    # Command yang kedaluwarsa baru ditandai EXPIRED saat ada yang membaca ("lazy").
+    # Halaman yang terbuka memanggil endpoint ini; tandai di sini supaya versinya berubah
+    # dan halaman memperbarui statusnya tanpa di-refresh manual.
+    device.commands.expire_due()
     variable = None
     variable_id = request.GET.get("variable", "")
     if variable_id:
@@ -618,7 +629,36 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
             "firstPage": context["page_obj"].number == 1,
             "pageSize": HISTORY_PAGE_SIZE,
         }
+        # 6) Pilihan tampilan chart (tahap 26): rata-rata bergerak dan warna garis.
+        context["smoothing_options"] = SMOOTHING_OPTIONS
+        context["chart_palette"] = CHART_PALETTE
         return context
+
+
+class VariableColorView(OwnedVariableMixin, View):
+    """POST /devices/<device>/variables/<pk>/color/  color=#rrggbb (kosong = warna tema).
+
+    Warna garis chart disimpan di variabel, jadi sama bagi semua yang melihatnya; mengubahnya
+    perlu peran Editor. Dipanggil JavaScript (balasan JSON) atau form biasa (redirect).
+    `color=custom` memakai isian `custom` (input warna).
+    """
+
+    http_method_names = ["post"]
+    access_level = access.EDITOR
+
+    def post(self, request, device_pk, pk):
+        variable = get_object_or_404(self.get_queryset(), pk=pk)
+        color = request.POST.get("color", "").strip()
+        if color == "custom":
+            color = request.POST.get("custom", "").strip()
+        color = color.lower()
+        if color and not HEX_COLOR_RE.match(color):
+            return JsonResponse({"error": "Use a color such as #2a78d6."}, status=400)
+        variable.chart_color = color
+        variable.save(update_fields=["chart_color"])
+        if "application/json" in request.headers.get("Accept", ""):
+            return JsonResponse({"color": color})
+        return redirect(reverse("devices:variable_detail", args=[device_pk, pk]) + "#chart")
 
 
 class VariableExportView(OwnedVariableMixin, View):

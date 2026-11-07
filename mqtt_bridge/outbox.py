@@ -18,6 +18,7 @@ from datetime import timedelta
 
 from devices.control import command_payload, plain
 from devices.models import Command, CommandStatus, Variable
+from django.conf import settings
 from django.utils import timezone
 
 from . import topics
@@ -29,9 +30,12 @@ ONLINE_GRACE = timedelta(seconds=2)
 
 
 class Outbox:
-    def __init__(self, prefix):
+    def __init__(self, prefix, desired_mode=None):
         self.prefix = prefix
-        # device_id -> "sidik jari" desired state yang terakhir dikirim.
+        # "changes" (bawaan): pesan desired hanya berisi aktuator yang berubah;
+        # "all": selalu semua aktuator device (perilaku lama). Lihat flush_desired().
+        self.desired_mode = desired_mode or getattr(settings, "MQTT_DESIRED_MESSAGE", "changes")
+        # device_id -> apa yang terakhir dikirim: {"token", "session", "versions": {key: desired_version}}.
         # Disimpan di memori: bila bridge di-restart, semua dikirim ulang.
         # Itu aman karena desired state bersifat "keadaan", bukan "aksi".
         self.sent_desired = {}
@@ -53,14 +57,24 @@ class Outbox:
     # --- Pola 1: desired state ----------------------------------------------
 
     def flush_desired(self, publish):
-        """Satu pesan per device berisi desired state SEMUA aktuatornya:
+        """Pesan desired state per device:
 
-            <prefix>/<token>/desired   {"lamp": 1, "fan_speed": 40}
+            <prefix>/<token>/desired   {"lamp": 1}                    (MQTT_DESIRED_MESSAGE=changes)
+            <prefix>/<token>/desired   {"lamp": 1, "fan_speed": 40}   (semua aktuator)
+
+        Mode "changes" (bawaan): saat pengguna mengubah satu aktuator, hanya aktuator itu
+        yang dikirim; aktuator lain tidak "diperintah ulang". SEMUA aktuator dikirim bila:
+        - device ini belum pernah dikirimi sejak bridge (ulang) tersambung,
+        - access token device diganti,
+        - device baru saja online (sesi baru, setelah ONLINE_GRACE): device yang baru
+          menyala mendapat keadaan lengkap, walaupun pesan retained di broker hanya
+          berisi perubahan terakhir.
+        Firmware cukup membaca kunci yang ADA di pesan (kunci yang tidak ada = tidak berubah).
+
+        Mode "all": setiap perubahan mengirim semua aktuator (perilaku sebelum tahap 26).
 
         Pesan dikirim dengan flag RETAIN: broker menyimpan pesan terakhir di
-        topik ini, dan langsung memberikannya kepada device yang baru
-        tersambung. Device yang mati lalu hidup kembali pun tetap tahu
-        keadaan yang diminta, tanpa harus bertanya.
+        topik ini, dan langsung memberikannya kepada device yang baru tersambung.
         """
         actuators = (
             Variable.objects.filter(
@@ -75,16 +89,36 @@ class Outbox:
         for variable in actuators:
             by_device[variable.device].append(variable)
 
+        now = timezone.now()
         sent = 0
         for device, variables in by_device.items():
-            # Berubah bila ada desired_version yang naik, atau token diganti.
-            signature = (device.access_token,) + tuple((v.key, v.desired_version) for v in variables)
-            if self.sent_desired.get(device.pk) == signature:
+            versions = {v.key: v.desired_version for v in variables}
+            entry = self.sent_desired.get(device.pk)
+            # Sesi online = waktu status terakhir berubah menjadi online.
+            session = device.status_changed_at if device.is_online else None
+            if entry is None or entry["token"] != device.access_token or self.desired_mode == "all":
+                keys = set(versions)
+            elif device.is_online and session != entry["session"]:
+                # Baru online: tunggu sebentar supaya device sempat subscribe, lalu kirim semua.
+                if session and session > now - ONLINE_GRACE:
+                    continue
+                keys = set(versions)
+            else:
+                keys = {key for key, version in versions.items() if entry["versions"].get(key) != version}
+            if self.desired_mode == "all" and entry and entry["token"] == device.access_token \
+                    and entry["versions"] == versions:
+                continue   # mode "all": tidak ada yang berubah
+            if not keys:
                 continue
-            payload = {v.key: plain(v.desired_value) for v in variables}
+            payload = {v.key: plain(v.desired_value) for v in variables if v.key in keys}
             if not publish(topics.desired(self.prefix, device.access_token), payload, retain=True):
                 break  # koneksi putus; coba lagi di putaran berikutnya
-            self.sent_desired[device.pk] = signature
+            self.sent_desired[device.pk] = {
+                "token": device.access_token,
+                # Selama offline, sesi lama diingat: begitu online lagi (sesi berbeda) semua dikirim.
+                "session": session if device.is_online else (entry["session"] if entry else None),
+                "versions": versions,
+            }
             sent += 1
         return sent
 

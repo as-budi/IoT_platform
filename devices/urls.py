@@ -33,6 +33,7 @@ urlpatterns = [
     # Kontrol (hanya POST):
     #   pola 1 — ubah desired state sebuah aktuator
     path("<int:device_pk>/variables/<int:pk>/set/", views.SetDesiredView.as_view(), name="variable_set"),
+    path("<int:device_pk>/variables/<int:pk>/color/", views.VariableColorView.as_view(), name="variable_color"),
     #   pola 2 — kirim command (aksi sekali jalan) ke device
     path("<int:device_pk>/commands/add/", views.CommandCreateView.as_view(), name="command_add"),
     # Lokasi

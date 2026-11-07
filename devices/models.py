@@ -292,6 +292,8 @@ class Variable(models.Model):
     # Naik 1 setiap kali desired diubah. Nanti device memakainya untuk tahu
     # apakah ada permintaan baru sejak terakhir kali ia mengecek.
     desired_version = models.PositiveIntegerField("desired version", default=0)
+    # Warna garis chart di halaman variabel (tahap 26), "#rrggbb"; kosong = warna tema.
+    chart_color = models.CharField("chart color", max_length=7, blank=True, default="")
     created_at = models.DateTimeField("created", auto_now_add=True)
 
     class SyncStatus(models.TextChoices):
@@ -686,6 +688,15 @@ class Command(models.Model):
     @property
     def is_final(self):
         return self.status in (CommandStatus.SUCCEEDED, CommandStatus.FAILED, CommandStatus.EXPIRED)
+
+    @property
+    def rtt_ms(self):
+        """Round trip time (milidetik): dari command dikirim ke device (MQTT publish, atau diambil
+        device lewat HTTP/CoAP) sampai jawabannya diterima platform. Termasuk waktu device
+        menjalankan command. None bila belum/tidak ada jawaban (mis. Expired)."""
+        if not (self.sent_at and self.completed_at) or self.status not in (CommandStatus.SUCCEEDED, CommandStatus.FAILED):
+            return None
+        return max(0.0, (self.completed_at - self.sent_at).total_seconds() * 1000)
 
     def mark_sent(self):
         self.status = CommandStatus.SENT

@@ -246,7 +246,24 @@
     pollTimer = setInterval(checkVersion, pollMs);
   }
 
+  // Elemen ber-atribut data-check-at (detik Unix), mis. command yang masih berjalan:
+  // statusnya berubah (EXPIRED) tanpa kabar dari device, jadi periksa versi sesaat
+  // setelah waktu itu lewat. Tanpa ini perubahan baru terlihat pada pemeriksaan
+  // cadangan berikutnya (paling lama 30 detik) atau setelah di-refresh.
+  let checkAtTimer = null;
+  function scheduleCheckAt() {
+    clearTimeout(checkAtTimer);
+    const now = Date.now();
+    const times = Array.from(document.querySelectorAll("[data-check-at]"))
+      .map((el) => Number(el.dataset.checkAt) * 1000)
+      .filter((ms) => ms > now - 60 * 1000);
+    if (!times.length) return;
+    const delay = Math.min(Math.max(0, Math.min(...times) - now) + 1500, 2 ** 31 - 1);
+    checkAtTimer = setTimeout(() => { if (mode !== "off") checkVersion(); }, delay);
+  }
+
   function start() {
+    scheduleCheckAt();
     reloadButton.hidden = !reloadNeeded;
     if (wsUrl && "WebSocket" in window) connect(); else startPolling();
   }

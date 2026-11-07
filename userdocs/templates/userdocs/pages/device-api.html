@@ -52,7 +52,7 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
   <thead class="table-light"><tr><th>Direction</th><th>Topic</th><th>Payload</th></tr></thead>
   <tbody>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.telemetry }}</code></td><td>telemetry, see <a href="#payload">payload</a></td></tr>
-    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested states of all actuators, e.g. <code>{"lamp": 1, "fan_speed": 40}</code>; kept by the broker (retained), so a device receives it right after subscribing</td></tr>
+    <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.desired }}</code></td><td>requested states, e.g. <code>{"lamp": 1}</code>. Normally only the actuators that were just changed; all actuators (<code>{"lamp": 1, "fan_speed": 40}</code>) when the device comes online. Read only the keys present. Kept by the broker (retained)</td></tr>
     <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.commands }}</code></td><td><code>{"id": 12, "method": "blink", "params": {"times": 5}, "expires_at": 1762412345, "ttl": 297}</code>; not retained, sent only while the device is online (<a href="#command-expiry">expiry</a>)</td></tr>
     <tr><td class="text-nowrap">Device publishes</td><td><code>{{ mqtt.command_response }}</code></td><td><code>{"success": true, ...}</code> or <code>{"success": false, "error": "..."}</code></td></tr>
     <tr><td class="text-nowrap">Device subscribes</td><td><code>{{ mqtt.errors }}</code></td><td>why a message from the device was rejected: <code>{"error": "...", "topic": "..."}</code></td></tr>

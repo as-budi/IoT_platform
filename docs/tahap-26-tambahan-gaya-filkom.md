@@ -11,10 +11,10 @@ berbeda hanya warna.
 
 | Bagian | Isi |
 |---|---|
-| Side menu | setinggi layar; di atasnya logo IoT, **IoT Platform** / *Robotic and Embedded System Laboratory*; dapat disembunyikan |
+| Side menu | setinggi layar; di atasnya logo IoT, **IoT Platform** / *Robotic and Embedded System Laboratory* dalam kepala setinggi bilah atas (garis bawahnya sejajar); dapat disembunyikan |
 | Bilah atas | dimulai setelah side menu; paling kiri tombol tiga garis untuk menyembunyikan/menampilkan side menu (di ponsel: membuka side menu, logo dan identitas ikut tampil); di halaman publik selebar halaman dengan logo dan identitas |
 | Kanan atas (layar lebar) | pilihan Style dan Theme, profil (avatar, nama, peran), logout; di layar kecil di bagian bawah side menu |
-| Kaki halaman | *Faculty of Computer Science - Universitas Brawijaya* (kiri), *Computer Engineering Program* (kanan) |
+| Kaki halaman | *© Computer Engineering Study Program - Faculty of Computer Science - Universitas Brawijaya* (kanan) |
 | Huruf | Inter |
 | Bentuk | membulat: kartu dan tabel 12 px, tombol dan input 8 px, pill bulat penuh |
 | Tabel di kartu | sel paling kiri/kanan diberi jarak 1,25 rem agar teks tidak terpotong |

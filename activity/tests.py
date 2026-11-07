@@ -43,6 +43,29 @@ class ActivityTests(RuleTestData):
         self.assertEqual((event.owner, event.actor, event.actor_name), (self.budi, self.budi, "budi"))
         self.assertEqual(event.device.name, "Budi sensor")
 
+    def test_excel_download_uses_the_page_filters(self):
+        import io
+        import zipfile
+
+        save_telemetry(self.node, [("soil_moisture", 25.0, timezone.now())])        # siti
+        save_telemetry(self.foreign, [("temperature", 20.0, timezone.now())])       # budi
+        self.assertContains(self.page(self.siti, q="online"), f'href="{reverse("activity:export")}?q=online"')
+        self.client.force_login(self.siti)
+        response = self.client.get(reverse("activity:export"), {"q": "online"})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("activity-log-", response["Content-Disposition"])
+        book = zipfile.ZipFile(io.BytesIO(b"".join(response.streaming_content)))
+        sheet = book.read("xl/worksheets/sheet1.xml").decode()
+        self.assertIn("Greenhouse Node is online", sheet)
+        self.assertNotIn("Budi&apos;s node", sheet)
+        self.assertNotIn("Budi's node", sheet)
+        self.assertNotIn(">Owner<", sheet)                   # kolom Owner hanya untuk Admin
+        self.client.force_login(self.admin)
+        sheet = zipfile.ZipFile(io.BytesIO(b"".join(self.client.get(reverse("activity:export")).streaming_content)))
+        text = sheet.read("xl/worksheets/sheet1.xml").decode()
+        self.assertIn(">Owner<", text)
+        self.assertIn("is online", text)
+
     def test_each_user_sees_only_their_own_events_admin_sees_all(self):
         save_telemetry(self.node, [("soil_moisture", 25.0, timezone.now())])        # siti
         save_telemetry(self.foreign, [("temperature", 20.0, timezone.now())])       # budi

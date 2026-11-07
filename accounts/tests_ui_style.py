@@ -20,7 +20,7 @@ class UiStyleTests(TestCase):
         self.assertNotContains(page, "css/filkom.css")
         # Tata letak, logo, dan identitas sama di kedua gaya; yang berbeda hanya warna (filkom.css).
         self.assertContains(page, "Robotic and Embedded System Laboratory")
-        self.assertContains(page, "Computer Engineering Program")
+        self.assertContains(page, "Computer Engineering Study Program")
         self.assertContains(page, 'aria-label="IoT Platform logo"')
         self.assertContains(page, 'class="ui-topbar-end d-none d-lg-flex"')
         self.assertNotContains(page, "fonts.googleapis.com/css2?family=Archivo")
@@ -37,8 +37,7 @@ class UiStyleTests(TestCase):
         self.assertContains(page, 'data-ui="filkom"')
         self.assertContains(page, "css/filkom.css")
         self.assertContains(page, "Robotic and Embedded System Laboratory")
-        self.assertContains(page, "Faculty of Computer Science - Universitas Brawijaya")
-        self.assertContains(page, "Computer Engineering Program")
+        self.assertContains(page, "Computer Engineering Study Program - Faculty of Computer Science - Universitas Brawijaya")
         self.assertContains(page, 'aria-label="IoT Platform logo"')
         self.assertContains(page, "data-sidebar-toggle")                    # side menu tetap bisa disembunyikan
         self.assertContains(page, 'class="ui-topbar-end d-none d-lg-flex"')  # gaya, tema, profil di kanan atas

@@ -60,7 +60,7 @@ lengkap per device ditampilkan di halaman device, bagian **Connect a device**).
 | Topik | Arah | QoS / retain | Isi |
 |---|---|---|---|
 | `telemetry` | device → platform | 1 | sama dengan HTTP API: `{"temperature": 25.1}`, `{"ts": ..., "values": {...}}`, atau daftar |
-| `desired` | platform → device | 1, **retain** | desired state semua aktuator: `{"lamp": 1, "fan_speed": 40}` |
+| `desired` | platform → device | 1, **retain** | desired state: hanya aktuator yang berubah `{"lamp": 1}`; semua aktuator saat device baru online (lihat `MQTT_DESIRED_MESSAGE`, tahap 26) |
 | `commands/<id>` | platform → device | 1 | `{"id": 12, "method": "blink", "params": {"times": 5}}` |
 | `commands/<id>/response` | device → platform | 1 | `{"success": true, ...}` atau `{"success": false, "error": "..."}` |
 | `errors` | platform → device | 0 | alasan sebuah pesan ditolak: `{"error": "...", "topic": "..."}` |

@@ -12,7 +12,13 @@
       Telemetry readings are not listed here; see each variable's history.
     </p>
   </div>
-  <a class="btn btn-outline-secondary btn-sm" href="{{ request.get_full_path }}">Refresh</a>
+  <div class="d-flex gap-2">
+    {# Unduh event yang cocok dengan filter saat ini (semua halaman) sebagai Excel (activity/export.py). #}
+    <a class="btn btn-outline-secondary btn-sm" href="{% url 'activity:export' %}{% if query %}?{{ query }}{% endif %}" title="Download the events that match the filters (all pages) as an Excel file">
+      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" class="me-1" style="vertical-align:-2px"><path fill="currentColor" d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 1 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1ZM2.75 11a.75.75 0 0 1 .75.75v1.5h9v-1.5a.75.75 0 0 1 1.5 0v2.25a.75.75 0 0 1-.75.75H2.75a.75.75 0 0 1-.75-.75v-2.25a.75.75 0 0 1 .75-.75Z"/></svg>Download Excel
+    </a>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ request.get_full_path }}">Refresh</a>
+  </div>
 </div>
 
 {# Filter (GET): bisa dibagikan sebagai tautan, mis. /activity/?device=3&level=WARNING #}

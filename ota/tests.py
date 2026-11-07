@@ -398,7 +398,11 @@ class OtaViewTests(OtaData):
         })
         package = FirmwarePackage.objects.get(version="1.2.0")
         self.assertRedirects(response, reverse("ota:package_detail", args=[package.pk]))
-        self.assertContains(self.client.get(reverse("ota:package_list")), "1.2.0")
+        listing = self.client.get(reverse("ota:package_list"))
+        self.assertContains(listing, "1.2.0")
+        # Tombol hapus langsung di daftar; firmware yang pernah dipakai: tombol nonaktif.
+        self.assertContains(listing, reverse("ota:package_delete", args=[package.pk]))
+        self.assertNotContains(listing, "Used by updates")
         path = package.file.path
         self.client.post(reverse("ota:package_delete", args=[package.pk]))
         self.assertFalse(FirmwarePackage.objects.filter(pk=package.pk).exists())
@@ -408,6 +412,8 @@ class OtaViewTests(OtaData):
         self.start()
         response = self.client.post(reverse("ota:package_delete", args=[self.package.pk]), follow=True)
         self.assertContains(response, "kept for their history")
+        self.assertContains(self.client.get(reverse("ota:package_list")), "Used by updates; kept for their history")
+        self.assertNotContains(self.client.get(reverse("ota:package_delete", args=[self.package.pk])), "Yes, delete")
 
     def test_other_users(self):
         self.client.force_login(self.budi)

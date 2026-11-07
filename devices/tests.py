@@ -443,6 +443,21 @@ class CommandTests(TestCase):
         self.client.force_login(self.budi)
         self.url = reverse("devices:command_add", args=[self.device.pk])
 
+    def test_round_trip_time_is_shown_with_the_response(self):
+        from devices.templatetags.device_tags import duration_ms
+
+        command = Command.objects.create(device=self.device, method="ping", params={},
+                                         expires_at=timezone.now() + timedelta(minutes=5))
+        self.assertIsNone(command.rtt_ms)
+        command.mark_sent()
+        Command.objects.filter(pk=command.pk).update(sent_at=timezone.now() - timedelta(milliseconds=182))
+        command.refresh_from_db()
+        command.complete(True, {"success": True})
+        self.assertAlmostEqual(command.rtt_ms, 182, delta=50)
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(page, "RTT ")
+        self.assertEqual((duration_ms(182.4), duration_ms(2350), duration_ms(125000)), ("182 ms", "2.35 s", "2 min 5 s"))
+
     def test_create_command(self):
         response = self.client.post(
             self.url, {"method": "open_valve", "params": '{"seconds": 5}', "ttl": "300"}
@@ -839,6 +854,17 @@ class AutoRefreshTests(TestCase):
         self.assertEqual(self.client.get(self.url, {"variable": stranger.pk}).status_code, 404)
         self.assertEqual(self.client.get(self.url, {"variable": "abc"}).status_code, 400)
 
+    def test_expired_command_changes_version_without_a_page_load(self):
+        command = Command.objects.create(device=self.device, method="reboot", params={},
+                                         expires_at=timezone.now() + timedelta(seconds=30))
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(page, f'data-check-at="{int(command.expires_at.timestamp())}"')
+        before = self.version()
+        Command.objects.filter(pk=command.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
+        self.assertNotEqual(self.version(), before)     # endpoint menandai EXPIRED
+        command.refresh_from_db()
+        self.assertEqual(command.status, CommandStatus.EXPIRED)
+
     def test_version_is_stable_without_new_data(self):
         self.assertEqual(self.version(), self.version())
 
@@ -968,3 +994,51 @@ class ExportTests(TestCase):
         self.assertContains(page, self.url(self.temp, "csv", "?period=1w"))
         self.assertContains(page, self.url(self.temp, "xlsx", "?range=all"))
         self.assertContains(page, "All data (3 rows)")
+
+
+class VariableChartOptionsTests(TestCase):
+    """Halaman variabel (tahap 26): kartu Data history, penghalusan, dan warna chart."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from sharing.models import DeviceShare, Role
+
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.siti = User.objects.create_user("siti", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+        cls.temperature = Variable.objects.create(device=cls.device, key="temperature")
+        Telemetry.objects.create(variable=cls.temperature, value=21.5, ts=timezone.now())
+        DeviceShare.objects.create(device=cls.device, user=cls.siti, role=Role.VIEWER)
+
+    def url(self, name):
+        return reverse(f"devices:{name}", args=[self.device.pk, self.temperature.pk])
+
+    def test_history_card_is_closed_until_paging(self):
+        self.client.force_login(self.budi)
+        page = self.client.get(self.url("variable_detail"))
+        self.assertContains(page, '<details class="card shadow-sm history-card" id="history">')
+        self.assertContains(page, 'id="chart-smoothing"')
+        self.assertContains(page, self.url("variable_color"))
+        self.assertContains(self.client.get(self.url("variable_detail"), {"page": 1}), 'id="history" open')
+
+    def test_color_is_saved_for_everyone(self):
+        self.client.force_login(self.budi)
+        response = self.client.post(self.url("variable_color"), {"color": "#1F9D55"}, HTTP_ACCEPT="application/json")
+        self.assertEqual(response.json(), {"color": "#1f9d55"})
+        response = self.client.post(self.url("variable_color"), {"color": "custom", "custom": "#123abc"})
+        self.assertRedirects(response, self.url("variable_detail") + "#chart", fetch_redirect_response=False)
+        self.temperature.refresh_from_db()
+        self.assertEqual(self.temperature.chart_color, "#123abc")
+        self.assertEqual(self.client.post(self.url("variable_color"), {"color": "red"}).status_code, 400)
+        self.client.post(self.url("variable_color"), {"color": ""})
+        self.temperature.refresh_from_db()
+        self.assertEqual(self.temperature.chart_color, "")
+
+    def test_viewer_sees_the_color_but_cannot_change_it(self):
+        Variable.objects.filter(pk=self.temperature.pk).update(chart_color="#d93a3a")
+        self.client.force_login(self.siti)
+        page = self.client.get(self.url("variable_detail"))
+        self.assertContains(page, 'data-color="#d93a3a"')
+        self.assertNotContains(page, self.url("variable_color"))
+        self.assertEqual(self.client.post(self.url("variable_color"), {"color": "#123abc"}).status_code, 403)
+
