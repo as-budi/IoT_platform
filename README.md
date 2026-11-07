@@ -29,6 +29,7 @@ Penjelasan konsep:
 - [docs/tahap-26-tambahan-variabel-kategori.md](docs/tahap-26-tambahan-variabel-kategori.md) — value type Categories: label kategori disimpan sebagai 0, 1, 2, ... di telemetri, kontrol, aturan, chart, dan unduhan
 - [docs/tahap-26-tambahan-publish-rule.md](docs/tahap-26-tambahan-publish-rule.md) — publish JSON aturan utuh (dengan MAC device) ke semua device aturan lewat MQTT `rules/<id>` dan tanda terima `rules/<id>/ack`
 - [docs/tahap-26-tambahan-command-expiry.md](docs/tahap-26-tambahan-command-expiry.md) — command membawa `expires_at`/`ttl`, MQTT 5 message expiry, command MQTT hanya dikirim saat device online, firmware memeriksa jam (NTP)
+- [docs/tahap-26-tambahan-status-online.md](docs/tahap-26-tambahan-status-online.md) — device MQTT tidak lagi "online" selamanya: `online` retained diabaikan, batas diam sesi MQTT (`DEVICE_MQTT_SILENT_SECONDS`), detak firmware
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat

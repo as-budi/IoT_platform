@@ -198,14 +198,50 @@ class PresenceTests(Data):
         self.assertTrue(handle_message(topic, b"online", prefix).ok)
         self.node.refresh_from_db()
         self.assertTrue(self.node.is_online and self.node.mqtt_connected)
-        # Sesi MQTT terbuka: diam lama pun tetap online (broker yang mendeteksi putus).
-        self.assertEqual(presence.check_timeouts(timezone.now() + timedelta(hours=2)), 0)
+        # Sesi MQTT terbuka: diam melewati DEVICE_OFFLINE_SECONDS tetap online (broker yang mendeteksi putus).
+        self.assertEqual(presence.check_timeouts(timezone.now() + timedelta(minutes=10)), 0)
         result = handle_message(topic, b"offline", prefix)          # Last Will dari broker
         self.assertEqual(result.message, "status: offline")
         self.node.refresh_from_db()
         self.assertFalse(self.node.is_online or self.node.mqtt_connected)
         self.assertEqual(DeviceStatusEvent.objects.first().reason, "MQTT session ended (disconnect or Last Will)")
         self.assertFalse(handle_message(topic, b"maybe", prefix).ok)
+
+    @override_settings(DEVICE_MQTT_SILENT_SECONDS=900)
+    def test_silent_mqtt_session_goes_offline(self):
+        """Last Will tidak pernah datang: tanpa pesan MQTT apa pun selama 900 s -> offline."""
+        prefix = "demo"
+        topic = topics.status(prefix, self.node.access_token)
+        handle_message(topic, b"online", prefix)
+        now = timezone.now()
+        self.assertEqual(presence.check_timeouts(now + timedelta(seconds=800)), 0)
+        # Pesan apa pun (mis. detak "online" dari firmware) memperpanjang sesi.
+        with mock.patch("django.utils.timezone.now", return_value=now + timedelta(seconds=800)):
+            handle_message(topic, b"online", prefix)
+        self.assertEqual(presence.check_timeouts(now + timedelta(seconds=1500)), 0)
+        self.assertEqual(presence.check_timeouts(now + timedelta(seconds=1701)), 1)
+        self.node.refresh_from_db()
+        self.assertFalse(self.node.is_online or self.node.mqtt_connected)
+        self.assertIn("No MQTT message for 900 s", DeviceStatusEvent.objects.first().reason)
+
+    @override_settings(DEVICE_MQTT_SILENT_SECONDS=0)
+    def test_silent_session_limit_can_be_turned_off(self):
+        handle_message(topics.status("demo", self.node.access_token), b"online", "demo")
+        self.assertEqual(presence.check_timeouts(timezone.now() + timedelta(days=2)), 0)
+
+    def test_retained_online_is_not_proof_of_a_session(self):
+        """Saat bridge (ulang) subscribe, "online" lama dari broker tidak membuat device online."""
+        topic = topics.status("demo", self.node.access_token)
+        result = handle_message(topic, b"online", "demo", retained=True)
+        self.assertIn("ignored", result.message)
+        self.node.refresh_from_db()
+        self.assertFalse(self.node.is_online or self.node.mqtt_connected)
+        self.assertIsNone(self.node.last_heard_at)
+        # "offline" retained (Last Will yang terlewat saat bridge mati) tetap dipakai.
+        handle_message(topic, b"online", "demo")
+        handle_message(topic, b"offline", "demo", retained=True)
+        self.node.refresh_from_db()
+        self.assertFalse(self.node.is_online)
 
     def test_parse_status(self):
         for payload, expected in [(b"online", True), (b" OFFLINE\n", False), (b'"online"', True),

@@ -88,6 +88,11 @@ paste ISRG Root X1 here
 
 const int LED_PIN = 2;
 const unsigned long SEND_INTERVAL_MS = 10000;
+// "online" is repeated on the status topic as a heartbeat. The platform marks a device whose MQTT
+// session is open as offline after 15 minutes without any message (DEVICE_MQTT_SILENT_SECONDS),
+// in case the broker's Last Will never arrives.
+const unsigned long STATUS_EVERY_MS = 5UL * 60 * 1000;
+unsigned long lastStatus = 0;
 
 #if USE_TLS
 WiFiClientSecure network;
@@ -381,6 +386,7 @@ void connectMqtt() {
       // "online" AFTER subscribing: the platform sends waiting commands as soon as the device
       // is online, so the subscription to commands must already be in place.
       mqtt.publish(topicStatus.c_str(), "online", true);   // retained: the session has started
+      lastStatus = millis();
       // On every connection (including the restart after an update): report the version.
       reportFirmwareVersion();
     } else {
@@ -430,5 +436,9 @@ void loop() {
   if (millis() - lastSend >= SEND_INTERVAL_MS) {
     lastSend = millis();
     sendTelemetry();
+  }
+  if (millis() - lastStatus >= STATUS_EVERY_MS) {
+    lastStatus = millis();
+    mqtt.publish(topicStatus.c_str(), "online", true);   // heartbeat
   }
 }

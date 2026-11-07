@@ -78,7 +78,7 @@
   <div class="card shadow-sm dash-device mb-3" data-live-device="{{ device.pk }}">
     <div class="card-header">
       <div>
-        <a class="fw-semibold text-reset" href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
+        {% include "devices/includes/device_name.html" %}
         {% if device.device_type %}<span class="text-muted small ms-1">{{ device.device_type }}</span>{% endif %}
         {% if not device.is_active %}<span class="badge text-bg-secondary ms-1">Inactive</span>{% endif %}
       </div>

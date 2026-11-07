@@ -119,7 +119,7 @@ class Command(BaseCommand):
             # sehingga query berikutnya membuka koneksi baru.
             close_old_connections()
             try:
-                result = handle_message(message.topic, message.payload, prefix)
+                result = handle_message(message.topic, message.payload, prefix, retained=bool(message.retain))
             except Exception as exc:  # satu pesan yang aneh tidak boleh mematikan bridge
                 self.log(f"Error while handling {message.topic}: {exc!r}", self.style.ERROR)
                 return

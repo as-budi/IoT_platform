@@ -46,8 +46,12 @@ def decode_json(payload):
         raise PayloadError("Payload must be valid JSON.")
 
 
-def handle_message(topic, payload, prefix):
-    """Proses satu pesan masuk. Mengembalikan Result, atau None bila topiknya bukan milik kita."""
+def handle_message(topic, payload, prefix, retained=False):
+    """Proses satu pesan masuk. Mengembalikan Result, atau None bila topiknya bukan milik kita.
+
+    `retained` = flag RETAIN pesan dari broker: True hanya untuk salinan tersimpan yang dikirim
+    karena bridge baru (ulang) subscribe, bukan untuk pesan yang baru saja dikirim device.
+    """
     parsed = topics.parse(topic, prefix)
     if parsed is None:
         return None
@@ -61,9 +65,14 @@ def handle_message(topic, payload, prefix):
     if not device.is_active:
         return Result(False, "Device is inactive.", device)
 
+    if not retained:
+        from devices import presence
+
+        presence.heard(device)       # pesan baru dari device: sesi MQTT-nya masih hidup
+
     if kind == topics.STATUS:
         # Bukan JSON: device (atau broker, lewat Last Will) mengirim teks "online"/"offline".
-        return handle_status(device, payload)
+        return handle_status(device, payload, retained)
     try:
         data = decode_json(payload)
         if kind == topics.TELEMETRY:
@@ -96,15 +105,17 @@ def handle_command_response(device, command_id, data):
     return Result(True, f"command {command_id} ({command.method}): {command.status}", device)
 
 
-def handle_status(device, payload):
+def handle_status(device, payload, retained=False):
     """Sesi MQTT device dimulai / berakhir (tahap 16, devices/presence.py)."""
     from devices import presence
 
     online = presence.parse_status(payload)
     if online is None:
         return Result(False, 'Status must be "online" or "offline".', device)
-    changed = presence.mqtt_status(device, online)
+    changed = presence.mqtt_status(device, online, retained=retained)
     state = "online" if online else "offline"
+    if changed is None:
+        return Result(True, "status: online (old retained message, ignored)", device)
     return Result(True, f"status: {state}" + ("" if changed else " (unchanged)"), device)
 
 

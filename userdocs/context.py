@@ -60,6 +60,8 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
         },
         "limits": {
             "offline_seconds": settings.DEVICE_OFFLINE_SECONDS,
+            "mqtt_silent_seconds": settings.DEVICE_MQTT_SILENT_SECONDS,
+            "mqtt_silent_minutes": settings.DEVICE_MQTT_SILENT_SECONDS // 60,
             "firmware_max_mb": round(settings.OTA_MAX_FIRMWARE_SIZE / (1024 * 1024), 1),
             "email_link_hours": settings.PASSWORD_RESET_TIMEOUT // 3600,
             "schedule_grace_minutes": max(1, settings.RULE_SCHEDULE_GRACE_SECONDS // 60),

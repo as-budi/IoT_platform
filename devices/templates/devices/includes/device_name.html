@@ -1,0 +1,2 @@
+{% comment %}Nama device sebagai "chip" bertautan (ikon + nama). Butuh `device`. Redup bila nonaktif.{% endcomment %}
+<a class="entity-chip entity-device{% if not device.is_active %} is-muted{% endif %}" href="{% url 'devices:detail' device.pk %}"{% if not device.is_active %} title="Inactive"{% endif %}><span class="entity-icon">{% include "includes/icon.html" with name="device" %}</span><span class="entity-text">{{ device.name }}</span></a>

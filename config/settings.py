@@ -414,6 +414,11 @@ MICRO_RULES = {"VISIBILITY": _micro_rules}
 # Worker `manage.py housekeeping` (systemd: iot-housekeeping, runall: "housekeeping").
 # Device tanpa data selama ini (detik) dianggap offline, kecuali punya sesi MQTT.
 DEVICE_OFFLINE_SECONDS = int(os.getenv("DEVICE_OFFLINE_SECONDS", "300"))
+# Device dengan sesi MQTT terbuka ("online" di topik status) yang tidak mengirim pesan apa pun
+# selama ini dianggap offline, walaupun Last Will tidak pernah datang (device tanpa Last Will,
+# disconnect yang rapi tanpa "offline", broker di-restart). Template firmware mengirim "online"
+# setiap 5 menit sebagai detak. 0 = tidak dipakai (hanya Last Will, perilaku lama).
+DEVICE_MQTT_SILENT_SECONDS = int(os.getenv("DEVICE_MQTT_SILENT_SECONDS", "900"))
 # Ringkasan per menit dihitung ulang mundur sejauh ini (detik), supaya data yang
 # datang terlambat (device menyimpan data saat offline) ikut terhitung.
 TELEMETRY_ROLLUP_LATE_SECONDS = int(os.getenv("TELEMETRY_ROLLUP_LATE_SECONDS", "600"))

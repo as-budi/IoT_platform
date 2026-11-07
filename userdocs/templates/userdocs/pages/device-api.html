@@ -68,6 +68,10 @@ with the same key, e.g. <code>{"lamp": 1}</code>, so the platform can show <em>I
 <p>Connect with a Last Will message <code>offline</code> (retained, QoS 1) on the status topic, then publish <code>online</code> (retained) there.
 The device then counts as online while the connection is open, and as offline as soon as the broker notices the connection is gone,
 instead of after {{ limits.offline_seconds }} seconds without data.</p>
+{% if limits.mqtt_silent_seconds %}<p>Repeat <code>online</code> every few minutes as a heartbeat (the firmware templates do this every 5 minutes):
+a device with an open session that sends no MQTT message at all for {{ limits.mqtt_silent_minutes }} minutes is marked offline,
+because a connection can end without a Last Will (no Last Will set, a disconnect without publishing <code>offline</code>, or a broker restart).
+An <code>online</code> message that the broker kept from an earlier session does not count.</p>{% endif %}
 <h3 id="command-expiry">Command expiry</h3>
 <p>Every command, over MQTT and CoAP, says when it expires:</p>
 <ul>

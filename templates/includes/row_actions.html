@@ -1,0 +1,9 @@
+{% comment %}
+  Tombol Edit / Delete di akhir baris tabel. Delete membuka halaman konfirmasi (tidak langsung menghapus).
+  Pemakaian: {% include "includes/row_actions.html" with edit_url=... delete_url=... label=nama %}
+  edit_url / delete_url kosong = tombolnya tidak ditampilkan (mis. tidak punya izin).
+{% endcomment %}
+<div class="row-actions">
+  {% if edit_url %}<a class="btn btn-sm row-action" href="{{ edit_url }}" title="Edit" aria-label="Edit {{ label }}">{% include "includes/icon.html" with name="edit" %}</a>{% endif %}
+  {% if delete_url %}<a class="btn btn-sm row-action row-action-danger" href="{{ delete_url }}" title="Delete" aria-label="Delete {{ label }}">{% include "includes/icon.html" with name="delete" %}</a>{% endif %}
+</div>

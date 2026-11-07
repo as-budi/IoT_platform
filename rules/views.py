@@ -264,6 +264,7 @@ class RuleListView(LoginRequiredMixin, ListView):
         )
         for rule in context["rules"]:
             rule.summary = rule.engine.describe(rule) if rule.engine.implemented else None
+            rule.editable = rule.model in FORM_VIEWS        # sama dengan syarat edit_rule()
         context["engines"] = ENGINES
         context.update(live_context(
             DASHBOARD_WS_PATH, reverse("rules:updates"), rules_version(self.request.user)

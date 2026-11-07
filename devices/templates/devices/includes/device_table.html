@@ -1,7 +1,8 @@
 {% load humanize %}
 {% comment %}
   Tabel device, dipakai di daftar device dan di halaman lokasi.
-  Butuh variabel `devices` dari with_device_summary() di views.py.
+  Butuh variabel `devices` dari with_device_summary() di views.py, dan izin per device
+  (device.can_edit / device.can_delete) dari mark_device_actions() untuk tombol Edit/Delete.
   Opsional: empty_message, mis. {% include ... with empty_message="..." %}.
 {% endcomment %}
 <div class="card shadow-sm">
@@ -16,6 +17,7 @@
           <th>Status</th>
           <th class="text-end">Rows</th>
           <th>Last data</th>
+          <th class="text-end"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
@@ -23,15 +25,15 @@
         {% for device in devices %}
         <tr>
           <td>
-            <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
+            {% include "devices/includes/device_name.html" %}
             {# Tahap 19: device orang lain yang dibagikan kepada saya. #}
-            {% if device.shared_role %}<div class="small text-muted">Shared by {{ device.owner.username }} · {{ device.shared_role }}</div>{% endif %}
+            {% if device.shared_role %}<div class="small text-muted mt-1">Shared by {{ device.owner.username }} · {{ device.shared_role }}</div>{% endif %}
           </td>
           <td>
             {% if device.location %}
             {% if user.is_admin or device.location.owner_id == user.pk %}
-            <a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>
-            {% else %}{{ device.location.name }}{% endif %}
+            {% include "devices/includes/location_name.html" with location=device.location link=True %}
+            {% else %}{% include "devices/includes/location_name.html" with location=device.location link=False %}{% endif %}
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td>
@@ -66,10 +68,15 @@
             <span class="text-muted">No data yet</span>
             {% endif %}
           </td>
+          <td class="text-end text-nowrap">
+            {% if device.can_edit %}{% url 'devices:edit' device.pk as edit_url %}{% else %}{% firstof "" as edit_url %}{% endif %}
+            {% if device.can_delete %}{% url 'devices:delete' device.pk as delete_url %}{% else %}{% firstof "" as delete_url %}{% endif %}
+            {% include "includes/row_actions.html" with edit_url=edit_url delete_url=delete_url label=device.name %}
+          </td>
         </tr>
         {% empty %}
         <tr>
-          <td colspan="7" class="text-center text-muted py-4">{{ empty_message|default:"No devices yet." }}</td>
+          <td colspan="9" class="text-center text-muted py-4">{{ empty_message|default:"No devices yet." }}</td>
         </tr>
         {% endfor %}
       </tbody>

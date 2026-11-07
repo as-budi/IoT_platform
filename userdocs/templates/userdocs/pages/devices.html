@@ -35,7 +35,9 @@ The device puts it in every request (HTTP and CoAP) or uses it as its MQTT usern
 <h2 id="status">Online and offline</h2>
 <p>A device is <strong>online</strong> while it sends data, and becomes <strong>offline</strong> after {{ limits.offline_seconds }} seconds without data.
 An MQTT device that announces its session (see <a href="{% url 'userdocs:page' 'device-api' %}#mqtt-status">status topic</a>) stays online while
-the connection is open, even without data, and goes offline at once when the connection is lost.
+the connection is open, even without data, and goes offline at once when the connection is lost.{% if limits.mqtt_silent_seconds %}
+If the platform hears nothing at all from such a device for {{ limits.mqtt_silent_minutes }} minutes, it is marked offline anyway, because the
+connection may have ended without the broker sending the Last Will.{% endif %}
 Every change is listed under <em>Connection history</em> with its reason and also appears in the activity log.</p>
 
 <h2 id="locations">Locations</h2>

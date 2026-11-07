@@ -13,8 +13,9 @@
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
   <div>
-    <h1 class="h3 mb-1">
-      {{ device.name }}
+    <h1 class="h3 mb-1 device-title">
+      <span class="entity-icon entity-icon-lg entity-device{% if not device.is_active %} is-muted{% endif %}">{% include "includes/icon.html" with name="device" %}</span>
+      <span class="align-middle">{{ device.name }}</span>
       {% if device.is_active %}
       <span class="badge text-bg-success fs-6 align-middle">Active</span>
       {% else %}
@@ -23,7 +24,7 @@
       <span class="fs-6 align-middle">{% include "devices/includes/online_pill.html" %}</span>
     </h1>
     <div class="text-muted">
-      {{ device.device_type|default:"No type" }}{% if device.location %} · {% if location_visible %}<a href="{% url 'devices:location_detail' device.location.pk %}">{{ device.location.name }}</a>{% else %}{{ device.location.name }}{% endif %}{% endif %} · owner: {{ device.owner.username }}
+      {{ device.device_type|default:"No type" }}{% if device.location %} · {% include "devices/includes/location_name.html" with location=device.location link=location_visible %}{% endif %} · owner: {{ device.owner.username }}
       {% if not is_owner %}<span class="badge text-bg-info-subtle text-info-emphasis border border-info-subtle ms-1" title="Shared with you">Shared with you · {{ my_role_label }}</span>{% endif %}
     </div>
     {# Jalur & waktu data terakhir (Device.last_protocol / last_seen_at). #}
@@ -413,6 +414,7 @@ client.on("connect", () => {
   </div>
   <div class="card-footer small text-muted">
     Offline after {{ offline_after }} s without data, or at once when an MQTT device's session ends (Last Will).
+    {% if mqtt_silent_after %}While an MQTT session is open, after {{ mqtt_silent_after }} s without any MQTT message from the device.{% endif %}
     The status is checked every few seconds.
   </div>
 </div>

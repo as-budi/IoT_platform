@@ -47,12 +47,13 @@
           {% if user.is_admin %}<th>Owner</th>{% endif %}
           <th>State</th>
           <th>Last activated</th>
+          <th class="text-end"><span class="visually-hidden">Actions</span></th>
         </tr>
       </thead>
       <tbody>
         {% for rule in rules %}
         <tr>
-          <td><a href="{% url 'rules:detail' rule.pk %}">{{ rule.name }}</a>{% if rule.edge_enabled and edge_rules_visible %} <span class="badge text-bg-light border fw-normal" title="Also prepared to run on the devices">devices</span>{% endif %}</td>
+          <td>{% include "rules/includes/rule_name.html" %}{% if rule.edge_enabled and edge_rules_visible %} <span class="badge text-bg-light border fw-normal" title="Also prepared to run on the devices">devices</span>{% endif %}</td>
           <td><span class="badge model-badge">{{ rule.model }}</span></td>
           <td class="small">
             {% if rule.summary %}
@@ -63,6 +64,12 @@
           {% if user.is_admin %}<td>{{ rule.owner.username }}</td>{% endif %}
           <td>{% include "rules/includes/state_badge.html" with status=rule.state_status enabled=rule.is_enabled model=rule.model %}</td>
           <td class="small text-nowrap">{% if rule.state.last_activated_at %}{{ rule.state.last_activated_at|timesince }} ago{% else %}<span class="text-muted">never</span>{% endif %}</td>
+          <td class="text-end text-nowrap">
+            {# Aturan hanya terlihat oleh pemilik dan Admin, jadi keduanya selalu boleh mengubah/menghapus. #}
+            {% if rule.editable %}{% url 'rules:edit' rule.pk as edit_url %}{% else %}{% firstof "" as edit_url %}{% endif %}
+            {% url 'rules:delete' rule.pk as delete_url %}
+            {% include "includes/row_actions.html" with edit_url=edit_url delete_url=delete_url label=rule.name %}
+          </td>
         </tr>
         {% endfor %}
       </tbody>

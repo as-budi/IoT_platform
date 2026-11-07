@@ -3,7 +3,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
-from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Subquery, Sum
+from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
@@ -176,6 +176,34 @@ def with_device_summary(devices):
     )
 
 
+def mark_device_actions(request, devices):
+    """Izin tombol Edit/Delete per baris tabel device (device_table.html).
+
+    Edit butuh peran Editor, Delete hanya pemilik (dan Admin), sama dengan
+    DeviceUpdateView dan DeviceDeleteView.
+    """
+    user = request.user
+    roles = {} if user.is_admin else access.remember(request, devices)
+    for device in devices:
+        own = user.is_admin or device.owner_id == user.pk
+        device.can_edit = own or access.has(roles.get(device.pk), access.EDITOR)
+        device.can_delete = own
+    return devices
+
+
+def search_devices(devices, text, user):
+    """Device yang nama, keterangan, lokasi, variabel (key/label), atau MAC-nya memuat `text`."""
+    match = (
+        Q(name__icontains=text) | Q(description__icontains=text) | Q(location__name__icontains=text)
+        | Q(variables__key__icontains=text) | Q(variables__label__icontains=text)
+        | Q(mac_address__icontains=text)
+    )
+    if user.is_admin:
+        match |= Q(owner__username__icontains=text)
+    # pk__in: join ke variabel tidak menggandakan baris (dan anotasi ringkasan tetap benar).
+    return devices.filter(pk__in=devices.model.objects.filter(match).values("pk"))
+
+
 class DeviceListView(OwnedDeviceMixin, ListView):
     template_name = "devices/device_list.html"
     context_object_name = "devices"
@@ -197,6 +225,10 @@ class DeviceListView(OwnedDeviceMixin, ListView):
             devices = devices.filter(owner=self.request.user)
         elif scope == "shared":
             devices = devices.exclude(owner=self.request.user)
+        # Pencarian ?q=...: nama, keterangan, lokasi, variabel, MAC (Admin: juga pemilik).
+        self.search = self.request.GET.get("q", "").strip()[:100]
+        if self.search:
+            devices = search_devices(devices, self.search, self.request.user)
         return devices
 
     def get_context_data(self, **kwargs):
@@ -212,6 +244,10 @@ class DeviceListView(OwnedDeviceMixin, ListView):
             for device in context["devices"]:
                 device.shared_role = None if device.owner_id == user.pk else access.LABEL.get(roles.get(device.pk))
         context["has_shared"] = not user.is_admin and access.shares_of(user).exists()
+        context["search"] = self.search
+        if self.search:
+            context["total_devices"] = super().get_queryset().count()
+        mark_device_actions(self.request, context["devices"])
         return context
 
 
@@ -297,6 +333,7 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         # Riwayat online/offline (tahap 16, devices/presence.py).
         context["status_events"] = device.status_events.all()[:RECENT_STATUS_EVENTS]
         context["offline_after"] = settings.DEVICE_OFFLINE_SECONDS
+        context["mqtt_silent_after"] = settings.DEVICE_MQTT_SILENT_SECONDS
 
         # Pembaruan langsung: WebSocket, dengan polling versi data sebagai cadangan.
         context["data_version"] = data_version(device)
@@ -743,9 +780,9 @@ class LocationDetailView(OwnedLocationMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["devices"] = with_device_summary(
+        context["devices"] = mark_device_actions(self.request, list(with_device_summary(
             visible_devices(self.request.user).filter(location=self.object)
-        )
+        )))
         context["map_points"] = location_points([self.object])
         return context
 

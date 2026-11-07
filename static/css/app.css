@@ -1313,3 +1313,96 @@ a.user-chip.active {
 .publish-status-skipped, .publish-status-superseded, .publish-status-cleared { color: var(--app-muted); }
 [data-bs-theme="dark"] .publish-status-received { color: #4cc94c; }
 [data-bs-theme="dark"] .publish-status-rejected { color: #ff6b6b; }
+
+/* ---------- Nama device / lokasi / aturan di tabel, tombol aksi baris, kotak cari ---------- */
+/* Chip bertautan: ikon dalam kotak berwarna + nama tebal, senada dengan badge variabel dan pill status. */
+.entity-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: 100%;
+  padding: 0.2rem 0.6rem 0.2rem 0.25rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.55rem;
+  background: var(--app-surface-2);
+  color: var(--bs-body-color);
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.entity-chip:hover,
+.entity-chip:focus-visible {
+  border-color: var(--entity-color);
+  background: var(--entity-soft);
+  color: var(--entity-color);
+  box-shadow: var(--app-shadow);
+}
+.entity-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 0.4rem;
+  background: var(--entity-soft);
+  color: var(--entity-color);
+}
+.entity-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entity-chip.is-muted { opacity: 0.6; }
+.entity-chip.is-muted .entity-icon { background: var(--app-surface-2); color: var(--app-muted); }
+
+/* Lokasi: pill bundar seperti pill status, ikon pin. */
+.entity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0.15rem 0.65rem 0.15rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--entity-color) 35%, transparent);
+  border-radius: 999px;
+  background: var(--entity-soft);
+  color: var(--entity-color);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+a.entity-pill:hover,
+a.entity-pill:focus-visible { border-color: var(--entity-color); box-shadow: var(--app-shadow); }
+
+/* Warna per jenis (terang / gelap). */
+.entity-device { --entity-color: var(--app-accent); --entity-soft: var(--app-accent-soft); }
+.entity-rule { --entity-color: #7c4ddb; --entity-soft: rgba(124, 77, 219, 0.12); }
+.entity-location { --entity-color: #0f8a7e; --entity-soft: rgba(15, 138, 126, 0.1); }
+[data-bs-theme="dark"] .entity-rule { --entity-color: #b39bf2; --entity-soft: rgba(179, 155, 242, 0.14); }
+[data-bs-theme="dark"] .entity-location { --entity-color: #4fd1c1; --entity-soft: rgba(79, 209, 193, 0.12); }
+
+/* Tombol Edit / Delete di akhir baris. */
+.row-actions { display: inline-flex; gap: 0.25rem; }
+.row-action {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 0.45rem;
+  color: var(--app-muted);
+  background: transparent;
+}
+.row-action:hover,
+.row-action:focus-visible { color: var(--app-accent); border-color: var(--app-accent); background: var(--app-accent-soft); }
+.row-action-danger:hover,
+.row-action-danger:focus-visible { color: #dc3545; border-color: rgba(220, 53, 69, 0.5); background: rgba(220, 53, 69, 0.1); }
+.row-action .icon { width: 15px; height: 15px; }
+
+/* Kotak cari dengan ikon kaca pembesar. */
+.search-field { position: relative; flex: 1 1 16rem; max-width: 26rem; }
+.search-field .icon { position: absolute; left: 0.6rem; top: 50%; transform: translateY(-50%); color: var(--app-muted); pointer-events: none; }
+.search-field input { padding-left: 2rem; }
+
+/* Judul halaman device: ikon besar di depan nama (dashboard memakai chip yang sama dengan daftar device). */
+.device-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.entity-icon-lg { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; }
+.entity-icon-lg .icon { width: 22px; height: 22px; }
+.entity-icon.is-muted { background: var(--app-surface-2); color: var(--app-muted); }
+.dash-device > .card-header .entity-chip { font-size: 0.95rem; }

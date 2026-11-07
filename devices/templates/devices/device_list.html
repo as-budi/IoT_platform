@@ -11,8 +11,12 @@
   </div>
 </div>
 
-{# Penyaring lokasi. Form GET: pilihan dikirim sebagai ?location=... di URL. #}
-<form method="get" class="d-flex flex-wrap gap-2 align-items-center mb-3">
+{# Pencarian + penyaring lokasi. Form GET: dikirim sebagai ?q=...&location=... di URL. #}
+<form method="get" class="d-flex flex-wrap gap-2 align-items-center mb-3" role="search">
+  <div class="search-field">
+    {% include "includes/icon.html" with name="search" %}
+    <input type="search" name="q" value="{{ search }}" class="form-control form-control-sm" placeholder="Search devices: name, location, variable, MAC …" aria-label="Search devices">
+  </div>
   <label class="form-label mb-0" for="location-filter">Location</label>
   <select id="location-filter" name="location" class="form-select form-select-sm w-auto">
     <option value="">All locations</option>
@@ -31,11 +35,14 @@
     <option value="shared" {% if selected_access == "shared" %}selected{% endif %}>Shared with me</option>
   </select>
   {% endif %}
-  <button type="submit" class="btn btn-sm btn-outline-primary">Filter</button>
-  {% if selected_location or selected_access %}<a class="btn btn-sm btn-link" href="{% url 'devices:list' %}">Clear</a>{% endif %}
+  <button type="submit" class="btn btn-sm btn-outline-primary">Search</button>
+  {% if selected_location or selected_access or search %}<a class="btn btn-sm btn-link" href="{% url 'devices:list' %}">Clear</a>{% endif %}
 </form>
+{% if search %}<p class="small text-muted">{{ devices|length }} of {{ total_devices }} device{{ total_devices|pluralize }} match “{{ search }}”.</p>{% endif %}
 
-{% if selected_location %}
+{% if search %}
+{% include "devices/includes/device_table.html" with empty_message="No devices match your search. Try a device name, a location, a variable key such as temperature, or part of a MAC address." %}
+{% elif selected_location %}
 {% include "devices/includes/device_table.html" with empty_message="No devices at this location." %}
 {% else %}
 {% include "devices/includes/device_table.html" %}

@@ -1,0 +1,2 @@
+{% comment %}Nama aturan sebagai "chip" bertautan (ikon + nama). Butuh `rule`. Redup bila dinonaktifkan.{% endcomment %}
+<a class="entity-chip entity-rule{% if not rule.is_enabled %} is-muted{% endif %}" href="{% url 'rules:detail' rule.pk %}"{% if not rule.is_enabled %} title="Disabled"{% endif %}><span class="entity-icon">{% include "includes/icon.html" with name="rule" %}</span><span class="entity-text">{{ rule.name }}</span></a>

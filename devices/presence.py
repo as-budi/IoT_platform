@@ -14,9 +14,18 @@ Dua cara platform tahu device masih hidup:
        Last Will            "offline" (retained), dikirim BROKER bila koneksi
                             putus tanpa pamit (listrik mati, Wi-Fi hilang),
                             terdeteksi lewat keepalive (±1,5 × keepalive detik)
-   Selama sesi "online", batas waktu tanpa data tidak dipakai (mqtt_connected),
+   Selama sesi "online", batas DEVICE_OFFLINE_SECONDS tidak dipakai (mqtt_connected),
    jadi device yang jarang mengirim data (mis. tiap 30 menit) tidak berkedip
-   offline-online.
+   offline-online. Sebagai gantinya dipakai batas yang lebih longgar,
+   DEVICE_MQTT_SILENT_SECONDS (bawaan 900 s), dihitung dari pesan MQTT TERAKHIR
+   apa pun (last_heard_at; template firmware mengirim "online" tiap 5 menit).
+   Tanpa batas ini device tetap "online" selamanya bila Last Will tidak pernah
+   datang: firmware tanpa Last Will, disconnect rapi tanpa "offline", atau broker
+   di-restart saat device mati.
+
+   Pesan "online" RETAINED yang diterima bridge saat (ulang) subscribe hanyalah
+   salinan lama di broker, bukan bukti device sedang tersambung: diabaikan.
+   "offline" retained tetap dipakai (Last Will yang terlewat saat bridge mati).
 
 Setiap perubahan:
     - Device.is_online & status_changed_at diperbarui dengan UPDATE BERSYARAT
@@ -29,6 +38,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from realtime import events
@@ -60,15 +70,44 @@ def seen(device, now=None, reason="Data received"):
     return _change(device.pk, True, reason, now or timezone.now())
 
 
+# Catatan last_heard_at cukup diperbarui sesekali, bukan pada setiap pesan.
+HEARD_RESOLUTION = timedelta(seconds=30)
+
+
+def heard(device, now=None):
+    """Ada pesan MQTT (bukan retained lama) dari device. Satu UPDATE bersyarat, paling sering tiap 30 s."""
+    now = now or timezone.now()
+    Device.objects.filter(pk=device.pk).filter(
+        Q(last_heard_at__isnull=True) | Q(last_heard_at__lt=now - HEARD_RESOLUTION)
+    ).update(last_heard_at=now)
+
+
 def check_timeouts(now=None):
-    """Device online tanpa data selama DEVICE_OFFLINE_SECONDS -> offline. Mengembalikan jumlahnya."""
+    """Device online yang terlalu lama diam -> offline. Mengembalikan jumlahnya.
+
+    - tanpa sesi MQTT: tanpa data selama DEVICE_OFFLINE_SECONDS;
+    - dengan sesi MQTT: tanpa pesan MQTT apa pun selama DEVICE_MQTT_SILENT_SECONDS (0 = tidak).
+    """
     now = now or timezone.now()
     limit = settings.DEVICE_OFFLINE_SECONDS
     cutoff = now - timedelta(seconds=limit)
     silent = Device.objects.filter(is_online=True, mqtt_connected=False).filter(
         Q(last_seen_at__lt=cutoff) | Q(last_seen_at__isnull=True)
     )
-    return sum(_change(pk, False, f"No data for {limit} s", now) for pk in silent.values_list("pk", flat=True))
+    count = sum(_change(pk, False, f"No data for {limit} s", now) for pk in silent.values_list("pk", flat=True))
+
+    session_limit = settings.DEVICE_MQTT_SILENT_SECONDS
+    if session_limit > 0:
+        session_cutoff = now - timedelta(seconds=session_limit)
+        stale = (
+            Device.objects.filter(is_online=True, mqtt_connected=True)
+            .annotate(heard=Coalesce("last_heard_at", "last_seen_at", "status_changed_at"))
+            .filter(Q(heard__lt=session_cutoff) | Q(heard__isnull=True))
+        )
+        reason = f"No MQTT message for {session_limit} s (connection lost without Last Will)"
+        count += sum(_change(pk, False, reason, now, mqtt_connected=False)
+                     for pk in stale.values_list("pk", flat=True))
+    return count
 
 
 def parse_status(payload):
@@ -97,9 +136,16 @@ def parse_status(payload):
     return None
 
 
-def mqtt_status(device, online, now=None):
-    """Pesan di topik status MQTT (dari device sendiri, atau Last Will dari broker)."""
+def mqtt_status(device, online, now=None, retained=False):
+    """Pesan di topik status MQTT (dari device sendiri, atau Last Will dari broker).
+
+    `retained` = salinan lama dari broker saat bridge (ulang) subscribe. "online" retained
+    diabaikan (mengembalikan None): device yang sudah mati tanpa Last Will meninggalkan
+    "online" di broker, dan setiap restart bridge akan membuatnya online lagi.
+    """
     now = now or timezone.now()
+    if online and retained:
+        return None
     if online:
         return _change(device.pk, True, "MQTT session started", now, mqtt_connected=True)
     return _change(device.pk, False, "MQTT session ended (disconnect or Last Will)", now, mqtt_connected=False)
