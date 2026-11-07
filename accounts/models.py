@@ -33,6 +33,13 @@ class User(AbstractUser):
     # setelah pemiliknya mengklik tautan yang dikirim ke alamat baru ini.
     pending_email = models.EmailField("new email (unconfirmed)", blank=True)
 
+    class UiStyle(models.TextChoices):
+        STANDARD = "standard", "Standard"
+        FILKOM = "filkom", "FILKOM"
+
+    # Gaya tampilan pilihan pengguna; kosong = gaya bawaan situs (.env UI_STYLE).
+    ui_style = models.CharField("interface style", max_length=10, choices=UiStyle.choices, blank=True)
+
     @property
     def is_admin(self):
         """True bila pengguna boleh mengelola seluruh platform.

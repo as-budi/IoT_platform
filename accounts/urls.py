@@ -35,6 +35,7 @@ urlpatterns = [
     path("password/reset/complete/", views.PasswordResetCompleteView.as_view(), name="password_reset_complete"),
     # Profil dan password milik pengguna yang sedang login (tanpa <pk>).
     path("profile/", views.ProfileView.as_view(), name="profile"),
+    path("ui-style/", views.UiStyleView.as_view(), name="ui_style"),
     path("profile/password/", views.PasswordChangeView.as_view(), name="password_change"),
     path("profile/email/cancel/", views.EmailChangeCancelView.as_view(), name="email_cancel"),
     path("profile/email/<uidb64>/<token>/", views.EmailChangeConfirmView.as_view(), name="email_confirm"),

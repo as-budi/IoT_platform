@@ -1,0 +1,12 @@
+{% comment %}
+  Pilihan gaya tampilan Standard / FILKOM (accounts/views.py UiStyleView), disimpan per akun.
+  Tampil hanya bila .env UI_STYLE_SELECTABLE=True. Form biasa: bekerja tanpa JavaScript.
+{% endcomment %}
+{% if ui_style_selectable %}
+<form method="post" action="{% url 'accounts:ui_style' %}" class="ui-style-switch" role="group" aria-label="Interface style">
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+  <button type="submit" name="style" value="standard" class="btn{% if ui_style == 'standard' %} active{% endif %}" aria-pressed="{% if ui_style == 'standard' %}true{% else %}false{% endif %}" title="Standard style">Standard</button>
+  <button type="submit" name="style" value="filkom" class="btn{% if ui_style == 'filkom' %} active{% endif %}" aria-pressed="{% if ui_style == 'filkom' %}true{% else %}false{% endif %}" title="FILKOM UB style">FILKOM</button>
+</form>
+{% endif %}

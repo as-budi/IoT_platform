@@ -243,6 +243,26 @@ class UserDeleteView(AdminRequiredMixin, SuccessMessageMixin, DeleteView):
 # --- Profil milik sendiri (semua pengguna yang login) ----------------------------
 
 
+class UiStyleView(LoginRequiredMixin, View):
+    """POST /accounts/ui-style/: simpan gaya tampilan (Standard / FILKOM) untuk akun ini.
+
+    Dipakai tombol pilihan di side menu; kembali ke halaman asal (`next`, hanya situs ini).
+    """
+
+    http_method_names = ["post"]
+
+    def post(self, request):
+        style = request.POST.get("style", "")
+        if settings.UI_STYLE_SELECTABLE and style in User.UiStyle.values:
+            request.user.ui_style = style
+            request.user.save(update_fields=["ui_style"])
+        back = request.POST.get("next", "")
+        if not url_has_allowed_host_and_scheme(back, allowed_hosts={request.get_host()},
+                                               require_https=request.is_secure()):
+            back = reverse("home")
+        return redirect(back)
+
+
 class ProfileView(LoginRequiredMixin, UpdateView):
     """GET/POST /accounts/profile/: ubah nama dan email akun SENDIRI.
 

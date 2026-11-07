@@ -1,0 +1,212 @@
+/*
+ * Gaya tampilan FILKOM (docs/tahap-26-tambahan-gaya-filkom.md).
+ *
+ * Dimuat SESUDAH app.css hanya bila <html data-ui="filkom"> (pilihan akun atau .env UI_STYLE).
+ * Tata letak, bentuk, dan huruf (Inter) SAMA dengan gaya Standard; file ini hanya mengganti
+ * WARNA: variabel --app-* dan --ui-* milik app.css, ditambah beberapa komponen. Warna dari
+ * filkom.ub.ac.id: navy #002647, navy gelap #000D18, oranye #EC831E.
+ *
+ * Teks di atas oranye selalu navy: putih di atas #EC831E kontrasnya hanya ±2,7:1.
+ */
+
+/* ---------- Token: terang ---------- */
+html[data-ui="filkom"] {
+  --ui-navy: #002647;
+  --ui-navy-deep: #000d18;
+  --ui-orange: #ec831e;
+  --ui-heading: #002647;
+
+  --app-bg: #f3f5f8;
+  --app-surface: #ffffff;
+  --app-surface-2: #f7f9fb;
+  --app-border: #dde3ea;
+  --app-muted: #5b6675;
+  --app-accent: #1d5fa8;
+  --app-accent-soft: rgba(29, 95, 168, 0.1);
+  --app-nav-bg: rgba(255, 255, 255, 0.9);
+  --chart-series: #1d5fa8;
+  --chart-fill: rgba(29, 95, 168, 0.1);
+
+  --bs-body-color: #1b2430;
+  --bs-link-color: #1d5fa8;
+  --bs-link-color-rgb: 29, 95, 168;
+  --bs-link-hover-color: #002647;
+  --bs-link-hover-color-rgb: 0, 38, 71;
+  --bs-primary: #002647;
+  --bs-primary-rgb: 0, 38, 71;
+
+  /* Bilah atas navy gelap bergaris oranye, kaki halaman navy, logo navy-oranye. */
+  --ui-bar-bg: #000d18;
+  --ui-bar-fg: #ffffff;
+  --ui-bar-muted: rgba(255, 255, 255, 0.75);
+  --ui-bar-line: #ec831e;
+  --ui-bar-line-w: 3px;
+  --ui-bar-ctl-border: rgba(255, 255, 255, 0.22);
+  --ui-bar-ctl-bg: rgba(255, 255, 255, 0.06);
+  --ui-bar-hover-bg: rgba(255, 255, 255, 0.08);
+  --ui-active-bg: #ec831e;
+  --ui-active-fg: #002647;
+  --ui-avatar-bg: #ec831e;
+  --ui-avatar-fg: #002647;
+  --ui-foot-bg: #002647;
+  --ui-foot-fg: rgba(255, 255, 255, 0.8);
+  --ui-foot-line: #ec831e;
+  --ui-foot-line-w: 3px;
+  --ui-logo-bg: #002647;
+  --ui-logo-frame: rgba(236, 131, 30, 0.85);
+  --ui-logo-wave: #ec831e;
+  --ui-logo-node: #ffffff;
+}
+
+/* ---------- Token: gelap (navy sangat gelap, bukan abu-abu) ---------- */
+html[data-ui="filkom"][data-bs-theme="dark"] {
+  --ui-heading: #ffffff;
+
+  --app-bg: #07131f;
+  --app-surface: #0e2033;
+  --app-surface-2: #112842;
+  --app-border: #1f3a55;
+  --app-muted: #9db0c4;
+  --app-accent: #7fb6f0;
+  --app-accent-soft: rgba(127, 182, 240, 0.16);
+  --app-nav-bg: rgba(14, 32, 51, 0.9);
+  --chart-series: #7fb6f0;
+  --chart-fill: rgba(127, 182, 240, 0.16);
+  --chart-grid: #1f3a55;
+  --chart-tooltip-bg: #112842;
+  --chart-tooltip-border: #2a4a6b;
+
+  --bs-body-bg: #0e2033;
+  --bs-body-color: #e6edf5;
+  --bs-secondary-bg: #112842;
+  --bs-tertiary-bg: #0f2439;
+  --bs-border-color: #1f3a55;
+  --bs-link-color: #7fb6f0;
+  --bs-link-color-rgb: 127, 182, 240;
+  --bs-link-hover-color: #ffffff;
+  --bs-link-hover-color-rgb: 255, 255, 255;
+  --bs-primary: #7fb6f0;
+  --bs-primary-rgb: 127, 182, 240;
+}
+
+/* ---------- Judul: warna navy; judul halaman bergaris oranye pendek ---------- */
+html[data-ui="filkom"] :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4) { color: var(--ui-heading); }
+html[data-ui="filkom"] .app-content h1::after {
+  content: "";
+  display: block;
+  width: 48px;
+  height: 3px;
+  margin-top: 0.4rem;
+  border-radius: 2px;
+  background: var(--ui-orange);
+}
+
+/* ---------- Side menu navy ---------- */
+html[data-ui="filkom"] .app-sidebar {
+  --bs-offcanvas-bg: var(--ui-navy);
+  --bs-offcanvas-color: #ffffff;
+  --app-muted: rgba(255, 255, 255, 0.62);
+  --app-surface: var(--ui-navy);
+  --app-surface-2: rgba(255, 255, 255, 0.08);
+  --app-border: rgba(255, 255, 255, 0.14);
+  --app-accent: var(--ui-orange);
+  --app-accent-soft: rgba(236, 131, 30, 0.18);
+  --bs-body-color: #ffffff;
+  color: #ffffff;
+  background-color: var(--ui-navy) !important;
+  border-right: 0;
+}
+html[data-ui="filkom"] .app-sidebar .btn-close { filter: invert(1) grayscale(100%) brightness(200%); }
+html[data-ui="filkom"] .sidebar-section { color: rgba(255, 255, 255, 0.55); }
+html[data-ui="filkom"] .sidebar-link { color: rgba(255, 255, 255, 0.85); }
+html[data-ui="filkom"] .sidebar-link:hover { color: #ffffff; background: rgba(255, 255, 255, 0.08); }
+html[data-ui="filkom"] .sidebar-link.active {
+  color: #ffffff;
+  font-weight: 700;
+  background: rgba(236, 131, 30, 0.18);
+  box-shadow: inset 3px 0 0 var(--ui-orange);
+}
+html[data-ui="filkom"] .app-sidebar .user-chip .avatar { color: var(--ui-navy); background: var(--ui-orange); }
+html[data-ui="filkom"] .app-sidebar .btn-outline-secondary {
+  --bs-btn-color: rgba(255, 255, 255, 0.85);
+  --bs-btn-border-color: rgba(255, 255, 255, 0.3);
+  --bs-btn-hover-color: var(--ui-navy);
+  --bs-btn-hover-bg: var(--ui-orange);
+  --bs-btn-hover-border-color: var(--ui-orange);
+}
+html[data-ui="filkom"] .app-sidebar .theme-switch .btn.active,
+html[data-ui="filkom"] .app-sidebar .ui-style-switch .btn.active { color: var(--ui-navy); background: var(--ui-orange); }
+
+/* ---------- Tombol ---------- */
+html[data-ui="filkom"] .btn-primary {
+  --bs-btn-color: #002647;
+  --bs-btn-bg: #ec831e;
+  --bs-btn-border-color: #ec831e;
+  --bs-btn-hover-color: #002647;
+  --bs-btn-hover-bg: #f29a3e;
+  --bs-btn-hover-border-color: #f29a3e;
+  --bs-btn-active-color: #002647;
+  --bs-btn-active-bg: #d9741a;
+  --bs-btn-active-border-color: #d9741a;
+  --bs-btn-disabled-color: #002647;
+  --bs-btn-disabled-bg: #ec831e;
+  --bs-btn-disabled-border-color: #ec831e;
+  --bs-btn-focus-shadow-rgb: 236, 131, 30;
+  font-weight: 700;
+}
+html[data-ui="filkom"] .btn-outline-primary {
+  --bs-btn-color: var(--ui-heading);
+  --bs-btn-border-color: var(--ui-heading);
+  --bs-btn-hover-color: #ffffff;
+  --bs-btn-hover-bg: #002647;
+  --bs-btn-hover-border-color: #002647;
+  --bs-btn-active-color: #ffffff;
+  --bs-btn-active-bg: #002647;
+  --bs-btn-active-border-color: #002647;
+}
+html[data-ui="filkom"][data-bs-theme="dark"] .btn-outline-primary {
+  --bs-btn-hover-color: #002647;
+  --bs-btn-hover-bg: #ffffff;
+  --bs-btn-hover-border-color: #ffffff;
+}
+html[data-ui="filkom"] .text-bg-primary { color: #002647 !important; background-color: #ec831e !important; }
+html[data-ui="filkom"] .form-check-input:checked { background-color: #002647; border-color: #002647; }
+html[data-ui="filkom"][data-bs-theme="dark"] .form-check-input:checked { background-color: #ec831e; border-color: #ec831e; }
+
+/* ---------- Tabel: kepala navy, sudut atasnya mengikuti kartu ---------- */
+html[data-ui="filkom"] .table > thead.table-light,
+html[data-ui="filkom"] .table > thead > tr.table-light {
+  --bs-table-bg: #002647;
+  --bs-table-color: #ffffff;
+  --bs-table-border-color: #002647;
+}
+html[data-ui="filkom"][data-bs-theme="dark"] .table > thead.table-light,
+html[data-ui="filkom"][data-bs-theme="dark"] .table > thead > tr.table-light {
+  --bs-table-bg: #001a31;
+  --bs-table-color: #c6d4e3;
+  --bs-table-border-color: #1f3a55;
+}
+/* Tanpa overflow: hidden pada kartu, supaya dropdown/tooltip di dalam tabel tidak terpotong. */
+html[data-ui="filkom"] .card > .table-responsive:first-child > .table > thead > tr:first-child > :first-child,
+html[data-ui="filkom"] .card > .table:first-child > thead > tr:first-child > :first-child {
+  border-top-left-radius: var(--bs-card-inner-border-radius);
+}
+html[data-ui="filkom"] .card > .table-responsive:first-child > .table > thead > tr:first-child > :last-child,
+html[data-ui="filkom"] .card > .table:first-child > thead > tr:first-child > :last-child {
+  border-top-right-radius: var(--bs-card-inner-border-radius);
+}
+
+/* ---------- Dashboard: judul lokasi bergaris oranye, angka navy ---------- */
+html[data-ui="filkom"] .dash-location-header { padding-bottom: 0.6rem; border-bottom: 2px solid var(--ui-orange); }
+html[data-ui="filkom"] .dash-location-header .pin { color: #002647; background: var(--ui-orange); }
+html[data-ui="filkom"] :is(.stat-value, .value-card .value) { color: var(--ui-heading); }
+
+/* ---------- Chip device / aturan, pill lokasi ---------- */
+html[data-ui="filkom"] .entity-device { --entity-color: #002647; --entity-soft: #eef3f8; }
+html[data-ui="filkom"] .entity-device .entity-icon { color: var(--ui-orange); background: #002647; }
+html[data-ui="filkom"] .entity-location { --entity-color: #9a4f05; --entity-soft: rgba(236, 131, 30, 0.1); }
+html[data-ui="filkom"][data-bs-theme="dark"] .entity-device { --entity-color: #ffffff; --entity-soft: #13304d; }
+html[data-ui="filkom"][data-bs-theme="dark"] .entity-device .entity-icon { background: #001a31; }
+html[data-ui="filkom"][data-bs-theme="dark"] .entity-location { --entity-color: #f6b56f; --entity-soft: rgba(242, 154, 62, 0.12); }
+html[data-ui="filkom"] .entity-chip.entity-device:hover { color: #002647; border-color: var(--ui-orange); }
+html[data-ui="filkom"][data-bs-theme="dark"] .entity-chip.entity-device:hover { color: #ffffff; }

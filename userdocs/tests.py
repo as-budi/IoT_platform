@@ -114,9 +114,10 @@ class DocsPageTests(TestCase):
         self.client.force_login(self.siti)
         page = self.client.get(reverse("dashboard:index"))
         self.assertContains(page, 'href="/docs/"')
-        # Tombol menyembunyikan dan menampilkan lagi menu utama, plus skrip yang mengingat pilihannya.
-        self.assertContains(page, 'aria-label="Hide menu"')
-        self.assertContains(page, 'aria-label="Show menu"')
+        # Tombol tiga garis di bilah atas: sembunyikan/tampilkan menu utama (layar lebar) dan
+        # buka menu (ponsel), plus skrip yang mengingat pilihannya.
+        self.assertContains(page, 'aria-label="Hide or show menu"')
+        self.assertContains(page, 'aria-label="Open menu"')
         self.assertContains(page, "js/sidebar.js")
         # Garis pembatas menu dokumentasi.
         self.assertContains(self.client.get(reverse("userdocs:index")), '<aside class="docs-aside">')

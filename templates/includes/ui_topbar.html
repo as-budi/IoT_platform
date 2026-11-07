@@ -1,0 +1,45 @@
+{% comment %}Bilah atas (base.html, kedua gaya): setelah login di dalam .app-main (mulai setelah side menu), di halaman publik selebar halaman. Tata letak: static/css/app.css; warna gaya FILKOM: static/css/filkom.css.{% endcomment %}
+<header class="ui-topbar">
+  {% if user.is_authenticated %}
+  {# Tombol tiga garis: layar lebar menyembunyikan/menampilkan side menu (static/js/sidebar.js), #}
+  {# layar kecil membuka side menu dari kiri (offcanvas Bootstrap). #}
+  <button class="ui-menu-btn ui-menu-wide" type="button" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true"
+          aria-label="Hide or show menu" title="Hide or show menu">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <button class="ui-menu-btn ui-menu-narrow" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar"
+          aria-controls="sidebar" aria-label="Open menu">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  {# Logo dan identitas ada di side menu; di layar kecil (side menu tersembunyi) juga di sini. #}
+  <a class="ui-brand ui-brand-narrow" href="{% url 'home' %}">
+    {% include "includes/ui_logo.html" with size=34 %}
+    <span class="ui-brand-text"><span class="ui-brand-name">IoT Platform</span><span class="ui-brand-sub">Robotic and Embedded System Laboratory</span></span>
+  </a>
+  {# Layar lebar: gaya, tema, profil, dan logout di kanan atas (di layar kecil tetap di side menu). #}
+  <div class="ui-topbar-end d-none d-lg-flex">
+    {% include "includes/ui_style_switch.html" %}
+    {% include "includes/theme_switch.html" %}
+    <a class="ui-user{% if request.path|slice:':17' == '/accounts/profile' %} active{% endif %}" href="{% url 'accounts:profile' %}" title="My profile">
+      <span class="ui-avatar" aria-hidden="true">{{ user.username|slice:":1"|upper }}</span>
+      <span class="ui-user-name">{{ user.username }}</span>
+      <span class="ui-user-role">{% if user.is_admin %}Admin{% else %}User{% endif %}</span>
+    </a>
+    <form method="post" action="{% url 'accounts:logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="ui-topbar-icon" title="Log out" aria-label="Log out">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </form>
+  </div>
+  {% else %}
+  <a class="ui-brand" href="{% url 'home' %}">
+    {% include "includes/ui_logo.html" %}
+    <span class="ui-brand-text"><span class="ui-brand-name">IoT Platform</span><span class="ui-brand-sub">Robotic and Embedded System Laboratory</span></span>
+  </a>
+  <div class="ui-topbar-end">
+    <a class="ui-topbar-link" href="{% url 'userdocs:index' %}">Documentation</a>
+    {% include "includes/theme_switch.html" %}
+  </div>
+  {% endif %}
+</header>

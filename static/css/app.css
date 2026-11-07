@@ -1406,3 +1406,212 @@ a.entity-pill:focus-visible { border-color: var(--entity-color); box-shadow: var
 .entity-icon-lg .icon { width: 22px; height: 22px; }
 .entity-icon.is-muted { background: var(--app-surface-2); color: var(--app-muted); }
 .dash-device > .card-header .entity-chip { font-size: 0.95rem; }
+
+/* Pilihan gaya tampilan Standard / FILKOM di side menu (templates/includes/ui_style_switch.html). */
+.ui-style-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--app-border);
+  border-radius: 0.6rem;
+  background: var(--app-surface-2);
+}
+.ui-style-switch .btn {
+  padding: 0.15rem 0.55rem;
+  border: 0;
+  border-radius: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--app-muted);
+}
+.ui-style-switch .btn:hover { color: var(--bs-body-color); }
+.ui-style-switch .btn.active { color: var(--app-accent); background: var(--app-accent-soft); }
+
+/* =====================================================================================
+ * Kerangka bersama kedua gaya (docs/tahap-26-tambahan-gaya-filkom.md):
+ * side menu setinggi layar dengan logo + identitas, bilah atas (tombol tiga garis, gaya,
+ * tema, profil) yang dimulai setelah side menu, dan kaki halaman. Warnanya dari variabel
+ * --ui-* di bawah (gaya Standard); static/css/filkom.css hanya mengganti variabel itu.
+ * ===================================================================================== */
+:root {
+  --ui-topbar-h: 64px;
+  --ui-bar-bg: var(--app-surface);
+  --ui-bar-fg: var(--bs-body-color);
+  --ui-bar-muted: var(--app-muted);
+  --ui-bar-line: var(--app-border);
+  --ui-bar-line-w: 1px;
+  --ui-bar-ctl-border: var(--app-border);
+  --ui-bar-ctl-bg: var(--app-surface-2);
+  --ui-bar-hover-bg: var(--app-surface-2);
+  --ui-active-bg: var(--app-accent-soft);
+  --ui-active-fg: var(--app-accent);
+  --ui-avatar-bg: var(--app-accent-soft);
+  --ui-avatar-fg: var(--app-accent);
+  --ui-foot-bg: var(--app-surface);
+  --ui-foot-fg: var(--app-muted);
+  --ui-foot-line: var(--app-border);
+  --ui-foot-line-w: 1px;
+  --ui-logo-bg: #2a78d6;
+  --ui-logo-frame: rgba(255, 255, 255, 0.45);
+  --ui-logo-wave: #ffffff;
+  --ui-logo-node: #ffffff;
+}
+
+/* Logo (templates/includes/ui_logo.html) */
+.ui-logo { flex: 0 0 auto; display: block; }
+.ui-logo-bg { fill: var(--ui-logo-bg); }
+.ui-logo-frame { stroke: var(--ui-logo-frame); }
+.ui-logo-wave { stroke: var(--ui-logo-wave); }
+.ui-logo-line { stroke: var(--ui-logo-node); }
+.ui-logo-node { fill: var(--ui-logo-node); }
+
+/* Halaman: kaki halaman selalu di bawah, juga di halaman pendek seperti login. */
+body { display: flex; flex-direction: column; min-height: 100vh; }
+body > .app-shell,
+body > main { flex: 1 0 auto; }
+body > main.container { padding-top: 2rem; }
+.app-main { display: flex; flex-direction: column; min-height: 100vh; }
+.app-main > .app-content { flex: 1 0 auto; width: 100%; }
+
+/* Side menu: latar eksplisit, karena di layar lebar Bootstrap memberi .offcanvas-lg
+   "background-color: transparent !important". */
+.app-sidebar { background-color: var(--app-surface) !important; }
+@media (min-width: 992px) {
+  /* Gaya, tema, dan profil ada di kanan atas bilah atas. */
+  .sidebar-footer { display: none; }
+  .sidebar-head {
+    padding: 0 0.25rem 1rem 0.35rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid var(--app-border);
+  }
+  /* Menu tersembunyi: tombol tiga garis di bilah atas menampilkannya lagi; isi tetap berjarak biasa. */
+  html.sidebar-collapsed .app-content { padding-left: 2.25rem; }
+}
+.app-sidebar .sidebar-brand { gap: 0.65rem; color: var(--bs-body-color); text-decoration: none; }
+.app-sidebar .ui-brand-sub { white-space: normal; line-height: 1.25; color: var(--app-muted); }
+
+/* Logo + nama + identitas */
+.ui-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  color: var(--ui-bar-fg);
+  text-decoration: none;
+}
+.ui-brand:hover { color: var(--ui-bar-fg); }
+.ui-brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.ui-brand-name { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.01em; }
+.ui-brand-sub {
+  overflow: hidden;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-bar-muted);
+}
+
+/* Bilah atas */
+.ui-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1030;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: var(--ui-topbar-h);
+  padding: 0 1.25rem;
+  color: var(--ui-bar-fg);
+  background: var(--ui-bar-bg);
+  border-bottom: var(--ui-bar-line-w) solid var(--ui-bar-line);
+}
+.ui-topbar-end { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.ui-topbar :is(.theme-switch, .ui-style-switch) {
+  --app-border: var(--ui-bar-ctl-border);
+  --app-surface-2: var(--ui-bar-ctl-bg);
+  --app-muted: var(--ui-bar-muted);
+  border-radius: 999px;
+}
+.ui-topbar :is(.theme-switch, .ui-style-switch) .btn { border-radius: 999px !important; }
+.ui-topbar :is(.theme-switch, .ui-style-switch) .btn:hover { color: var(--ui-bar-fg); }
+.ui-topbar :is(.theme-switch, .ui-style-switch) .btn.active { color: var(--ui-active-fg); background: var(--ui-active-bg); }
+.ui-menu-btn,
+.ui-topbar-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--ui-bar-ctl-border);
+  border-radius: 0.5rem;
+  color: var(--ui-bar-fg);
+  background: transparent;
+}
+.ui-menu-btn { width: 2.5rem; height: 2.5rem; }
+.ui-topbar-icon { width: 2rem; height: 2rem; color: var(--ui-bar-muted); }
+.ui-menu-btn:hover,
+.ui-topbar-icon:hover { color: var(--ui-active-fg); border-color: var(--ui-active-fg); background: var(--ui-active-bg); }
+.ui-menu-wide { display: none; }
+@media (min-width: 992px) {
+  .ui-menu-wide { display: inline-grid; }
+  .ui-menu-narrow, .ui-brand-narrow { display: none; }
+}
+.ui-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0.6rem 0.2rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: var(--ui-bar-fg);
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+.ui-user:hover,
+.ui-user.active { color: var(--ui-bar-fg); border-color: var(--ui-bar-ctl-border); background: var(--ui-bar-hover-bg); }
+.ui-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--ui-avatar-fg);
+  background: var(--ui-avatar-bg);
+}
+.ui-user-role {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ui-bar-muted);
+  background: var(--ui-bar-ctl-bg);
+  border: 1px solid var(--ui-bar-ctl-border);
+}
+.ui-topbar-link { color: var(--ui-bar-muted); font-size: 0.9rem; text-decoration: none; }
+.ui-topbar-link:hover { color: var(--ui-active-fg); }
+
+/* Kaki halaman */
+.ui-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem 1.5rem;
+  padding: 1rem 1.5rem;
+  font-size: 0.85rem;
+  color: var(--ui-foot-fg);
+  background: var(--ui-foot-bg);
+  border-top: var(--ui-foot-line-w) solid var(--ui-foot-line);
+}
+
+/* Tabel di dalam kartu: kolom paling kiri dan kanan berjarak dari tepi kartu yang membulat. */
+.card > .table-responsive > .table > :is(thead, tbody, tfoot) > tr > :first-child,
+.card > .table > :is(thead, tbody, tfoot) > tr > :first-child { padding-left: 1.25rem; }
+.card > .table-responsive > .table > :is(thead, tbody, tfoot) > tr > :last-child,
+.card > .table > :is(thead, tbody, tfoot) > tr > :last-child { padding-right: 1.25rem; }
+
+@media (max-width: 575.98px) {
+  .ui-brand-sub { font-size: 0.6rem; }
+  .ui-footer { flex-direction: column; }
+}

@@ -106,6 +106,8 @@ TEMPLATES = [
                 # Menyediakan `active_alarm_count` untuk lencana di side menu.
                 "rules.context_processors.alarms",
                 "rules.context_processors.edge_rules",
+                # Gaya tampilan: Standard atau FILKOM (`ui_style`, `ui_style_selectable`).
+                "accounts.context_processors.ui_style",
             ],
         },
     },
@@ -241,6 +243,17 @@ OAUTH2_PROVIDER = {
     "COMPLIANT_BCP_RFC9700_REDIRECT_URI_MATCHING": True,
     "COMPLIANT_BCP_RFC9700_PKCE_REQUIRED": True,
 }
+
+
+# --- Gaya tampilan (docs/tahap-26-tambahan-gaya-filkom.md) -----------------------
+# UI_STYLE = gaya bawaan untuk pengunjung dan akun yang belum memilih: "standard" atau
+# "filkom" (navy-oranye FILKOM UB). UI_STYLE_SELECTABLE=False mengunci semua akun ke gaya bawaan
+# dan menyembunyikan tombol pilihan di side menu.
+UI_STYLES = ("standard", "filkom")
+UI_STYLE = os.getenv("UI_STYLE", "standard").strip().lower() or "standard"
+if UI_STYLE not in UI_STYLES:
+    raise ImproperlyConfigured(f"UI_STYLE in .env must be standard or filkom (got {UI_STYLE!r}).")
+UI_STYLE_SELECTABLE = os.getenv("UI_STYLE_SELECTABLE", "True") == "True"
 
 
 # --- Bahasa & zona waktu ----------------------------------------------------

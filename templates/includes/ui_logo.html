@@ -1,0 +1,14 @@
+{% comment %}
+  Logo IoT Platform: kotak membulat dengan gelombang sinyal di atas sebuah node dan jalur sirkuitnya.
+  Gambar sendiri (bukan logo FILKOM/UB). Warnanya dari variabel --ui-logo-* (app.css, filkom.css):
+  gaya Standard biru-putih, gaya FILKOM navy-oranye. `size` (px, bawaan 40).
+{% endcomment %}<svg class="ui-logo" viewBox="0 0 48 48" width="{{ size|default:40 }}" height="{{ size|default:40 }}" role="img" aria-label="IoT Platform logo">
+  <rect class="ui-logo-bg" width="48" height="48" rx="12"/>
+  <rect class="ui-logo-frame" x="2" y="2" width="44" height="44" rx="10" fill="none" stroke-width="1"/>
+  <path class="ui-logo-wave" d="M12.5 20.5a16 16 0 0 1 23 0" fill="none" stroke-width="3" stroke-linecap="round"/>
+  <path class="ui-logo-wave" d="M17.5 25.5a9 9 0 0 1 13 0" fill="none" stroke-width="3" stroke-linecap="round"/>
+  <path class="ui-logo-line" d="M10.5 33h9M28.5 33h9M24 37v4.5" fill="none" stroke-width="2" stroke-linecap="round"/>
+  <circle class="ui-logo-node" cx="24" cy="33" r="4"/>
+  <circle class="ui-logo-node" cx="10" cy="33" r="1.9"/>
+  <circle class="ui-logo-node" cx="38" cy="33" r="1.9"/>
+</svg>

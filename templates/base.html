@@ -5,7 +5,7 @@
 {% endcomment %}
 {% load static %}
 <!doctype html>
-<html lang="en" data-bs-theme="light">
+<html lang="en" data-bs-theme="light" data-ui="{{ ui_style|default:'standard' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -19,8 +19,14 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  {% if ui_style == "filkom" %}
+  {# Gaya FILKOM: hanya warna FILKOM UB di atas app.css; tata letak dan huruf sama (docs/tahap-26-tambahan-gaya-filkom.md). #}
+  <link rel="stylesheet" href="{% static 'css/filkom.css' %}">
+  {% endif %}
 </head>
 <body>
+{# Halaman publik: bilah atas selebar halaman (setelah login, bilah atas ada di dalam .app-main). #}
+{% if not user.is_authenticated %}{% include "includes/ui_topbar.html" %}{% endif %}
 {% if user.is_authenticated %}
 <div class="app-shell">
   {% comment %}
@@ -36,13 +42,9 @@
       <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close menu"></button>
     </div>
     <div class="offcanvas-body sidebar-body">
-      {# Layar lebar: nama platform + tombol menyembunyikan menu utama. #}
+      {# Layar lebar: logo dan identitas. Tombol menyembunyikan menu ada di kiri bilah atas. #}
       <div class="sidebar-head d-none d-lg-flex">
         <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
-        <button type="button" class="sidebar-toggle" data-sidebar-toggle aria-controls="sidebar" aria-expanded="true"
-                aria-label="Hide menu" title="Hide menu">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M16 10l-2 2 2 2"/></svg>
-        </button>
       </div>
 
       {% with path=request.path %}
@@ -116,6 +118,12 @@
       {% endwith %}
 
       <div class="sidebar-footer">
+        {% if ui_style_selectable %}
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="small text-muted">Style</span>
+          {% include "includes/ui_style_switch.html" %}
+        </div>
+        {% endif %}
         <div class="d-flex align-items-center justify-content-between mb-3">
           <span class="small text-muted">Theme</span>
           {% include "includes/theme_switch.html" %}
@@ -140,32 +148,12 @@
   </aside>
 
   <div class="app-main">
-    {# Layar lebar, menu utama tersembunyi: tombol untuk menampilkannya lagi. #}
-    <button type="button" class="sidebar-reopen" data-sidebar-toggle aria-controls="sidebar" aria-expanded="false"
-            aria-label="Show menu" title="Show menu">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M14 10l2 2-2 2"/></svg>
-    </button>
-    {# Bilah atas hanya di layar kecil: tombol untuk membuka side menu. #}
-    <header class="app-topbar d-lg-none">
-      <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#sidebar"
-              aria-controls="sidebar" aria-label="Open menu">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-      </button>
-      <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
-    </header>
+    {# Bilah atas dimulai setelah side menu: tombol tiga garis, lalu gaya, tema, profil di kanan. #}
+    {% include "includes/ui_topbar.html" %}
 
     <main class="app-content">
 {% else %}
-{# Halaman publik (login, daftar): tanpa side menu. #}
-<header class="public-topbar">
-  <div class="container d-flex align-items-center justify-content-between">
-    <a class="sidebar-brand" href="{% url 'home' %}">{% include "includes/brand.html" %}</a>
-    <div class="d-flex align-items-center gap-3">
-      <a class="small" href="{% url 'userdocs:index' %}">Documentation</a>
-      {% include "includes/theme_switch.html" %}
-    </div>
-  </div>
-</header>
+{# Halaman publik (login, daftar): tanpa side menu; bilah atas ada di awal <body>. #}
 <main class="container pb-5">
 {% endif %}
   {# Satu block content saja: Django melarang nama block yang sama muncul dua kali. #}
@@ -173,10 +161,12 @@
   {% block content %}{% endblock %}
 {% if user.is_authenticated %}
     </main>
+    {% include "includes/ui_footer.html" %}
   </div>
 </div>
 {% else %}
 </main>
+{% include "includes/ui_footer.html" %}
 {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
