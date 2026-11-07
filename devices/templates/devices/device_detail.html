@@ -12,8 +12,9 @@
 </nav>
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
-  <div>
-    <h1 class="h3 mb-1 device-title">
+  {# Judul dan keterangan (type, lokasi, owner, data terakhir) bersebelahan; turun ke bawah bila tidak muat. #}
+  <div class="device-head">
+    <h1 class="h3 mb-0 device-title">
       <span class="entity-icon entity-icon-lg entity-device{% if not device.is_active %} is-muted{% endif %}">{% include "includes/icon.html" with name="device" %}</span>
       <span class="align-middle">{{ device.name }}</span>
       {% if device.is_active %}
@@ -23,6 +24,7 @@
       {% endif %}
       <span class="fs-6 align-middle">{% include "devices/includes/online_pill.html" %}</span>
     </h1>
+    <div class="device-meta">
     <div class="text-muted">
       {{ device.device_type|default:"No type" }}{% if device.location %} · {% include "devices/includes/location_name.html" with location=device.location link=location_visible %}{% endif %} · owner: {{ device.owner.username }}
       {% if not is_owner %}<span class="badge text-bg-info-subtle text-info-emphasis border border-info-subtle ms-1" title="Shared with you">Shared with you · {{ my_role_label }}</span>{% endif %}
@@ -33,7 +35,8 @@
       <span data-live="last-data">{% if device.last_seen_at %}{{ device.last_seen_at|timesince }} ago{% else %}never{% endif %}</span>
       <span class="badge protocol-badge{% if not device.last_protocol %} d-none{% endif %}" data-live="protocol">{% if device.last_protocol %}via {{ device.get_last_protocol_display }}{% endif %}</span>
     </div>
-    {% if device.description %}<p class="mt-2 mb-0">{{ device.description }}</p>{% endif %}
+    </div>
+    {% if device.description %}<p class="device-desc mt-1 mb-0">{{ device.description }}</p>{% endif %}
   </div>
   <div class="text-nowrap">
     {# Tahap 19: tombol mengikuti peran. Pemeriksaan sebenarnya ada di view. #}

@@ -89,21 +89,21 @@ html[data-ui="filkom"][data-bs-theme="dark"] {
   --bs-primary-rgb: 127, 182, 240;
 }
 
-/* ---------- Judul: warna navy; judul halaman bergaris oranye pendek ---------- */
+/* ---------- Judul: warna navy; judul halaman bergaris oranye sepanjang judul ---------- */
 html[data-ui="filkom"] :is(h1, .h1, h2, .h2, h3, .h3, h4, .h4) { color: var(--ui-heading); }
+/* Garis sepanjang judul: h1 selebar isinya (fit-content), garis selebar h1. */
+html[data-ui="filkom"] .app-content h1 { width: fit-content; max-width: 100%; }
 html[data-ui="filkom"] .app-content h1::after {
   content: "";
   display: block;
-  width: 48px;
+  width: 100%;
   height: 3px;
   margin-top: 0.4rem;
   border-radius: 2px;
   background: var(--ui-orange);
 }
-/* Judul device (flex: ikon, nama, badge status): garis di baris sendiri di bawah judul, sepanjang
-   judul. inline-flex membuat lebar h1 = lebar isinya, dan garis (flex-basis 100%) selebar itu. */
-html[data-ui="filkom"] .app-content h1.device-title { display: inline-flex; max-width: 100%; }
-html[data-ui="filkom"] .app-content h1.device-title::after { flex: 0 0 100%; width: auto; margin-top: 0; }
+/* Judul device (flex: ikon, nama, badge status): garis di baris sendiri di bawah judul. */
+html[data-ui="filkom"] .app-content h1.device-title::after { flex: 0 0 100%; margin-top: 0; }
 
 /* ---------- Side menu navy ---------- */
 html[data-ui="filkom"] .app-sidebar {
