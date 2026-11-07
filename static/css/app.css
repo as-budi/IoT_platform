@@ -1412,8 +1412,6 @@ a.entity-pill:focus-visible { border-color: var(--entity-color); box-shadow: var
 
 /* Judul halaman device: ikon besar di depan nama (dashboard memakai chip yang sama dengan daftar device). */
 .device-title { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
-.device-head { display: flex; flex-wrap: wrap; align-items: center; column-gap: 1.75rem; row-gap: 0.4rem; min-width: 0; }
-.device-head > .device-desc { flex-basis: 100%; }
 .entity-icon-lg { width: 2.4rem; height: 2.4rem; border-radius: 0.6rem; }
 .entity-icon-lg .icon { width: 22px; height: 22px; }
 .entity-icon.is-muted { background: var(--app-surface-2); color: var(--app-muted); }

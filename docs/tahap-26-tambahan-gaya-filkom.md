@@ -28,7 +28,7 @@ berbeda hanya warna.
 | Side menu | warna kartu, menu aktif biru muda | navy, menu aktif oranye transparan bergaris oranye |
 | Bilah atas | warna kartu, garis tipis abu-abu | navy gelap, garis oranye 3 px |
 | Kaki halaman | warna kartu | navy, garis oranye |
-| Judul | biasa | navy; judul halaman bergaris oranye pendek, judul lokasi di dashboard bergaris oranye penuh |
+| Judul | biasa | navy; judul lokasi di dashboard bergaris oranye |
 | Tombol utama | biru, teks putih | oranye, teks navy (putih di atas oranye hanya ±2,7:1, navy ±6:1) |
 | Kepala tabel | abu-abu muda | navy |
 | Mode gelap | abu-abu gelap | navy sangat gelap (`#07131F`), kartu `#0E2033` |

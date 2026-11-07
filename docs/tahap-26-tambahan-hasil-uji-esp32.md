@@ -15,7 +15,6 @@ Sepuluh perbaikan setelah platform diuji dengan ESP32 sungguhan.
 | 9 | **Warna** garis chart per variabel | Tombol bulat di sebelah tombol zoom: 8 warna siap pilih, warna bebas, atau *Default* (warna tema). Disimpan di `Variable.chart_color` (migrasi devices 0024), berlaku untuk semua yang melihat; mengubahnya perlu peran Editor. `POST /devices/<d>/variables/<v>/color/`. | `devices/models.py`, `VariableColorView`, `variable_detail.html` |
 | 10 | Identitas di side menu lebih kecil, garisnya **sejajar** bilah atas | Kepala side menu setinggi bilah atas (`--ui-topbar-h`), garis bawahnya selebar side menu. | `app.css` (`.sidebar-head`) |
 | 11 | **RTT** di setiap command | Kolom Response menampilkan *RTT* = `completed_at − sent_at`: dari command dikirim (MQTT publish, atau diambil device lewat HTTP/CoAP) sampai jawaban diterima, termasuk waktu device menjalankannya. Hanya untuk Succeeded/Failed. | `Command.rtt_ms`, filter `duration_ms`, `device_detail.html` |
-| 12 | Garis oranye judul device (gaya FILKOM) di bawah judul | Judul device berbentuk flex; garis hiasan judul kini di baris sendiri di bawah judul, sepanjang judul (ikon sampai badge status). Keterangan device (type, lokasi, owner, data terakhir) kini di kanan judul. Semua judul halaman bergaris oranye sepanjang judulnya (h1 fit-content). | `static/css/filkom.css` |
 
 ## Pesan desired: hanya yang berubah (no. 7)
 
