@@ -54,6 +54,12 @@ class DeviceForm(BootstrapFormMixin, forms.ModelForm):
             owner = self.instance.owner if self.instance.owner_id else user
             location.queryset = Location.objects.filter(owner=owner) if owner else Location.objects.none()
 
+        # Tombol "+ Add location" di samping dropdown, hanya bila lokasi yang dibuat pengguna ini
+        # bisa dipilih: miliknya sendiri (bukan Editor di device orang lain) atau Admin.
+        owner = self.instance.owner if self.instance.owner_id else user
+        if user is not None and (self.is_admin or owner == user):
+            location.widget.template_name = "devices/widgets/location_select.html"
+
     def clean(self):
         """Lokasi device harus milik pemilik device (penting saat Admin mengganti pemilik)."""
         cleaned = super().clean()

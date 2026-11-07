@@ -1,3 +1,5 @@
+import secrets
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -7,6 +9,7 @@ from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Q, Sub
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
+from django.utils.datastructures import MultiValueDict
 from django.utils.http import urlencode
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse, reverse_lazy
@@ -424,10 +427,48 @@ def coap_info(request, device):
 
 
 class DeviceFormMixin(OwnedDeviceMixin, SuccessMessageMixin):
-    """Bagian yang sama antara view tambah dan ubah device."""
+    """Bagian yang sama antara view tambah dan ubah device.
+
+    Tombol "+ Add location" (name="add_location") mengirim form ini: isiannya disimpan
+    sementara di sesi (DRAFTS_KEY), lalu pengguna dibawa ke form lokasi baru dengan
+    ?next=<form ini>?draft=<kode>. Setelah lokasi disimpan, LocationCreateView kembali ke
+    form ini dengan &location=<id>: isian dipulihkan dan lokasi baru langsung terpilih.
+    """
 
     form_class = DeviceForm
     template_name = "devices/device_form.html"
+    DRAFTS_KEY = "device_form_drafts"
+    MAX_DRAFTS = 5
+
+    def post(self, request, *args, **kwargs):
+        if "add_location" not in request.POST:
+            return super().post(request, *args, **kwargs)
+        if self.kwargs.get("pk") is not None:
+            self.get_object()            # ubah device: izin Editor tetap diperiksa
+        token = secrets.token_urlsafe(6)
+        drafts = request.session.get(self.DRAFTS_KEY, {})
+        data = [[key, values] for key, values in request.POST.lists()
+                if key not in ("csrfmiddlewaretoken", "add_location")]
+        drafts[token] = data
+        # Simpan beberapa draf terakhir saja (urutan dict = urutan dibuat).
+        request.session[self.DRAFTS_KEY] = dict(list(drafts.items())[-self.MAX_DRAFTS:])
+        back = f"{request.path}?{urlencode({'draft': token})}"
+        return redirect(f"{reverse('devices:location_add')}?{urlencode({'next': back})}")
+
+    def get_initial(self):
+        initial = super().get_initial()
+        draft = self.request.session.get(self.DRAFTS_KEY, {}).get(self.request.GET.get("draft", ""))
+        if draft:
+            # Nilai mentah dari POST -> nilai awal field (cara widget membaca data form).
+            data = MultiValueDict({key: values for key, values in draft})
+            form = self.get_form_class()(user=self.request.user, instance=getattr(self, "object", None))
+            for name, field in form.fields.items():
+                if name in data or field.widget.value_omitted_from_data(data, {}, name) is False:
+                    initial[name] = field.widget.value_from_datadict(data, {}, name)
+        location = self.request.GET.get("location", "")
+        if location.isdigit():
+            initial["location"] = int(location)   # tetap disaring queryset field lokasi
+        return initial
 
     def get_form_kwargs(self):
         # Kirim pengguna yang login ke DeviceForm (lihat DeviceForm.__init__).
@@ -802,7 +843,30 @@ class LocationFormMixin(OwnedLocationMixin, SuccessMessageMixin):
 
 
 class LocationCreateView(LocationFormMixin, CreateView):
+    """Lokasi baru. Dengan ?next=<form device>: setelah disimpan kembali ke form itu
+    (isian device dipulihkan dari draf) dengan lokasi baru terpilih."""
+
     success_message = "Location %(name)s was added."
+
+    def next_url(self):
+        value = self.request.POST.get("next") or self.request.GET.get("next") or ""
+        # Hanya alamat di situs ini, dan hanya form device (bukan pengalihan ke mana saja).
+        if not value.startswith("/devices/") or not url_has_allowed_host_and_scheme(
+            value, allowed_hosts={self.request.get_host()}, require_https=self.request.is_secure()
+        ):
+            return ""
+        return value
+
+    def get_success_url(self):
+        back = self.next_url()
+        if back:
+            return f"{back}{'&' if '?' in back else '?'}{urlencode({'location': self.object.pk})}"
+        return super().get_success_url()
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["next"] = self.next_url()
+        return context
 
 
 class LocationUpdateView(LocationFormMixin, UpdateView):

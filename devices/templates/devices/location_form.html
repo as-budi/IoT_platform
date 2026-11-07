@@ -11,11 +11,13 @@
       <div class="card-body">
         <p class="small text-muted">Type the coordinates, or click the map to fill them in. You can also drag the marker.</p>
         <div id="picker-map" class="map-box mb-3" role="application" aria-label="Map for choosing the coordinates"></div>
+        {% if next %}<div class="alert alert-info small py-2">After saving, you go back to the device form with everything you filled in, and this location selected.</div>{% endif %}
         <form method="post">
           {% csrf_token %}
+          {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
           {% include "includes/form_fields.html" %}
-          <button type="submit" class="btn btn-primary">Save</button>
-          <a class="btn btn-link" href="{% if location %}{% url 'devices:location_detail' location.pk %}{% else %}{% url 'devices:location_list' %}{% endif %}">Cancel</a>
+          <button type="submit" class="btn btn-primary">Save{% if next %} and go back{% endif %}</button>
+          <a class="btn btn-link" href="{% if next %}{{ next }}{% elif location %}{% url 'devices:location_detail' location.pk %}{% else %}{% url 'devices:location_list' %}{% endif %}">Cancel</a>
         </form>
       </div>
     </div>

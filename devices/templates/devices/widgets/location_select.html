@@ -1,0 +1,10 @@
+{% comment %}
+  Dropdown lokasi di form device dengan tombol "Add location" (devices/forms.py DeviceForm).
+  Tombol ini SUBMIT form dengan name="add_location": view menyimpan isian sementara di sesi,
+  membuka form lokasi baru, lalu kembali ke form device dengan isian yang sama dan lokasi baru
+  terpilih (devices/views.py DeviceFormMixin). formnovalidate: isian yang belum lengkap pun boleh.
+{% endcomment %}
+<div class="input-group">
+  {% include "django/forms/widgets/select.html" %}
+  <button type="submit" name="add_location" value="1" class="btn btn-outline-secondary" formnovalidate title="Create a new location and come back to this form">+ Add location</button>
+</div>
