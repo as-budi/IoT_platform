@@ -102,6 +102,7 @@ def with_latest_values(variables):
 # Chart halaman variabel (tahap 26): jumlah titik rata-rata bergerak yang bisa dipilih,
 # dan warna siap pilih (tetap terbaca di mode terang dan gelap).
 SMOOTHING_OPTIONS = (3, 5, 10, 20, 50)
+SMOOTHING_MAX = 1000   # batas jumlah titik pada pilihan "custom"
 CHART_PALETTE = ("#2a78d6", "#1f9d55", "#e8710a", "#d93a3a", "#7b5cd6", "#0f9fb5", "#c2428f", "#c99a06")
 HEX_COLOR_RE = re.compile(r"^#[0-9a-f]{6}$")
 
@@ -631,6 +632,7 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         }
         # 6) Pilihan tampilan chart (tahap 26): rata-rata bergerak dan warna garis.
         context["smoothing_options"] = SMOOTHING_OPTIONS
+        context["smoothing_max"] = SMOOTHING_MAX
         context["chart_palette"] = CHART_PALETTE
         return context
 

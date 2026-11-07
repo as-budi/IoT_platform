@@ -124,7 +124,14 @@
                 title="Moving average of the last N points. The thin line shows the readings as received.">
           <option value="0">No smoothing</option>
           {% for n in smoothing_options %}<option value="{{ n }}">Moving average · {{ n }} points</option>{% endfor %}
+          <option value="custom">Moving average · custom…</option>
         </select>
+        {# Custom: jumlah titik diketik sendiri (2–{{ smoothing_max }}); muncul bila "custom…" dipilih. #}
+        <div class="input-group input-group-sm w-auto" id="chart-smoothing-custom" hidden>
+          <input type="number" class="form-control" id="chart-smoothing-points" min="2" max="{{ smoothing_max }}" step="1"
+                 value="7" inputmode="numeric" aria-label="Points in the moving average" style="width: 5.5rem">
+          <span class="input-group-text">points</span>
+        </div>
         {% endif %}
         {% if chart_points and can_edit %}
         {# Warna garis chart, disimpan di variabel (Variable.chart_color) untuk semua yang melihatnya. #}
@@ -417,11 +424,25 @@
     const raw = window.historyChartRaw = points;
     const smoothingSelect = document.getElementById("chart-smoothing");
     const SMOOTHING_KEY = "chartSmoothing";
+    // Custom: angka bebas 2..SMOOTHING_MAX yang diketik pengguna (kotak di sebelah pilihan).
+    const customBox = document.getElementById("chart-smoothing-custom");
+    const customPoints = document.getElementById("chart-smoothing-points");
+    const SMOOTHING_MAX = customPoints ? Number(customPoints.max) : 0;
+    const clampPoints = (n) => Math.min(SMOOTHING_MAX, Math.max(2, Math.round(n)));
     let smoothing = 0;
     if (smoothingSelect && !isDiscrete) {
       try { smoothing = Number(localStorage.getItem(SMOOTHING_KEY)) || 0; } catch (err) { smoothing = 0; }
-      if (!smoothingSelect.querySelector(`option[value="${smoothing}"]`)) smoothing = 0;
-      smoothingSelect.value = String(smoothing);
+      if (smoothing && smoothingSelect.querySelector(`option[value="${smoothing}"]`)) {
+        smoothingSelect.value = String(smoothing);
+      } else if (smoothing >= 2 && smoothing <= SMOOTHING_MAX) {
+        // Nilai yang tidak ada di daftar = custom.
+        smoothingSelect.value = "custom";
+        customPoints.value = String(smoothing);
+        customBox.hidden = false;
+      } else {
+        smoothing = 0;
+        smoothingSelect.value = "0";
+      }
     }
     const movingAverage = (data, n) => {
       const out = new Array(data.length);
@@ -582,10 +603,30 @@
       chart.update("none");
     };
     if (smoothingSelect) {
-      smoothingSelect.addEventListener("change", () => {
-        smoothing = Number(smoothingSelect.value) || 0;
+      const applySmoothing = (n) => {
+        smoothing = n;
         try { localStorage.setItem(SMOOTHING_KEY, String(smoothing)); } catch (err) { /* abaikan */ }
         window.historyChartRedraw();
+      };
+      smoothingSelect.addEventListener("change", () => {
+        const custom = smoothingSelect.value === "custom";
+        customBox.hidden = !custom;
+        if (custom) {
+          customPoints.focus();
+          applySmoothing(clampPoints(Number(customPoints.value) || 2));
+        } else {
+          applySmoothing(Number(smoothingSelect.value) || 0);
+        }
+      });
+      // Diterapkan saat mengetik (angka valid) dan dirapikan ke batas saat kotak ditinggalkan.
+      customPoints.addEventListener("input", () => {
+        const n = Number(customPoints.value);
+        if (Number.isFinite(n) && n >= 2 && n <= SMOOTHING_MAX) applySmoothing(Math.round(n));
+      });
+      customPoints.addEventListener("change", () => {
+        const n = clampPoints(Number(customPoints.value) || 2);
+        customPoints.value = String(n);
+        applySmoothing(n);
       });
     }
 

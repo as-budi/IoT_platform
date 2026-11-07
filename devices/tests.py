@@ -1018,6 +1018,8 @@ class VariableChartOptionsTests(TestCase):
         page = self.client.get(self.url("variable_detail"))
         self.assertContains(page, '<details class="card shadow-sm history-card" id="history">')
         self.assertContains(page, 'id="chart-smoothing"')
+        self.assertContains(page, '<option value="custom">')
+        self.assertContains(page, 'id="chart-smoothing-points" min="2" max="1000"')
         self.assertContains(page, self.url("variable_color"))
         self.assertContains(self.client.get(self.url("variable_detail"), {"page": 1}), 'id="history" open')
 
