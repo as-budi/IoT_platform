@@ -1,7 +1,8 @@
 {% comment %}
   Gambar state machine (SVG). Butuh `diagram` dari rules/machine_diagram.py:layout().
   Keadaan yang sedang ditempati device diberi class "is-occupied" dan jumlah device-nya.
-  Tombol "Export PNG" ditangani static/js/flow_export.js (data-legend = keterangan warna).
+  Tombol "Export PNG" ditangani static/js/flow_export.js (data-legend = keterangan warna);
+  tombol zoom: includes/diagram_zoom.html + static/js/diagram_zoom.js.
 {% endcomment %}
 <div data-flow-diagram>
 <div class="flow-diagram-wrap">
@@ -39,7 +40,8 @@
   <span><i class="machine-swatch machine-trigger-silent"></i>no data / offline</span>
   <span><i class="machine-swatch machine-trigger-manual"></i>button</span>
   <span>● = initial state · * = from any state</span>
-  <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-flow-export
+  {% include "rules/includes/diagram_zoom.html" %}
+  <button type="button" class="btn btn-sm btn-outline-secondary" data-flow-export
           data-filename="state-machine-{{ rule.name|default:'diagram'|slugify }}" data-title="{{ rule.name|default:'State machine' }}"
           data-legend='[["condition","--sm-condition"],["time in state","--sm-timeout"],["no data / offline","--sm-silent"],["button","--sm-manual"]]'
           title="Download this diagram as a PNG image (in the current light/dark theme)">

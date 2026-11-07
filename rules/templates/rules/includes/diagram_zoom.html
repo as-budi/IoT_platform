@@ -1,0 +1,13 @@
+{% comment %}
+  Tombol zoom diagram (rule chain / state machine). Ditangani static/js/diagram_zoom.js.
+  Ctrl/⌘ + scroll juga melakukan zoom; seret dengan mouse untuk menggeser.
+{% endcomment %}
+<div class="btn-group btn-group-sm flow-zoom ms-auto" role="group" aria-label="Zoom diagram">
+  <button type="button" class="btn btn-outline-secondary" data-zoom="out" aria-label="Zoom out" title="Zoom out (Ctrl/⌘ + scroll)">&minus;</button>
+  <button type="button" class="btn btn-outline-secondary flow-zoom-value" data-zoom="reset" data-zoom-value aria-label="Actual size" title="Actual size (100%)">100%</button>
+  <button type="button" class="btn btn-outline-secondary" data-zoom="in" aria-label="Zoom in" title="Zoom in (Ctrl/⌘ + scroll)">+</button>
+  <button type="button" class="btn btn-outline-secondary" data-zoom="fit" title="Fit the whole diagram in view">Fit</button>
+  <button type="button" class="btn btn-outline-secondary" data-zoom="full" aria-label="Full screen" aria-pressed="false" title="Full screen" hidden>
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align:-2px"><path fill="currentColor" d="M2.75 2h3.5a.75.75 0 0 1 0 1.5H3.5v2.75a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 2.75 2Zm7 0h3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0V3.5H9.75a.75.75 0 0 1 0-1.5ZM2.75 9a.75.75 0 0 1 .75.75v2.75h2.75a.75.75 0 0 1 0 1.5h-3.5a.75.75 0 0 1-.75-.75v-3.5A.75.75 0 0 1 2.75 9Zm10.5 0a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h-3.5a.75.75 0 0 1 0-1.5h2.75V9.75a.75.75 0 0 1 .75-.75Z"/></svg>
+  </button>
+</div>

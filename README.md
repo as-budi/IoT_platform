@@ -31,6 +31,7 @@ Penjelasan konsep:
 - [docs/tahap-26-tambahan-command-expiry.md](docs/tahap-26-tambahan-command-expiry.md) — command membawa `expires_at`/`ttl`, MQTT 5 message expiry, command MQTT hanya dikirim saat device online, firmware memeriksa jam (NTP)
 - [docs/tahap-26-tambahan-status-online.md](docs/tahap-26-tambahan-status-online.md) — device MQTT tidak lagi "online" selamanya: `online` retained diabaikan, batas diam sesi MQTT (`DEVICE_MQTT_SILENT_SECONDS`), detak firmware
 - [docs/tahap-26-tambahan-gaya-filkom.md](docs/tahap-26-tambahan-gaya-filkom.md) — gaya tampilan FILKOM (navy-oranye) di samping gaya Standard; keduanya berbagi tata letak, logo dan identitas Robotic and Embedded System Laboratory, dipilih per akun; bawaan lewat `UI_STYLE`
+- [docs/tahap-26-tambahan-zoom-diagram.md](docs/tahap-26-tambahan-zoom-diagram.md) — diagram rule flow dan state machine dapat di-zoom (tombol, Ctrl/⌘ + scroll, Fit, layar penuh) dan digeser
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
 
 ## Prasyarat

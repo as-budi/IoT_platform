@@ -319,6 +319,8 @@ class FormTests(MachineData):
 
         page = self.client.get(reverse("rules:detail", args=[rule.pk]))
         self.assertContains(page, "machine-diagram")
+        self.assertContains(page, 'data-zoom="fit"')         # zoom diagram
+        self.assertContains(page, "js/diagram_zoom")
         self.assertContains(page, "temperature &gt; 8 for 120 s")
         self.assertContains(page, "not started")   # device tertentu yang belum mengirim data
 

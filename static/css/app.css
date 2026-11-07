@@ -766,7 +766,14 @@ a.user-chip.active {
   border-color: rgba(42, 120, 214, 0.35);
 }
 
-.flow-diagram-wrap { overflow-x: auto; padding-bottom: 0.25rem; }
+.flow-diagram-wrap { overflow: auto; max-height: 75vh; padding-bottom: 0.25rem; }
+.flow-diagram-wrap.is-pannable { cursor: grab; }
+.flow-diagram-wrap.is-panning { cursor: grabbing; user-select: none; }
+.flow-zoom .btn { min-width: 2rem; }
+.flow-zoom .flow-zoom-value { min-width: 3.4rem; font-variant-numeric: tabular-nums; }
+/* Layar penuh: diagram mengisi layar, tombol tetap di bawah. */
+[data-flow-diagram]:fullscreen { display: flex; flex-direction: column; padding: 1rem; background: var(--app-surface); overflow: hidden; }
+[data-flow-diagram]:fullscreen .flow-diagram-wrap { flex: 1 1 auto; max-height: none; }
 .flow-diagram { display: block; font-family: inherit; }
 .flow-diagram text { fill: var(--bs-body-color); }
 .flow-node rect { fill: var(--app-surface); stroke: var(--app-border); stroke-width: 1.5; }

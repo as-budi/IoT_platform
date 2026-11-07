@@ -437,6 +437,8 @@ class FlowViewTests(FlowData):
         self.assertContains(response, "No message has passed through the chain yet")
         self.assertContains(response, 'class="flow-diagram"')
         self.assertContains(response, f"/ws/devices/{self.node.pk}/")
+        self.assertContains(response, 'data-zoom="in"')        # zoom diagram
+        self.assertContains(response, "js/diagram_zoom")
         self.send(at(0), temperature=35)
         response = self.client.get(reverse("rules:evaluation", args=[rule.pk]))
         self.assertContains(response, "temperature = 35 &gt; 32 → yes")
