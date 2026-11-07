@@ -1,13 +1,20 @@
-{% comment %}Tombol unduh template firmware (tahap 24/25). Butuh: protocol, protocols, device.{% endcomment %}
+{% comment %}Tombol unduh template firmware (tahap 24/25). Butuh: protocol, protocols, device.
+  Tahap 26: device_templates (protokol -> label template khusus board device) dan board_templates
+  (protokol -> [(board, label)]) dari userdocs/context.py.{% endcomment %}
 <div class="d-flex flex-wrap align-items-center gap-2 border-top pt-3 mb-4">
   {% if user.is_authenticated %}
   <a class="btn btn-primary" href="{% url 'devices:connect_firmware' protocol %}{% if device %}?device={{ device.pk }}{% endif %}">
-    Download {% for key, info in protocols.items %}{% if key == protocol %}{{ info.label }}{% endif %}{% endfor %} firmware template (.zip)
+    Download {% if protocol in device_templates %}{% for key, label in device_templates.items %}{% if key == protocol %}{{ label }}{% endif %}{% endfor %}{% else %}{% for key, info in protocols.items %}{% if key == protocol %}{{ info.label }}{% endif %}{% endfor %}{% endif %} firmware template (.zip)
   </a>
   <span class="small text-muted">
-    {% if device %}Contains the access token of <strong>{{ device.name }}</strong>. Fill in only your Wi-Fi name and password.
+    {% if device %}Contains the access token of <strong>{{ device.name }}</strong>{% if device.board %} (board {{ device.get_board_display }}){% endif %}. Fill in only your Wi-Fi name and password.
     {% else %}No device selected: paste the access token into <code>ACCESS_TOKEN</code> yourself.{% endif %}
   </span>
+  {% for key, variants in board_templates.items %}{% if key == protocol %}{% for board, label in variants %}{% if not device or device.board != board %}
+  <a class="btn btn-sm btn-outline-secondary" href="{% url 'devices:connect_firmware' protocol %}?{% if device %}device={{ device.pk }}&amp;{% endif %}board={{ board }}">
+    {{ label }} variant
+  </a>
+  {% endif %}{% endfor %}{% endif %}{% endfor %}
   {% else %}
   <span class="small text-muted">Log in to download the {% for key, info in protocols.items %}{% if key == protocol %}{{ info.label }}{% endif %}{% endfor %} firmware template.</span>
   {% endif %}

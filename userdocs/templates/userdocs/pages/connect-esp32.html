@@ -109,6 +109,10 @@ the server address, port, topic prefix and root certificate are already filled i
   {% if mqtt.login %}<li>A new device, or a new token, can log in to the broker after about 2 minutes.</li>{% endif %}
   <li>Serial Monitor prints <code>failed (state 5)</code> when the broker rejects the login (wrong token), and <code>state -2</code> when it cannot reach the broker (address, port, or <a href="{% url 'userdocs:page' 'security' %}#root-ca">certificate</a>).</li>
   <li>All topics are listed in the <a href="{% url 'userdocs:page' 'device-api' %}#mqtt">device API reference</a>.</li>
+  <li id="esp32c3-oled"><strong>ESP32-C3 OLED</strong> (ESP32-C3 with a 0.42" 72&times;40 display): set the device's board to <em>ESP32-C3 OLED</em> and the download gives the
+    <code>esp32c3_oled_mqtt</code> template instead. It does everything above, shows text sent with the command <code>oled</code> <code>{"x": 0, "y": 0, "msg": "Hello"}</code>,
+    and has a menu on the BOOT button: press once for the next item, hold to open, press twice to go back (Display, Firmware, Mode auto/manual, Telemetry).
+    Extra library: U8g2. Set <code>OLED</code> to <code>false</code> for a board without a display.</li>
 </ul>
 {% include "devices/includes/connect_download.html" with protocol="mqtt" %}
 

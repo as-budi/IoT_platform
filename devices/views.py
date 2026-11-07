@@ -993,7 +993,11 @@ class ConnectFirmwareView(LoginRequiredMixin, View):
                 raise Http404("No such device.")
         coap_server, _ = coap_host(request)
         values = connect.server_values(request, coap_server)[protocol]
-        filename, data = connect.build_firmware_zip(protocol, values, device)
+        # ?board=esp32c3_oled: template khusus board itu (tanpa device, atau menggantikan board device).
+        board = request.GET.get("board", "")
+        if board and (protocol, board) not in connect.BOARD_TEMPLATES:
+            raise Http404("No template for this board.")
+        filename, data = connect.build_firmware_zip(protocol, values, device, board)
         response = HttpResponse(data, content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

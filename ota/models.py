@@ -66,7 +66,7 @@ class FirmwarePackage(models.Model):
         "version", max_length=40,
         help_text="Must match the version the firmware reports after it starts, e.g. 1.2.0.",
     )
-    board = models.CharField("board", max_length=10, choices=Board.choices)
+    board = models.CharField("board", max_length=16, choices=Board.choices)
     file = models.FileField("file", upload_to="%Y/%m/", storage=firmware_storage_callable)
     size = models.PositiveIntegerField("size (bytes)", editable=False)
     # Dihitung server saat upload. MD5 dikirim ke device (HTTPUpdate memeriksanya

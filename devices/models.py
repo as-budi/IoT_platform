@@ -101,6 +101,10 @@ class Board(models.TextChoices):
     ESP32S2 = "esp32s2", "ESP32-S2"
     ESP32S3 = "esp32s3", "ESP32-S3"
     ESP32C3 = "esp32c3", "ESP32-C3"
+    # ESP32-C3 dengan OLED 0,42" (tahap 26): chip sama dengan ESP32-C3, tetapi firmware-nya berbeda
+    # (template firmware/esp32c3_oled_mqtt). Board terpisah supaya OTA tidak tertukar dan halaman
+    # Connect memberikan template yang tepat.
+    ESP32C3_OLED = "esp32c3_oled", "ESP32-C3 OLED"
     ESP8266 = "esp8266", "ESP8266"
     SIMULATED = "sim", "Simulated device"
 
@@ -172,7 +176,7 @@ class Device(models.Model):
     # --- Firmware (tahap 9, OTA) ---
     # Board diisi pengguna di form device, atau dilaporkan device sendiri saat menyala.
     board = models.CharField(
-        "board", max_length=10, choices=Board.choices, blank=True,
+        "board", max_length=16, choices=Board.choices, blank=True,
         help_text="Used by firmware updates to refuse firmware built for another board.",
     )
     # Versi firmware yang SEDANG berjalan, menurut laporan device (bukan menurut

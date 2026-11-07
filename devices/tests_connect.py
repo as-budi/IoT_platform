@@ -75,6 +75,36 @@ class ConnectGuideTests(TestCase):
         self.assertIn(connect.TOKEN_PLACEHOLDER, source)
         self.assertIn("and ACCESS_TOKEN below", source)
 
+    def test_esp32c3_oled_board_gets_its_own_template(self):
+        from devices.models import Board
+
+        Device.objects.filter(pk=self.device.pk).update(board=Board.ESP32C3_OLED)
+        self.device.refresh_from_db()
+        response = self.download("mqtt", self.device)
+        self.assertIn('filename="esp32c3-oled-mqtt-greenhouse-node.zip"', response["Content-Disposition"])
+        files = self.unzip(response)
+        source = files["esp32c3-oled-mqtt-greenhouse-node/esp32c3_oled_mqtt/esp32c3_oled_mqtt.ino"]
+        self.assertIn('const char* MQTT_HOST     = "iot.example.org";', source)
+        self.assertIn("#define USE_TLS 1", source)
+        self.assertRegex(source, rf'ACCESS_TOKEN\s*=\s*"{self.device.access_token}";')
+        self.assertNotIn("paste ISRG Root X1 here", source)
+        self.assertIn('#define FW_BOARD   "esp32c3_oled"', source)
+        self.assertIn("U8g2", files["esp32c3-oled-mqtt-greenhouse-node/README.txt"])
+        # Protokol lain tetap memakai template biasa.
+        self.assertIn('filename="esp32-http-greenhouse-node.zip"', self.download("http", self.device)["Content-Disposition"])
+        # Halaman Connect: tombol utama menyebut template khusus board.
+        page = self.client.get(reverse("userdocs:page", args=["connect-esp32"]), {"device": self.device.pk})
+        self.assertContains(page, "Download MQTT · ESP32-C3 OLED firmware template")
+
+    def test_board_variant_without_device(self):
+        url = reverse("devices:connect_firmware", args=["mqtt"])
+        response = self.client.get(url, {"board": "esp32c3_oled"})
+        files = self.unzip(response)
+        self.assertIn("esp32c3-oled-mqtt-template/esp32c3_oled_mqtt/esp32c3_oled_mqtt.ino", files)
+        self.assertEqual(self.client.get(url, {"board": "esp8266"}).status_code, 404)
+        page = self.client.get(reverse("userdocs:page", args=["connect-esp32"]))
+        self.assertContains(page, "?board=esp32c3_oled")
+
     def test_download_rules(self):
         self.assertEqual(self.download("lora").status_code, 404)
         self.assertEqual(self.download("http", self.other).status_code, 404)       # bukan miliknya

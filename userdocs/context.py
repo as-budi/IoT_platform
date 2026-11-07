@@ -71,6 +71,8 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
         "telegram_enabled": bool(getattr(settings, "TELEGRAM_BOT_TOKEN", "")),
         "boards": Board.choices,
         "protocols": connect.PROTOCOLS,
+        # Template khusus board (tahap 26), mis. {"mqtt": [("esp32c3_oled", "ESP32-C3 OLED")]}.
+        "board_templates": {protocol: connect.board_variants(protocol) for protocol in connect.PROTOCOLS},
         "root_ca": {
             "name": connect.ROOT_CA_NAME,
             "sha256": connect.ROOT_CA_SHA256,
@@ -89,4 +91,9 @@ def device_context(request):
     context = {"devices": devices, "device": device}
     if device is not None:
         context.update(docs_context(request, token=device.access_token))
+        # Protokol yang memakai template khusus board device ini -> label template.
+        context["device_templates"] = {
+            protocol: connect.template_info(protocol, device.board)["label"]
+            for protocol in connect.PROTOCOLS if (protocol, device.board) in connect.BOARD_TEMPLATES
+        }
     return context
