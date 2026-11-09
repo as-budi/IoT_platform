@@ -10,6 +10,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}IoT Platform{% endblock %}</title>
+  {# Ikon tab browser = logo IoT Platform, warnanya mengikuti gaya (Standard biru, FILKOM navy-oranye). #}
+  {% with icon_style=ui_style|default:"standard" %}
+  <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-'|add:icon_style|add:'.svg' %}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-'|add:icon_style|add:'-32.png' %}">
+  <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon-'|add:icon_style|add:'.png' %}">
+  {% endwith %}
   {# Tema (light/dark) dipasang sedini mungkin supaya halaman tidak "berkedip". #}
   <script src="{% static 'js/theme.js' %}"></script>
   {# Menu utama tersembunyi/tampil, juga dipasang sedini mungkin (static/js/sidebar.js). #}

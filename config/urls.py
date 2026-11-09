@@ -8,10 +8,20 @@ daftar `urlpatterns` di bawah, dari atas ke bawah -> view yang cocok dijalankan.
 setiap app mengurus URL-nya sendiri.
 """
 from django.contrib import admin
+from django.shortcuts import redirect
+from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+
+def favicon(request):
+    """/favicon.ico -> logo IoT Platform. static() dipanggil saat request (nama file ber-hash
+    dari collectstatic), bukan saat modul dimuat."""
+    return redirect(static("img/favicon.ico"))
+
 urlpatterns = [
+    # Browser dan aplikasi lain sering langsung meminta /favicon.ico (logo IoT Platform).
+    path("favicon.ico", favicon),
     # Situs admin bawaan Django (alat internal untuk mengelola data mentah).
     path("admin/", admin.site.urls),
     # /accounts/sandbox/ -> akun MQTT sandbox (tahap 23)

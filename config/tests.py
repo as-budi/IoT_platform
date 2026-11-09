@@ -47,6 +47,9 @@ class HashedStaticTests(SimpleTestCase):
             html = self.client.get("/accounts/login/").content.decode()
             self.assertRegex(html, r'href="/static/css/app\.[0-9a-f]{12}\.css"')
             self.assertRegex(html, r'src="/static/js/theme\.[0-9a-f]{12}\.js"')
+            # Ikon tab browser (logo IoT Platform), juga lewat /favicon.ico.
+            self.assertRegex(html, r'rel="icon" type="image/svg\+xml" href="/static/img/favicon-(standard|filkom)\.[0-9a-f]{12}\.svg"')
+            self.assertRegex(self.client.get("/favicon.ico")["Location"], r"^/static/img/favicon\.[0-9a-f]{12}\.ico$")
 
     def test_new_content_gets_a_new_name(self):
         with self.settings(STORAGES=HASHED, STATIC_ROOT=self.root, DEBUG=False):
