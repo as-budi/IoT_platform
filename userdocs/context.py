@@ -39,6 +39,7 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
             "max_kb": settings.CAMERA_MAX_SNAPSHOT_KB,
             "min_interval": settings.CAMERA_MIN_INTERVAL_S,
             "retention_days": settings.CAMERA_RETENTION_DAYS,
+            "quota_mb": settings.CAMERA_STORAGE_QUOTA_MB,
         },
         "mqtt": {
             "host": settings.MQTT_PUBLIC_HOST,

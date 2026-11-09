@@ -1,4 +1,4 @@
-{% load device_tags %}
+{% load device_tags camera_tags %}
 {% comment %}
   Tabel alarm. Butuh `alarms`. Opsional: hide_device=True, empty_message.
 {% endcomment %}
@@ -22,6 +22,15 @@
           <td>
             {{ alarm.message }}
             {% if alarm.rule %}<div class="small text-muted">Rule: <a href="{% url 'rules:detail' alarm.rule.pk %}">{{ alarm.rule.name }}</a></div>{% endif %}
+            {# Tahap 27a: gambar dari aksi "Capture snapshot" aturan ini. #}
+            {% with shots=alarm.snapshots.all %}{% if shots %}
+            <div class="alarm-snapshots mt-1">
+              {% for snapshot in shots|slice:":4" %}
+              <a href="{% url 'cameras:image' snapshot.pk %}" target="_blank" rel="noopener" title="Snapshot {{ snapshot.ts|date:'d M Y H:i:s' }}">
+                <img src="{{ snapshot|thumb_url }}" alt="Snapshot {{ snapshot.ts|date:'d M H:i:s' }}" loading="lazy"></a>
+              {% endfor %}
+            </div>
+            {% endif %}{% endwith %}
           </td>
           {% if not hide_device %}<td><a href="{% url 'devices:detail' alarm.device.pk %}">{{ alarm.device.name }}</a></td>{% endif %}
           <td class="text-nowrap" title="{{ alarm.created_at|date:'d M Y H:i:s' }}">{{ alarm.created_at|timesince }} ago</td>

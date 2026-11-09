@@ -188,3 +188,153 @@ class TemplateTests(CameraData):
         self.assertIn(f'"{self.device.access_token}"', source)
         self.assertIn('#define FW_BOARD   "esp32cam"', source)
         self.assertNotIn("paste ISRG Root X1 here", source)
+
+
+# --- Tahap 27a lanjutan: thumbnail, kuota, aksi aturan, Telegram, dashboard, alarm, log -------
+
+from unittest import mock, skipUnless  # noqa: E402
+
+from activity.models import ActivityEvent  # noqa: E402
+from rules import actions as rule_actions  # noqa: E402
+from rules.models import Alarm, Rule, RuleAction  # noqa: E402
+
+from . import thumbs  # noqa: E402
+from .models import CaptureRequest  # noqa: E402
+
+
+class ThumbnailTests(CameraData):
+    def test_thumbnail_is_saved_and_served(self):
+        with mock.patch.object(thumbs, "make_thumbnail", return_value=make_jpeg(320, 240)):
+            self.assertEqual(self.upload().status_code, 201)
+        snapshot = Snapshot.objects.get()
+        self.assertTrue(snapshot.thumb.name.endswith("-t.jpg"))
+        self.assertEqual(services.thumb_url(snapshot), reverse("cameras:image", args=[snapshot.pk]) + "?thumb=1")
+        self.client.force_login(self.siti)
+        response = self.client.get(reverse("cameras:image", args=[snapshot.pk]) + "?thumb=1")
+        self.assertEqual(b"".join(response.streaming_content), make_jpeg(320, 240))
+        thumb_path = Path(snapshot.thumb.path)
+        snapshot.delete()
+        self.assertFalse(thumb_path.exists())
+
+    def test_without_thumbnail_the_image_itself_is_used(self):
+        with mock.patch.object(thumbs, "make_thumbnail", return_value=None):
+            self.upload()
+        snapshot = Snapshot.objects.get()
+        self.assertEqual(services.thumb_url(snapshot), reverse("cameras:image", args=[snapshot.pk]))
+
+    @skipUnless(thumbs.available(), "Pillow is not installed")
+    def test_pillow_thumbnail(self):
+        import io
+
+        from PIL import Image
+
+        out = io.BytesIO()
+        Image.new("RGB", (800, 600), "red").save(out, "JPEG")
+        small = thumbs.make_thumbnail(out.getvalue())
+        self.assertEqual(Image.open(io.BytesIO(small)).size, (320, 240))
+        self.assertIsNone(thumbs.make_thumbnail(make_jpeg(200, 150)))
+
+
+class QuotaTests(CameraData):
+    @override_settings(CAMERA_STORAGE_QUOTA_MB=1, CAMERA_MIN_INTERVAL_S=0)
+    def test_oldest_snapshots_make_room(self):
+        big = make_jpeg(padding=400 * 1024)          # ±400 KB: dua muat, yang ketiga menggeser yang tertua
+        for _ in range(3):
+            self.assertEqual(self.upload(big).status_code, 201)
+        self.assertEqual(Snapshot.objects.count(), 2)
+        self.assertLessEqual(services.storage_used(self.siti), 1024 * 1024)
+        self.client.force_login(self.siti)
+        page = self.client.get(reverse("cameras:gallery", args=[self.device.pk]))
+        self.assertContains(page, "of 1 MB")
+
+
+@override_settings(TELEGRAM_BOT_TOKEN="123:abc", TELEGRAM_API_URL="https://api.telegram.test")
+class RuleCaptureTests(CameraData):
+    def setUp(self):
+        self.rule = Rule.objects.create(owner=self.siti, name="Gate opened")
+        self.action = RuleAction(rule=self.rule, kind=RuleAction.Kind.CAPTURE, target_device=self.device,
+                                 send_photo=True, recipients="555", message="{rule} at {device}")
+
+    def run_action(self):
+        return rule_actions.capture_snapshot(self.action, self.rule, {"rule": self.rule.name, "device": "Gate"})
+
+    def test_capture_links_the_alarm_and_sends_the_photo(self):
+        detail = self.run_action()
+        command = Command.objects.get(method="capture")
+        self.assertIn(f"command #{command.pk}", detail)
+        self.assertIn("Telegram", detail)
+        request = CaptureRequest.objects.get(command=command)
+        self.assertEqual((request.telegram_chats, request.caption), ("555", "Gate opened at Gate"))
+        alarm = Alarm.objects.create(rule=self.rule, device=self.device, message="Gate opened")
+
+        with mock.patch.object(services, "start_thread", lambda target: target()), \
+                mock.patch("notifications.telegram.send_photo") as send_photo, \
+                self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.upload(x_command_id=str(command.pk)).status_code, 201)
+        snapshot = Snapshot.objects.get()
+        self.assertEqual((snapshot.source, snapshot.rule, snapshot.alarm), (Snapshot.Source.RULE, self.rule, alarm))
+        send_photo.assert_called_once_with("555", make_jpeg(), "Gate opened at Gate")
+        request.refresh_from_db()
+        self.assertIsNotNone(request.done_at)
+
+        # Halaman alarm menampilkan gambarnya.
+        self.client.force_login(self.siti)
+        self.assertContains(self.client.get(reverse("rules:alarms")), reverse("cameras:image", args=[snapshot.pk]))
+
+    def test_no_access_and_no_telegram_link(self):
+        other = Device.objects.create(owner=self.budi, name="Not mine")
+        self.action.target_device = other
+        with self.assertRaises(rule_actions.ActionError):
+            self.run_action()
+        self.action.target_device, self.action.recipients = self.device, ""
+        with self.assertRaisesMessage(rule_actions.ActionError, "has not connected Telegram"):
+            self.run_action()
+        self.action.send_photo = False
+        self.assertNotIn("Telegram", self.run_action())
+
+    def test_send_photo_is_a_multipart_upload(self):
+        from notifications import telegram
+
+        answer = mock.MagicMock()
+        answer.__enter__.return_value.read.return_value = b'{"ok": true, "result": {}}'
+        with mock.patch("urllib.request.urlopen", return_value=answer) as urlopen:
+            telegram.send_photo("555", make_jpeg(), "hello")
+        request = urlopen.call_args[0][0]
+        self.assertTrue(request.full_url.endswith("/sendPhoto"))
+        self.assertIn("multipart/form-data", request.headers["Content-type"])
+        self.assertIn(make_jpeg(), request.data)
+        self.assertIn(b'name="caption"', request.data)
+
+    def test_rule_form_accepts_a_capture_action(self):
+        from rules.forms import RuleActionForm
+
+        form = RuleActionForm(
+            data={"kind": "CAPTURE", "run_on": "ACTIVATE", "target_device": self.device.pk,
+                  "send_photo": "on", "recipients": " 555 , 777", "message": "hi", "method": "x",
+                  "ttl_seconds": "300", "severity": "MAJOR"},
+            devices=Device.objects.filter(owner=self.siti),
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["recipients"], "555, 777")
+        self.assertEqual(form.cleaned_data["method"], "")
+
+
+class DashboardAndLogTests(CameraData):
+    def setUp(self):
+        self.client.force_login(self.siti)
+
+    def test_dashboard_camera_card(self):
+        self.upload()
+        snapshot = Snapshot.objects.get()
+        page = self.client.get(reverse("dashboard:index"))
+        self.assertContains(page, f'data-live-camera="{self.device.pk}"')
+        self.assertContains(page, reverse("cameras:image", args=[snapshot.pk]))
+
+    def test_actions_are_logged(self):
+        self.client.post(reverse("cameras:capture", args=[self.device.pk]))
+        self.upload()
+        snapshot = Snapshot.objects.get()
+        self.client.post(reverse("cameras:delete", args=[snapshot.pk]))
+        self.client.post(reverse("cameras:settings", args=[self.device.pk]), {"retention_days": "7"})
+        verbs = set(ActivityEvent.objects.filter(device=self.device).values_list("verb", flat=True))
+        self.assertTrue({"camera.capture", "camera.snapshot_deleted", "camera.settings"} <= verbs)

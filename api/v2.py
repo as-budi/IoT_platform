@@ -123,6 +123,9 @@ def my_devices(request):
             # Token dan topik (topik memuat token) hanya untuk Editor ke atas.
             "access_token": device.access_token if can_connect else None,
             "topics": _topics(device.access_token) if can_connect else None,
+            # Tahap 27a: alamat unggah snapshot JPEG (POST, body = gambar); memuat token.
+            "snapshot_url": request.build_absolute_uri(reverse("api:snapshot", args=[device.access_token]))
+            if can_connect else None,
             "variables": [
                 {
                     "key": variable.key,

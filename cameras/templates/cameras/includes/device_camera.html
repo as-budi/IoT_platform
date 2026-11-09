@@ -3,7 +3,7 @@
   Data dari cameras/views.py: device_camera_context(). Gambar baru datang lewat kabar
   WebSocket {"type": "snapshot"} dan diganti di tempat (skrip di bawah).
 {% endcomment %}
-{% load device_tags humanize %}
+{% load device_tags humanize camera_tags %}
 {% can_access device.pk "OPERATOR" as can_capture %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h2 class="h5 mb-0" id="camera">Camera</h2>
@@ -26,7 +26,7 @@
         </a>
         <div class="small text-muted mt-2" data-camera-meta>
           <span title="{{ camera_latest.ts|date:'d M Y H:i:s' }}">{{ camera_latest.ts|date:"d M Y H:i:s" }}</span>
-          · {{ camera_latest.get_source_display }}{% if camera_latest.resolution %} · {{ camera_latest.resolution }}{% endif %} · {{ camera_latest.size|filesizeformat }}
+          · {{ camera_latest.get_source_display }}{% if camera_latest.rule %} ({{ camera_latest.rule.name }}){% endif %}{% if camera_latest.resolution %} · {{ camera_latest.resolution }}{% endif %} · {{ camera_latest.size|filesizeformat }}
         </div>
       </div>
       <div class="col-lg-5">
@@ -34,7 +34,7 @@
         <div class="camera-strip">
           {% for snapshot in camera_recent %}
           <a href="{% url 'cameras:image' snapshot.pk %}" target="_blank" rel="noopener" title="{{ snapshot.ts|date:'d M Y H:i:s' }}">
-            <img src="{% url 'cameras:image' snapshot.pk %}" alt="Snapshot {{ snapshot.ts|date:'d M H:i:s' }}" loading="lazy">
+            <img src="{{ snapshot|thumb_url }}" alt="Snapshot {{ snapshot.ts|date:'d M H:i:s' }}" loading="lazy">
           </a>
           {% endfor %}
         </div>
@@ -50,8 +50,10 @@
 </div>
 <script>
   // Snapshot baru: ganti gambar terbaru di tempat. Belum ada gambar sebelumnya -> muat ulang halaman.
+  // Kabar dari device lain (mis. halaman yang memuat banyak device) diabaikan.
   if (window.AutoRefresh) {
     AutoRefresh.on("snapshot", (event) => {
+      if (event.device && event.device !== {{ device.pk }}) return true;
       const img = document.querySelector("[data-camera-image]");
       if (!img) return false;
       img.src = event.url;

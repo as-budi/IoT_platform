@@ -96,6 +96,7 @@ ACTION_FIELDS = {
     RuleAction.Kind.EMAIL: ("message", "recipients"),
     RuleAction.Kind.TELEGRAM: ("message", "recipients"),
     RuleAction.Kind.CLEAR_ALARM: (),
+    RuleAction.Kind.CAPTURE: ("device", "send_photo", "message", "recipients"),   # tahap 27a
 }
 
 
@@ -503,12 +504,14 @@ def eca_form_data(data, owner):
         if kind == RuleAction.Kind.SET_ACTUATOR:
             variable = resolve.variable(action.get("device"), action.get("variable"), where)
             post[f"{prefix}-target_variable"] = _text(variable.pk if variable else "")
-        elif kind == RuleAction.Kind.SEND_COMMAND:
+        elif kind in (RuleAction.Kind.SEND_COMMAND, RuleAction.Kind.CAPTURE):
             target = resolve.device(action.get("device"), where)
             post[f"{prefix}-target_device"] = _text(target.pk if target else "")
         for name in ("value", "method", "ttl_seconds", "severity", "message", "recipients"):
             if name in action:
                 post[f"{prefix}-{name}"] = _text(action[name])
+        if action.get("send_photo"):
+            post[f"{prefix}-send_photo"] = "on"
         params = action.get("params")
         post[f"{prefix}-params"] = json.dumps(params) if params else ""
         post.setdefault(f"{prefix}-ttl_seconds", "300")
@@ -563,6 +566,9 @@ def flow_form_data(data, owner):
             elif name == "params":
                 params = node.get("params")
                 post[f"{prefix}-params"] = json.dumps(params) if params else ""
+            elif name == "send_photo":
+                if node.get("send_photo"):
+                    post[f"{prefix}-send_photo"] = "on"
             elif name in node:
                 post[f"{prefix}-{name}"] = _text(node[name])
         # Field wajib di model walaupun tidak dipakai jenis node ini.
@@ -595,12 +601,14 @@ def _action_post(post, prefix, action, resolve, where):
     if kind == RuleAction.Kind.SET_ACTUATOR:
         variable = resolve.variable(action.get("device"), action.get("variable"), where)
         post[f"{prefix}-target_variable"] = _text(variable.pk if variable else "")
-    elif kind == RuleAction.Kind.SEND_COMMAND:
+    elif kind in (RuleAction.Kind.SEND_COMMAND, RuleAction.Kind.CAPTURE):
         target = resolve.device(action.get("device"), where)
         post[f"{prefix}-target_device"] = _text(target.pk if target else "")
     for name in ("value", "method", "ttl_seconds", "severity", "message", "recipients"):
         if name in action:
             post[f"{prefix}-{name}"] = _text(action[name])
+    if action.get("send_photo"):
+        post[f"{prefix}-send_photo"] = "on"
     params = action.get("params")
     post[f"{prefix}-params"] = json.dumps(params) if params else ""
     post.setdefault(f"{prefix}-ttl_seconds", "300")

@@ -300,6 +300,8 @@ class ApiV2Tests(OAuthTestCase):
         self.assertEqual(devices["Siti editor device"]["access_token"], self.edited.access_token)
         self.assertIsNone(devices["Siti viewer device"]["access_token"])
         self.assertIsNone(devices["Siti viewer device"]["topics"])
+        self.assertTrue(own["snapshot_url"].endswith(f"/api/v1/{token}/snapshot"))
+        self.assertIsNone(devices["Siti viewer device"]["snapshot_url"])
         self.assertEqual(devices["Siti viewer device"]["role"], "viewer")
 
     def test_admin_gets_only_own_and_shared_devices(self):

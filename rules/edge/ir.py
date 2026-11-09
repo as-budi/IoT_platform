@@ -25,7 +25,7 @@ from .wire import f32
 
 FORMAT = "microrule-ir/1"
 EDGE_KINDS = ("SET_ACTUATOR", "SEND_COMMAND")
-CLOUD_KINDS = ("ALARM", "EMAIL", "TELEGRAM", "CLEAR_ALARM")
+CLOUD_KINDS = ("ALARM", "EMAIL", "TELEGRAM", "CLEAR_ALARM", "CAPTURE")
 RUN_ON = {"ACTIVATE": "activate", "CLEAR": "clear"}
 
 

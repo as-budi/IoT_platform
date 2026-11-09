@@ -21,6 +21,7 @@ Rules → <em>New rule</em> starts by choosing a model.</p>
     <tr><th class="text-nowrap">Raise alarm</th><td>create an alarm with a severity and message; it clears by itself when the rule recovers (<a href="{% url 'userdocs:page' 'alarms-notifications' %}">Alarms</a>).</td></tr>
     <tr><th class="text-nowrap">Send email</th><td>to the addresses you enter, or to the rule owner when left blank.</td></tr>
     <tr><th class="text-nowrap">Send Telegram message</th><td>to the chat connected in the rule owner's profile, or to the chats you enter (<a href="{% url 'userdocs:page' 'alarms-notifications' %}#telegram">Telegram</a>).</td></tr>
+    <tr><th class="text-nowrap">Capture snapshot</th><td>asks a camera device (ESP32-CAM) to take a picture. The picture is linked to the rule's active alarm and can be sent to Telegram, with the message as its caption (<a href="{% url 'userdocs:page' 'cameras' %}#rules">Cameras</a>).</td></tr>
   </tbody>
 </table>
 <p>A rule may use the sensors of any device you can see, but it can only switch, command or raise alarms on devices you may control

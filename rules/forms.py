@@ -245,7 +245,7 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
         model = RuleAction
         fields = (
             "kind", "run_on", "target_variable", "value", "target_device", "method",
-            "params", "ttl_seconds", "severity", "message", "recipients",
+            "params", "ttl_seconds", "severity", "message", "recipients", "send_photo",
         )
         field_classes = {"target_variable": VariableChoiceField}
         widgets = {
@@ -312,6 +312,12 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
             require("target_device", "method")
         elif kind == Kind.TELEGRAM:
             clean_telegram_chats(self, cleaned)
+        elif kind == Kind.CAPTURE:
+            require("target_device")
+            if cleaned.get("send_photo"):
+                clean_telegram_chats(self, cleaned)
+            else:
+                cleaned["recipients"] = ""
         elif kind == Kind.ALARM:
             require("severity")
             # Alarm dibuat saat aktif dan di-clear otomatis saat aturan pulih.
@@ -324,10 +330,11 @@ class RuleActionForm(BootstrapFormMixin, forms.ModelForm):
             Kind.ALARM: {"severity", "message"},
             Kind.EMAIL: {"message", "recipients"},
             Kind.TELEGRAM: {"message", "recipients"},
+            Kind.CAPTURE: {"target_device", "send_photo", "message", "recipients"},
         }.get(kind, set())
         blanks = {
             "target_variable": None, "value": None, "target_device": None, "method": "",
-            "params": {}, "severity": "", "message": "", "recipients": "",
+            "params": {}, "severity": "", "message": "", "recipients": "", "send_photo": False,
         }
         for name, blank in blanks.items():
             if name not in keep:
@@ -484,11 +491,12 @@ NODE_REQUIRED = {
     FlowNode.Kind.CLEAR_ALARM: (),
     FlowNode.Kind.EMAIL: (),
     FlowNode.Kind.TELEGRAM: (),
+    FlowNode.Kind.CAPTURE: ("target_device",),
 }
 NODE_BLANKS = {
     "key": "", "operator": "", "threshold": None, "operand_a": "", "math_op": "", "operand_b": "",
     "variable": None, "seconds": None, "target_variable": None, "value": None, "target_device": None,
-    "method": "", "params": {}, "severity": "", "message": "", "recipients": "",
+    "method": "", "params": {}, "severity": "", "message": "", "recipients": "", "send_photo": False,
 }
 
 
@@ -542,7 +550,7 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
         fields = (
             "name", "kind", "key", "operator", "threshold", "operand_a", "math_op", "operand_b",
             "variable", "seconds", "target_variable", "value", "target_device", "method",
-            "params", "ttl_seconds", "severity", "message", "recipients",
+            "params", "ttl_seconds", "severity", "message", "recipients", "send_photo",
         )
         field_classes = {"variable": VariableChoiceField, "target_variable": VariableChoiceField}
         widgets = {
@@ -614,7 +622,7 @@ class FlowNodeForm(BootstrapFormMixin, forms.ModelForm):
                 except ValueError:
                     if not re.match(r"^[A-Za-z_][A-Za-z0-9_\-]*$", text):
                         self.add_error(name, "Enter a message key or a number.")
-        if kind == FlowNode.Kind.TELEGRAM:
+        if kind == FlowNode.Kind.TELEGRAM or (kind == FlowNode.Kind.CAPTURE and cleaned.get("send_photo")):
             clean_telegram_chats(self, cleaned)
         if kind == FlowNode.Kind.SET_ACTUATOR:
             variable, value = cleaned.get("target_variable"), cleaned.get("value")

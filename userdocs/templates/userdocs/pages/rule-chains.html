@@ -21,7 +21,7 @@ A branch without a matching link simply ends.</p>
     <tr><td>Filter</td><td>Rate limit</td><td>passes at most one message per N seconds (per device)</td><td>True, False</td></tr>
     <tr><td>Enrichment</td><td>Add latest value</td><td>adds the latest stored value of a variable of any device you can see; optionally fails if that value is too old</td><td>Success, Failure (no data, too old, no access)</td></tr>
     <tr><td>Transformation</td><td>Calculate</td><td><code>key = a op b</code> with keys or numbers; op is + − × ÷ min max</td><td>Success, Failure (missing value, division by zero)</td></tr>
-    <tr><td>Action</td><td>Set actuator, Send command, Create alarm, Clear alarm, Send email, Send Telegram message</td><td>see <a href="{% url 'userdocs:page' 'rules' %}#actions">what rules can do</a></td><td>Success, Failure</td></tr>
+    <tr><td>Action</td><td>Set actuator, Send command, Create alarm, Clear alarm, Send email, Send Telegram message, Capture snapshot</td><td>see <a href="{% url 'userdocs:page' 'rules' %}#actions">what rules can do</a></td><td>Success, Failure</td></tr>
   </tbody>
 </table>
 

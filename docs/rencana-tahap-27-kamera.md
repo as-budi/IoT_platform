@@ -1,6 +1,6 @@
-# Rencana: Data visual dari ESP32-CAM dan IP camera (tahap 27)
+# Rencana: Data visual dari ESP32-CAM (tahap 27)
 
-Status: **27a selesai untuk ESP32-CAM** (lihat [tahap-27a-snapshot-esp32cam.md](tahap-27a-snapshot-esp32cam.md)); IP camera, 27b dan 27c belum dikerjakan.
+Status: **27a selesai untuk ESP32-CAM** (lihat [tahap-27a-snapshot-esp32cam.md](tahap-27a-snapshot-esp32cam.md)); 27b dan 27c belum dikerjakan.
 
 ## 1. Ringkasan
 
@@ -10,12 +10,11 @@ firmware. Kamera menambah dua jenis data yang sangat berbeda:
 | Jenis | Contoh | Ukuran / laju | Cocok untuk |
 |---|---|---|---|
 | **Snapshot** (gambar diam, JPEG) | foto tiap 5 menit, foto saat alarm, foto atas perintah | 20–200 KB per gambar | riwayat, bukti alarm, timelapse, notifikasi Telegram |
-| **Live stream** (video) | ESP32-CAM MJPEG, IP camera RTSP H.264/H.265 | 0,3–4 Mbit/s terus-menerus per penonton/kamera | memantau langsung dari dashboard |
+| **Live view** (gambar beruntun) | ESP32-CAM JPEG 1–2 fps | 0,3–2 Mbit/s terus-menerus per kamera | memantau langsung dari halaman device / dashboard |
 
 Rekomendasi: kerjakan **snapshot dulu** (tahap 27a), karena memakai jalur yang sudah ada
 (token device, HTTP API, penyimpanan file privat, hak akses berbagi, aturan, Telegram) dan
-berguna untuk kedua jenis kamera. **Live stream** (tahap 27b) menyusul dengan server media terpisah,
-karena Django/Daphne tidak dirancang meneruskan video.
+langsung berguna. **Live view** (tahap 27b) menyusul.
 
 ## 2. Fondasi yang sudah ada
 
@@ -23,9 +22,9 @@ karena Django/Daphne tidak dirancang meneruskan video.
 |---|---|
 | Device + access token, HTTP API `/api/v1/<token>/...` | ESP32-CAM mengunggah snapshot |
 | Penyimpanan file privat (`private_media`, seperti file firmware OTA) dan URL unduhan bertoken | menyimpan dan menyajikan gambar tanpa membuka folder media ke publik |
-| Command (MQTT/HTTP/CoAP) | `capture`, `stream_start`, `stream_stop`, `flash` |
+| Command (MQTT/HTTP/CoAP) | `capture`, `live_start`, `live_stop` |
 | Desired state | resolusi, kualitas JPEG, interval snapshot, lampu flash |
-| Peran berbagi (Viewer/Operator/Editor) | siapa boleh melihat gambar / live, siapa boleh memotret |
+| Peran berbagi (Viewer/Operator/Editor) | siapa boleh melihat gambar / live view, siapa boleh memotret |
 | Aturan ECA/Flow/State machine + aksi Telegram | "bila pintu terbuka → foto → kirim ke Telegram" |
 | Housekeeping + timer cleanup | menghapus gambar lama (retensi) |
 | Board di device (tahap 26) | board baru `ESP32-CAM` untuk template dan OTA |
@@ -36,9 +35,8 @@ karena Django/Daphne tidak dirancang meneruskan video.
 
 | Model | Kolom utama | Catatan |
 |---|---|---|
-| `Camera` | device (FK, satu device boleh punya beberapa kamera), name, kind (`ESP32CAM` / `IPCAM`), snapshot_interval, retention_days, stream_url (IP camera, terenkripsi), stream_path (nama jalur di server media), is_enabled | IP camera tanpa ESP32 tetap dicatat sebagai device bertipe "camera", supaya status online, lokasi, berbagi dan log aktivitas langsung berlaku |
+| `Camera` | device (FK, satu device boleh punya beberapa kamera), name, retention_days | status online, lokasi, berbagi dan log aktivitas mengikuti device |
 | `Snapshot` | camera, ts, file, width, height, size, source (`PERIODIC` / `COMMAND` / `RULE` / `MANUAL`), rule (FK opsional), alarm (FK opsional) | file di `private_media/camera/<device>/<yyyy>/<mm>/`; indeks (camera, ts) |
-| (opsional) `Recording` | camera, start, end, file | hanya bila perekaman video diperlukan (tahap 27c) |
 
 ### 3.2 Unggah snapshot dari device
 
@@ -69,50 +67,23 @@ karena Django/Daphne tidak dirancang meneruskan video.
 - Telegram: `sendPhoto` dengan snapshot terakhir (atau yang baru diambil) dan teks aturan.
 - Placeholder baru di teks notifikasi: `{snapshot_url}` (link bertoken, kedaluwarsa).
 
-### 3.5 Live stream (tahap 27b)
+### 3.5 Live view (tahap 27b)
 
-Browser tidak bisa memutar RTSP, dan kamera umumnya berada di jaringan lokal (di balik NAT),
-sehingga server tidak bisa menariknya langsung. Rancangan:
+- ESP32-CAM mengirim JPEG 1–2 fps lewat WebSocket device (atau POST beruntun) hanya selama ada
+  penonton; server meneruskan gambar terakhir ke penonton halaman lewat Channels tanpa menyimpannya.
+- Mulai/berhenti otomatis: command `live_start` ketika halaman dibuka, `live_stop` saat ditutup atau
+  tidak ada penonton selama N detik.
+- Batas: satu sesi live per kamera, resolusi bawaan rendah (QVGA/VGA), laju dibatasi di server.
 
-```
-IP camera ──RTSP──► [gateway lokal: MediaMTX / go2rtc] ──RTSP/SRT/RTMP (keluar)──┐
-ESP32-CAM ──MJPEG/JPEG frames──────────────────────────────────────────────────┤
-                                                                                ▼
-                                   VPS: MediaMTX (server media) ──WebRTC / HLS──► browser
-                                        │  auth HTTP ke Django: boleh publish? boleh read?
-                                        ▼
-                                   Django (/api/v1/media-auth)
-```
+### 3.6 Perekaman dan analitik (tahap 27c, opsional)
 
-- **Server media**: MediaMTX (satu biner, menerima RTSP/RTMP/SRT/WebRTC dan menyajikannya sebagai
-  WebRTC (latensi < 1 s) atau HLS (lebih kompatibel, latensi beberapa detik)). Dijalankan sebagai
-  layanan systemd `iot-media`, di belakang nginx untuk HLS/WebRTC-HTTP; port UDP WebRTC dibuka di firewall.
-- **Otorisasi**: MediaMTX memanggil endpoint Django untuk setiap publish/read. Publish diizinkan bila
-  token device cocok dengan jalurnya; read diizinkan bila pengguna (cookie sesi / token sekali
-  pakai di URL player) berhak melihat device itu.
-- **IP camera**:
-  - di jaringan yang sama dengan server: MediaMTX menarik RTSP langsung (`source: rtsp://...`);
-  - di balik NAT (umumnya): **gateway lokal** (mini PC / Raspberry Pi / PC lab) menjalankan
-    MediaMTX atau go2rtc yang mendorong stream keluar ke server. Platform menyediakan file
-    konfigurasi gateway yang bisa diunduh (seperti template firmware).
-- **ESP32-CAM**: MJPEG tidak efisien untuk diteruskan. Pilihan bertahap:
-  1. *mode foto cepat*: ESP32-CAM mengirim JPEG 1–2 fps lewat WebSocket device yang sama
-     dengan snapshot; server meneruskannya ke penonton halaman (cukup untuk pemantauan);
-  2. bila butuh video sungguhan: ESP32-CAM di LAN di-*pull* oleh gateway lokal (go2rtc bisa
-     mengubah MJPEG menjadi stream yang dapat diteruskan).
-- **Hemat**: stream hanya berjalan saat ada yang menonton (command `stream_start` ketika
-  halaman dibuka, `stream_stop` saat ditutup atau tidak ada penonton N detik).
-
-### 3.6 Perekaman (tahap 27c, opsional)
-
-MediaMTX dapat merekam per segmen; perlu kuota disk, retensi, dan halaman pemutaran. Ditunda
-sampai kebutuhan nyata, karena biaya disk dan bandwidth VPS paling besar di bagian ini.
+Timelapse dari snapshot, deteksi gerak sederhana sebagai sumber kejadian untuk aturan. Ditunda sampai
+kebutuhan nyata, karena biaya disk dan bandwidth VPS paling besar di bagian ini.
 
 ### 3.7 Pengaturan `.env`
 
 `CAMERA_ENABLED`, `CAMERA_MAX_SNAPSHOT_KB`, `CAMERA_RETENTION_DAYS` (bawaan per kamera),
-`CAMERA_MIN_INTERVAL_S`, `MEDIA_SERVER_URL` / `MEDIA_SERVER_PUBLIC_URL`, `MEDIA_SERVER_AUTH_SECRET`,
-`CAMERA_STORAGE_QUOTA_MB` per pengguna.
+`CAMERA_MIN_INTERVAL_S`, `CAMERA_STORAGE_QUOTA_MB` per pengguna, `CAMERA_LIVE_MAX_FPS`.
 
 ## 4. Sisi device
 
@@ -122,27 +93,19 @@ sampai kebutuhan nyata, karena biaya disk dan bandwidth VPS paling besar di bagi
 - Fitur template MQTT yang sudah ada (telemetri, desired, command, status, OTA, laporan MAC) +:
   - command `capture` → ambil JPEG → `POST /snapshot` → jawab `{"success": true, "size": ...}`;
   - desired `snapshot_interval`, `framesize` (QVGA … UXGA), `quality` (10–63), `flash` (LED GPIO4);
-  - command `stream_start` / `stream_stop` (tahap 27b);
+  - command `live_start` / `live_stop` (tahap 27b);
   - telemetri: `rssi`, `free_psram`, `snapshot_count`.
 - Board baru di platform: **ESP32-CAM** (`esp32cam`), template unduhan sendiri seperti ESP32-C3 OLED.
 - Catatan perangkat keras: ESP32-CAM tidak punya USB (perlu adaptor USB-TTL), arus puncak saat
   Wi-Fi + kamera + flash besar (catu daya 5 V ≥ 1 A), dan flash 4 MB tetap cukup untuk OTA.
-
-### 4.2 IP camera
-
-- Tidak ada firmware: cukup **URL RTSP** (atau URL snapshot JPEG / ONVIF) dan kredensialnya.
-- Snapshot berkala untuk IP camera diambil oleh gateway lokal atau MediaMTX (bila terjangkau),
-  lalu disimpan sebagai `Snapshot` biasa.
-- Kredensial kamera disimpan terenkripsi (kunci di `.env`) dan tidak pernah dikirim ke browser.
 
 ## 5. Risiko dan penanganannya
 
 | Risiko | Penanganan |
 |---|---|
 | Disk VPS penuh oleh gambar | retensi per kamera, kuota per pengguna, cleanup harian (timer yang ada), ukuran maks per gambar |
-| Bandwidth VPS habis oleh stream | stream hanya saat ditonton, batas penonton/kamera, resolusi bawaan rendah, HLS untuk banyak penonton |
-| Privasi (kamera merekam orang) | gambar hanya untuk pemilik dan yang diberi akses; URL bertoken kedaluwarsa; log aktivitas setiap lihat/unduh live; pemberitahuan di dokumentasi |
-| Kamera di balik NAT | gateway lokal yang mendorong keluar (tidak perlu port forwarding) |
+| Bandwidth VPS habis oleh live view | live hanya saat ditonton, satu sesi per kamera, resolusi dan fps bawaan rendah |
+| Privasi (kamera merekam orang) | gambar hanya untuk pemilik dan yang diberi akses; URL bertoken kedaluwarsa; log aktivitas setiap lihat/unduh; pemberitahuan di dokumentasi |
 | Daphne terbebani file besar | file disajikan nginx (`X-Accel-Redirect`), unggahan dibatasi ukuran dan laju |
 | Token device bocor → orang lain mengunggah gambar | validasi JPEG, laju terbatas, regenerate token (fitur yang ada) |
 | ESP32-CAM tidak stabil (brownout, reset) | catu daya cukup, watchdog, laporan `reset_reason` di telemetri |
@@ -151,8 +114,9 @@ sampai kebutuhan nyata, karena biaya disk dan bandwidth VPS paling besar di bagi
 
 ### Tahap 27a: Snapshot (prioritas)
 
-Sudah dikerjakan untuk ESP32-CAM. Belum: thumbnail, widget dashboard, aksi aturan *Capture snapshot*,
-Telegram `sendPhoto`, kuota, log aktivitas, dan semua bagian IP camera.
+Selesai seluruhnya untuk ESP32-CAM, termasuk thumbnail, kartu dashboard, aksi aturan *Capture snapshot*
+(tautan ke alarm, Telegram `sendPhoto`), kuota, dan log aktivitas. Catatan: unduh ZIP satu hari dan
+placeholder `{snapshot_url}` tidak dibuat; foto langsung dikirim ke Telegram sebagai gantinya.
 
 1. Model `Camera`, `Snapshot`, migrasi; board `esp32cam`.
 2. Endpoint `POST /api/v1/<token>/snapshot`, validasi, thumbnail, penyimpanan privat; lokasi nginx khusus.
@@ -162,18 +126,16 @@ Telegram `sendPhoto`, kuota, log aktivitas, dan semua bagian IP camera.
 6. Aksi aturan *Capture snapshot*, snapshot di alarm, Telegram `sendPhoto`.
 7. Tes (unit + unggahan nyata dari ESP32-CAM), dokumentasi pengguna "Cameras".
 
-### Tahap 27b: Live stream
+### Tahap 27b: Live view ESP32-CAM
 
-1. MediaMTX di VPS (`iot-media.service`), konfigurasi nginx, firewall UDP WebRTC.
-2. Endpoint otorisasi Django untuk publish/read; jalur per kamera.
-3. Player di halaman device/dashboard (WebRTC, cadangan HLS); mulai/berhenti otomatis.
-4. IP camera: form URL RTSP; template konfigurasi gateway lokal (MediaMTX/go2rtc) yang bisa diunduh.
-5. ESP32-CAM: mode foto cepat (JPEG 1–2 fps lewat WebSocket device).
+1. Jalur JPEG beruntun dari device (WebSocket device / POST), diteruskan ke penonton lewat Channels.
+2. Command `live_start` / `live_stop` otomatis berdasarkan penonton; batas fps dan satu sesi per kamera.
+3. Tampilan live di kartu Camera dan widget dashboard.
+4. Template firmware: mode live.
 
 ### Tahap 27c: Perekaman dan analitik (opsional)
 
-Perekaman per segmen, pemutaran, timelapse MP4; deteksi gerak / objek di gateway atau server
-sebagai sumber kejadian untuk aturan.
+Timelapse MP4 dari snapshot; deteksi gerak sebagai sumber kejadian untuk aturan.
 
 ## 7. Catatan pengujian
 
@@ -181,17 +143,14 @@ sebagai sumber kejadian untuk aturan.
 - Hak akses: Viewer melihat, Operator memotret, pengguna lain 404; URL bertoken kedaluwarsa.
 - Retensi: gambar lebih tua dari batas terhapus beserta file-nya.
 - Beban: 10 kamera × 1 gambar/menit selama 1 hari (ukuran disk, waktu respons).
-- Stream: latensi WebRTC vs HLS, jumlah penonton bersamaan, putus-sambung gateway.
+- Live view: latensi, fps nyata, penonton bersamaan, putus-sambung Wi-Fi.
 
 ## 8. Keputusan yang perlu diambil
 
-1. Cakupan awal: snapshot saja (27a) atau langsung live stream (27b)?
-2. Jenis IP camera yang dipakai (merek, RTSP/ONVIF) dan apakah ada perangkat di lab yang bisa
-   menjadi gateway lokal.
-3. Retensi bawaan dan kuota disk per pengguna (dipengaruhi ukuran disk VPS).
-4. Apakah perekaman video memang dibutuhkan, atau cukup snapshot + live.
+1. Apakah live view (27b) dibutuhkan, atau cukup snapshot berkala + *Capture now*.
+2. Retensi bawaan dan kuota disk per pengguna (dipengaruhi ukuran disk VPS).
+3. Apakah perekaman/timelapse memang dibutuhkan.
 
 ## 9. Referensi
 
-- MediaMTX (server media RTSP/RTMP/SRT/WebRTC/HLS, autentikasi HTTP eksternal): https://github.com/bluenviron/mediamtx
 - esp32-camera (driver kamera ESP32, OV2640 dll.): https://components.espressif.com/components/espressif/esp32-camera

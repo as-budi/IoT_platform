@@ -4,5 +4,6 @@
 {% elif action.kind == "ALARM" %}raise a <strong>{{ action.severity|lower }}</strong> alarm{% if action.message %}: “{{ action.message }}”{% endif %}
 {% elif action.kind == "EMAIL" %}email {{ action.recipients|default:"the rule owner" }}
 {% elif action.kind == "CLEAR_ALARM" %}clear this rule's alarm on the device
+{% elif action.kind == "CAPTURE" %}take a snapshot with <strong><a class="var-link" href="{% url 'devices:detail' action.target_device.pk %}">{{ action.target_device.name }}</a></strong>{% if action.send_photo %} and send it to Telegram {{ action.recipients|default:"(the rule owner)" }}{% endif %}
 {% elif action.kind == "TELEGRAM" %}send a Telegram message to {{ action.recipients|default:"the rule owner" }}{% if action.message %}: “{{ action.message }}”{% endif %}
 {% endif %}

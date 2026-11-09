@@ -431,6 +431,7 @@ class FlowNode(models.Model):
         CLEAR_ALARM = "CLEAR_ALARM", "Clear alarm"
         EMAIL = "EMAIL", "Send email"
         TELEGRAM = "TELEGRAM", "Send Telegram message"   # tahap 17
+        CAPTURE = "CAPTURE", "Capture snapshot"          # tahap 27a, app cameras
 
     rule = models.ForeignKey(Rule, on_delete=models.CASCADE, related_name="nodes")
     name = models.CharField(
@@ -475,6 +476,7 @@ class FlowNode(models.Model):
         "recipients", max_length=255, blank=True,
         help_text="Comma-separated. Email: addresses. Telegram: chat ids. Blank = the rule owner.",
     )
+    send_photo = models.BooleanField("send the photo to Telegram", default=False)   # CAPTURE
 
     # Ingatan node (opsional): CHANGED menyimpan nilai terakhir, THROTTLE waktu
     # terakhir lolos, masing-masing per device asal: {"3": {...}}.
@@ -689,6 +691,7 @@ class RuleAction(models.Model):
         EMAIL = "EMAIL", "Send email"
         TELEGRAM = "TELEGRAM", "Send Telegram message"   # tahap 17, app notifications
         CLEAR_ALARM = "CLEAR_ALARM", "Clear alarm"       # tahap 20, hanya state machine
+        CAPTURE = "CAPTURE", "Capture snapshot"          # tahap 27a, app cameras
 
     class RunOn(models.TextChoices):
         ACTIVATE = "ACTIVATE", "When the rule activates"
@@ -741,6 +744,8 @@ class RuleAction(models.Model):
         "recipients", max_length=255, blank=True,
         help_text="Comma-separated. Email: addresses. Telegram: chat ids. Blank = the rule owner.",
     )
+    # CAPTURE (tahap 27a): kirim gambarnya ke Telegram (recipients) saat tiba, dengan `message`.
+    send_photo = models.BooleanField("send the photo to Telegram", default=False)
 
     class Meta:
         ordering = ["order", "pk"]

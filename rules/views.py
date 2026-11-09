@@ -67,9 +67,9 @@ def visible_rules(user):
 
 
 def visible_alarms(user):
-    return Alarm.objects.select_related("device", "rule", "acknowledged_by", "cleared_by").filter(
-        device__in=visible_devices(user)
-    )
+    return Alarm.objects.select_related("device", "rule", "acknowledged_by", "cleared_by").prefetch_related(
+        "snapshots"
+    ).filter(device__in=visible_devices(user))
 
 
 def reset_state(rule):

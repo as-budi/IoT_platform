@@ -1711,4 +1711,9 @@ body > main.container { padding-top: 2rem; }
 .camera-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
 .camera-strip img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.45rem; background: var(--app-surface-2); }
 .camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; }
+/* Gambar dari aksi aturan "Capture snapshot" di tabel alarm, dan kartu kamera di dashboard. */
+.alarm-snapshots { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+.alarm-snapshots img { width: 64px; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.4rem; background: var(--app-surface-2); }
+.dash-camera { overflow: hidden; }
+.dash-camera img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; background: var(--app-surface-2); }
 .camera-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.85rem 0.85rem 0 0; background: var(--app-surface-2); }

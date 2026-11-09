@@ -2,14 +2,14 @@
 Halaman dan endpoint kamera (tahap 27a).
 
     POST /api/v1/<token>/snapshot                 device mengunggah JPEG (api/urls.py)
-    GET  /cameras/snapshots/<id>.jpg              gambar, setelah hak akses diperiksa
+    GET  /cameras/snapshots/<id>.jpg[?thumb=1]    gambar (atau thumbnail-nya), setelah hak akses diperiksa
     GET  /cameras/devices/<id>/                   galeri snapshot satu device
     POST /cameras/devices/<id>/capture/           tombol "Capture now" -> command "capture"
     POST /cameras/snapshots/<id>/delete/          hapus satu snapshot
     POST /cameras/devices/<id>/settings/          masa simpan snapshot kamera
 
 Hak akses mengikuti berbagi device (tahap 19): Viewer melihat, Operator memotret, Editor menghapus
-dan mengubah masa simpan.
+dan mengubah masa simpan. Memotret, menghapus, dan mengubah masa simpan dicatat di log aktivitas.
 """
 from django.conf import settings
 from django.contrib import messages
@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from activity.log import Category, record
 from devices.models import Device
 from devices.views import visible_devices
 from sharing import access
@@ -80,12 +81,14 @@ def image(request, pk):
     device_for(request, snapshot.camera.device_id)
     filename = f"{snapshot.camera.device_id}-{snapshot.ts:%Y%m%d-%H%M%S}.jpg"
     disposition = "attachment" if request.GET.get("download") else "inline"
+    # ?thumb=1: gambar kecil bila ada (gambar lama / tanpa Pillow: gambar asli).
+    field = snapshot.thumb if request.GET.get("thumb") and snapshot.thumb else snapshot.file
     if settings.CAMERA_X_ACCEL_PREFIX:
         response = HttpResponse(content_type="image/jpeg")
-        response["X-Accel-Redirect"] = settings.CAMERA_X_ACCEL_PREFIX.rstrip("/") + "/" + snapshot.file.name
+        response["X-Accel-Redirect"] = settings.CAMERA_X_ACCEL_PREFIX.rstrip("/") + "/" + field.name
     else:
         try:
-            response = FileResponse(snapshot.file.open("rb"), content_type="image/jpeg")
+            response = FileResponse(field.open("rb"), content_type="image/jpeg")
         except FileNotFoundError:
             raise Http404("The image file is missing.")
     response["Content-Disposition"] = f'{disposition}; filename="{filename}"'
@@ -106,7 +109,13 @@ def gallery(request, pk):
         snapshots = snapshots.filter(ts__date=day) if _valid_day(day) else snapshots.none()
     page = Paginator(snapshots, GALLERY_PAGE_SIZE).get_page(request.GET.get("page"))
     camera = device.cameras.first()
+    quota = services.quota_bytes()
+    used = services.storage_used(device.owner) if quota else 0
     return TemplateResponse(request, "cameras/gallery.html", {
+        "quota_mb": settings.CAMERA_STORAGE_QUOTA_MB,
+        "used_mb": round(used / 1048576, 1),
+        "used_percent": min(100, round(used * 100 / quota)) if quota else 0,
+        "is_owner": device.owner_id == request.user.pk,
         "device": device,
         "page_obj": page,
         "day": day,
@@ -131,7 +140,9 @@ def _valid_day(text):
 @require_POST
 def capture(request, pk):
     device = device_for(request, pk, access.OPERATOR)
-    services.request_capture(device, request.user)
+    command = services.request_capture(device, request.user)
+    record("camera.capture", f"Capture requested (command #{command.pk})",
+           category=Category.CONTROL, owner=device.owner, device=device)
     messages.success(request, f"Capture requested. {device.name} sends the image as soon as it receives the command.")
     return redirect(request.POST.get("next") or reverse("devices:detail", args=[device.pk]) + "#camera")
 
@@ -141,7 +152,10 @@ def capture(request, pk):
 def delete(request, pk):
     snapshot = get_object_or_404(Snapshot.objects.select_related("camera"), pk=pk)
     device = device_for(request, snapshot.camera.device_id, access.EDITOR)
+    label = f"{snapshot.ts.astimezone():%Y-%m-%d %H:%M:%S}"
     snapshot.delete()
+    record("camera.snapshot_deleted", f"Snapshot of {label} deleted",
+           category=Category.DEVICE, owner=device.owner, device=device)
     messages.success(request, "Snapshot deleted.")
     return redirect(request.POST.get("next") or reverse("cameras:gallery", args=[device.pk]))
 
@@ -160,6 +174,9 @@ def camera_settings(request, pk):
         messages.error(request, "Keep snapshots: a number of days from 0 to 3650, or empty for the default.")
         return redirect(reverse("cameras:gallery", args=[device.pk]))
     camera.save(update_fields=["retention_days"])
+    shown = "platform default" if camera.retention_days is None else (
+        "forever" if camera.retention_days == 0 else f"{camera.retention_days} days")
+    record("camera.settings", f"Snapshots kept: {shown}", category=Category.DEVICE, owner=device.owner, device=device)
     messages.success(request, "Camera settings saved.")
     return redirect(reverse("cameras:gallery", args=[device.pk]))
 

@@ -3,6 +3,7 @@ Klien kecil Telegram Bot API (tahap 17). Hanya pustaka standar Python (urllib),
 tanpa paket tambahan.
 
     send_message(chat_id, text)   kirim teks ke satu chat
+    send_photo(chat_id, jpeg, caption)  kirim gambar JPEG (tahap 27a, snapshot kamera)
     get_updates(offset)           ambil pesan yang masuk ke bot (untuk menyambungkan akun)
     bot_username()                nama bot, untuk tautan t.me/<nama>
 
@@ -18,6 +19,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+import uuid
 
 from django.conf import settings
 
@@ -25,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT = 10
 MAX_TEXT = 4096      # batas panjang satu pesan Telegram
+MAX_CAPTION = 1024   # batas keterangan foto
 _username_cache = {}
 
 
@@ -36,13 +39,29 @@ def enabled():
     return bool(settings.TELEGRAM_BOT_TOKEN)
 
 
-def api(method, **params):
+def multipart(fields, files):
+    """Badan multipart/form-data. files = {nama: (nama_file, bytes, content_type)}."""
+    boundary = uuid.uuid4().hex
+    parts = []
+    for name, value in fields.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
+                     + str(value).encode() + b"\r\n")
+    for name, (filename, data, content_type) in files.items():
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"; filename="{filename}"'
+                     f"\r\nContent-Type: {content_type}\r\n\r\n".encode() + data + b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode())
+    return b"".join(parts), f"multipart/form-data; boundary={boundary}"
+
+
+def api(method, files=None, **params):
     if not enabled():
         raise TelegramError("Telegram is not configured on this server (TELEGRAM_BOT_TOKEN).")
     url = f"{settings.TELEGRAM_API_URL.rstrip('/')}/bot{settings.TELEGRAM_BOT_TOKEN}/{method}"
-    request = urllib.request.Request(
-        url, data=json.dumps(params).encode(), headers={"Content-Type": "application/json"}, method="POST"
-    )
+    if files:
+        body, content_type = multipart(params, files)
+    else:
+        body, content_type = json.dumps(params).encode(), "application/json"
+    request = urllib.request.Request(url, data=body, headers={"Content-Type": content_type}, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
             body = json.loads(response.read().decode())
@@ -65,6 +84,16 @@ def send_message(chat_id, text):
     if len(text) > MAX_TEXT:
         text = text[: MAX_TEXT - 1] + "…"
     return api("sendMessage", chat_id=chat_id, text=text, disable_web_page_preview=True)
+
+
+def send_photo(chat_id, jpeg, caption=""):
+    """Kirim satu gambar JPEG (diunggah langsung, jadi server tidak perlu bisa diakses Telegram)."""
+    if len(caption) > MAX_CAPTION:
+        caption = caption[: MAX_CAPTION - 1] + "…"
+    fields = {"chat_id": chat_id}
+    if caption:
+        fields["caption"] = caption
+    return api("sendPhoto", files={"photo": ("snapshot.jpg", jpeg, "image/jpeg")}, **fields)
 
 
 def get_updates(offset):

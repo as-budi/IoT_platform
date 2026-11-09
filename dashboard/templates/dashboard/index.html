@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize camera_tags %}
 
 {% block title %}Dashboard · IoT Platform{% endblock %}
 
@@ -91,8 +91,22 @@
       </span>
     </div>
     <div class="card-body">
-      {% if device.shown_variables %}
+      {% if device.shown_variables or device.camera_latest %}
       <div class="row g-3">
+        {% if device.camera_latest %}
+        {# Tahap 27a: snapshot terbaru device berkamera (ESP32-CAM). #}
+        <div class="col-12 col-sm-6 col-xl-4 col-xxl-3">
+          <div class="card h-100 dash-camera" data-live-camera="{{ device.pk }}">
+            <a href="{% url 'cameras:gallery' device.pk %}" title="All snapshots">
+              <img src="{{ device.camera_latest|thumb_url }}" alt="Latest snapshot of {{ device.name }}" loading="lazy" data-live="camera-image">
+            </a>
+            <div class="card-body py-2 small d-flex justify-content-between">
+              <span class="fw-semibold">Camera</span>
+              <span class="text-muted" data-live="camera-meta" title="{{ device.camera_latest.ts|date:'d M Y H:i:s' }}">{{ device.camera_latest.ts|timesince }} ago</span>
+            </div>
+          </div>
+        </div>
+        {% endif %}
         {% for variable in device.shown_variables %}
         <div class="col-12 col-sm-6 col-xl-4 col-xxl-3">
           {% include "dashboard/includes/variable_card.html" %}
@@ -219,6 +233,22 @@
     AutoRefresh.on("desired", (event) => hidden.has(event.variable));
     // Command tidak ditampilkan di dashboard.
     AutoRefresh.on("command", () => true);
+
+    // Tahap 27a: snapshot baru -> ganti gambar kartu kamera device itu.
+    AutoRefresh.on("snapshot", (event) => {
+      const card = document.querySelector(`[data-live-camera="${event.device}"]`);
+      if (!card) {
+        // Device tampil tetapi belum punya kartu kamera (gambar pertama): muat ulang.
+        return !document.querySelector(`[data-live-device="${event.device}"]`);
+      }
+      card.querySelector('[data-live="camera-image"]').src = event.thumb || event.url;
+      const meta = card.querySelector('[data-live="camera-meta"]');
+      meta.title = LiveFormat.dateTime(event.ts);
+      meta.dataset.liveTs = event.ts;
+      meta.textContent = LiveFormat.ago(event.ts);
+      markOnline(card, "HTTP");
+      return true;
+    });
   })();
 </script>
 {% endblock %}

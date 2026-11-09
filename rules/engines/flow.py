@@ -123,6 +123,11 @@ NODE_TYPES = {
         "Sends a Telegram message (to the owner's connected chat, or to the chat ids given). "
         "Put a Rate limit node in front of it.",
     ),
+    Kind.CAPTURE: NodeType(
+        "Action", (SUCCESS, FAILURE), ("target_device", "send_photo", "recipients", "message"),
+        "Asks a camera device (ESP32-CAM) to take a picture; it is linked to this rule's alarm and, "
+        "optionally, sent to Telegram when it arrives. Put a Rate limit node in front of it.",
+    ),
 }
 assert set(NODE_TYPES) == set(Kind.values), "Every FlowNode kind needs a NODE_TYPES entry"
 
@@ -383,6 +388,8 @@ def node_action(node, msg, run):
             detail = ("Cleared alarm " + ", ".join(cleared)) if cleared else "No active alarm"
         elif node.kind == Kind.TELEGRAM:
             detail = actions.send_telegram(node, run.rule, context)
+        elif node.kind == Kind.CAPTURE:
+            detail = actions.capture_snapshot(node, run.rule, context)
         else:  # EMAIL
             detail = actions.send_email(node, run.rule, context)
     except Exception as exc:
@@ -643,4 +650,7 @@ def node_summary(node):
         return f"email {node.recipients or 'the owner'}"
     if node.kind == Kind.TELEGRAM:
         return f"Telegram {node.recipients or 'the owner'}"
+    if node.kind == Kind.CAPTURE:
+        device = node.target_device.name if node.target_device else "?"
+        return f"photo ← {device}" + (" → Telegram" if node.send_photo else "")
     return ""

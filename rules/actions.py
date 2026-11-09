@@ -196,6 +196,33 @@ def send_telegram(action, rule, context):
     return "Telegram to " + ("the owner" if not action.recipients.strip() else ", ".join(sent))
 
 
+def capture_snapshot(action, rule, context):
+    """Tahap 27a: minta kamera (ESP32-CAM) memotret lewat command "capture".
+
+    Gambarnya tiba beberapa detik kemudian (POST /api/v1/<token>/snapshot); saat itu
+    cameras/services.py menautkannya ke aturan ini dan ke alarm aktifnya, lalu, bila
+    `send_photo`, mengirimnya ke Telegram dengan keterangan `message`.
+    """
+    from cameras import services
+
+    device = action.target_device
+    if device is None:
+        raise ActionError("No camera device selected.")
+    if not allowed_devices(rule).filter(pk=device.pk).exists():
+        raise ActionError(f"The rule owner has no access to {device}.")
+    chats = []
+    if action.send_photo:
+        from notifications import telegram
+
+        if not telegram.enabled():
+            raise ActionError("Telegram is not configured on this server (TELEGRAM_BOT_TOKEN).")
+        chats = telegram_chats(action, rule)
+    caption = render_message(action.message or "Rule \"{rule}\": {device}", context)
+    command = services.rule_capture(device, rule, chats, caption)
+    note_foreign_action(rule, device, "capture snapshot")
+    return f"{device.name}: capture (command #{command.pk})" + (", photo to Telegram" if chats else "")
+
+
 def clear_device_alarm(action, rule, context):
     """State machine (tahap 20): clear alarm aktif aturan ini pada device yang berpindah keadaan.
 
@@ -219,6 +246,7 @@ HANDLERS = {
     RuleAction.Kind.EMAIL: send_email,
     RuleAction.Kind.TELEGRAM: send_telegram,
     RuleAction.Kind.CLEAR_ALARM: clear_device_alarm,
+    RuleAction.Kind.CAPTURE: capture_snapshot,
 }
 
 

@@ -28,18 +28,24 @@
       <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.target_variable %}</div>
       <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.value %}<div class="form-text mt-n2">1 = ON, 0 = OFF; categories: 0 = first, 1 = second, ...</div></div>
     </div>
-    <div class="row g-3" data-for="SEND_COMMAND">
-      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.target_device %}</div>
-      <div class="col-sm-6">{% include "rules/includes/field.html" with field=form.method %}</div>
-      <div class="col-sm-8">{% include "rules/includes/field.html" with field=form.params %}</div>
-      <div class="col-sm-4">{% include "rules/includes/field.html" with field=form.ttl_seconds %}</div>
+    <div class="row g-3">
+      {# Satu field `target_device` untuk Send command dan Capture snapshot (nama input tidak boleh kembar). #}
+      <div class="col-sm-6" data-for="SEND_COMMAND CAPTURE">{% include "rules/includes/field.html" with field=form.target_device %}</div>
+      <div class="col-sm-6" data-for="SEND_COMMAND">{% include "rules/includes/field.html" with field=form.method %}</div>
+      <div class="col-sm-6 d-flex align-items-center" data-for="CAPTURE">
+        <div class="form-check mb-3 mt-sm-3">{{ form.send_photo }}
+          <label class="form-check-label" for="{{ form.send_photo.id_for_label }}">Send the photo to Telegram</label></div>
+      </div>
+      <div class="col-sm-8" data-for="SEND_COMMAND">{% include "rules/includes/field.html" with field=form.params %}</div>
+      <div class="col-sm-4" data-for="SEND_COMMAND">{% include "rules/includes/field.html" with field=form.ttl_seconds %}</div>
     </div>
     <div class="row g-3">
       <div class="col-sm-4" data-for="ALARM">{% include "rules/includes/field.html" with field=form.severity %}</div>
-      <div class="col-sm-4" data-for="EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.recipients %}</div>
-      <div class="col-sm-8" data-for="ALARM EMAIL TELEGRAM">{% include "rules/includes/field.html" with field=form.message %}</div>
+      <div class="col-sm-4" data-for="EMAIL TELEGRAM CAPTURE">{% include "rules/includes/field.html" with field=form.recipients %}</div>
+      <div class="col-sm-8" data-for="ALARM EMAIL TELEGRAM CAPTURE">{% include "rules/includes/field.html" with field=form.message %}</div>
       <div class="col-12 small text-muted mt-0 mb-2" data-for="TELEGRAM">Blank recipients = the Telegram chat connected on the rule owner's profile.</div>
       <div class="col-12 small text-muted mt-0 mb-2" data-for="ALARM">One alarm per device: it stays active until a “Clear alarm” action (e.g. on entering NORMAL) or a person clears it.</div>
+      <div class="col-12 small text-muted mt-0 mb-2" data-for="CAPTURE">The device (e.g. the ESP32-CAM template) receives the command <code>capture</code> and uploads a picture. It is linked to this rule's active alarm; with “Send the photo to Telegram” it goes to the recipients (blank = the rule owner), the message is its caption.</div>
       <div class="col-12 small text-muted mt-0 mb-2" data-for="CLEAR_ALARM">Clears this rule's active alarm on the device that changed state.</div>
     </div>
   </div>

@@ -493,6 +493,8 @@ CAMERA_STORAGE_DIR = Path(os.getenv("CAMERA_STORAGE_DIR", "") or BASE_DIR / "pri
 CAMERA_MAX_SNAPSHOT_KB = int(os.getenv("CAMERA_MAX_SNAPSHOT_KB", "512"))     # per gambar
 CAMERA_MIN_INTERVAL_S = int(os.getenv("CAMERA_MIN_INTERVAL_S", "2"))         # jarak minimum antar-gambar per kamera
 CAMERA_RETENTION_DAYS = int(os.getenv("CAMERA_RETENTION_DAYS", "30"))        # 0 = simpan selamanya
+# Kuota gambar per pemilik device (MB); bila penuh, gambar tertua dihapus. 0 = tanpa batas.
+CAMERA_STORAGE_QUOTA_MB = int(os.getenv("CAMERA_STORAGE_QUOTA_MB", "0"))
 # Produksi (nginx): awalan location "internal" yang menyajikan CAMERA_STORAGE_DIR, mis. /protected/camera/.
 # Kosong = Django sendiri yang mengirim file (pengembangan).
 CAMERA_X_ACCEL_PREFIX = os.getenv("CAMERA_X_ACCEL_PREFIX", "").strip()

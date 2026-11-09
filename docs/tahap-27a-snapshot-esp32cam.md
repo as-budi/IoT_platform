@@ -1,7 +1,11 @@
 # Tahap 27a — Snapshot JPEG dari ESP32-CAM
 
-Bagian pertama rencana [rencana-tahap-27-kamera.md](rencana-tahap-27-kamera.md), **hanya untuk ESP32-CAM**.
-IP camera, live stream (27b) dan perekaman (27c) belum dikerjakan.
+Bagian pertama rencana [rencana-tahap-27-kamera.md](rencana-tahap-27-kamera.md), untuk ESP32-CAM.
+Live view (27b) dan perekaman (27c) belum dikerjakan.
+
+Bagian kedua (lanjutan 27a) menambahkan: thumbnail, kartu kamera di dashboard, aksi aturan
+*Capture snapshot* (gambar ditautkan ke alarm dan bisa dikirim ke Telegram), kuota penyimpanan, dan
+log aktivitas. Lihat [Lanjutan](#lanjutan).
 
 ## Alur
 
@@ -25,8 +29,7 @@ Gambar dikirim lewat HTTP, bukan MQTT, karena broker membatasi ukuran paket (`ma
   (kosong), 401/403 (token), 413 (> `CAMERA_MAX_SNAPSHOT_KB`), 415 (bukan JPEG), 429 (lebih cepat dari
   `CAMERA_MIN_INTERVAL_S`; snapshot jawaban command tidak dibatasi). Unggahan juga memperbarui
   *last seen* / status online device.
-- **Ukuran gambar** dibaca dari marker SOF JPEG (tanpa Pillow); belum ada thumbnail, gambar penuh
-  diperkecil dengan CSS.
+- **Ukuran gambar** dibaca dari marker SOF JPEG (tanpa Pillow).
 - **Penyimpanan privat** di `CAMERA_STORAGE_DIR`, disajikan lewat `/cameras/snapshots/<id>.jpg` setelah
   pemeriksaan akses (minimal VIEWER). Di produksi file dikirim nginx dengan `X-Accel-Redirect`
   (`CAMERA_X_ACCEL_PREFIX=/protected/camera/`).
@@ -62,6 +65,7 @@ sudah terisi).
 | `CAMERA_MAX_SNAPSHOT_KB` | 512 | ukuran maksimum satu JPEG |
 | `CAMERA_MIN_INTERVAL_S` | 2 | jarak minimum antar unggahan per kamera |
 | `CAMERA_RETENTION_DAYS` | 30 | retensi bawaan (0 = selamanya) |
+| `CAMERA_STORAGE_QUOTA_MB` | 0 | kuota gambar per pemilik; penuh = gambar tertua dihapus (0 = tanpa batas) |
 | `CAMERA_X_ACCEL_PREFIX` | kosong | `/protected/camera/` di produksi (nginx) |
 
 ## Deploy
@@ -79,7 +83,67 @@ kartu halaman device, streaming gambar dan X-Accel, akses berbagi, capture, gale
 unduhan template ESP32-CAM. Firmware baru diperiksa sintaksnya dengan header tiruan; belum dikompilasi
 dengan toolchain ESP32 asli dan belum diuji di perangkat.
 
+## Lanjutan
+
+### Thumbnail
+
+- `cameras/thumbs.py`: saat gambar diterima dibuat salinan lebar 320 px (JPEG kualitas 70) dengan
+  **Pillow** (baru di `requirements.txt`), disimpan di sebelah gambarnya (`<HHMMSS>-t.jpg`, kolom
+  `Snapshot.thumb`, migrasi cameras 0002). Gambar yang sudah kecil, atau tanpa Pillow: tanpa thumbnail.
+- `/cameras/snapshots/<id>.jpg?thumb=1` menyajikan thumbnail (atau gambar asli bila tidak ada). Dipakai
+  deretan "Recent", galeri, dashboard, dan tabel alarm; filter template `{{ snapshot|thumb_url }}`.
+- `python manage.py camera_thumbnails [--limit N]` membuat thumbnail untuk gambar lama.
+
+### Dashboard
+
+Device yang punya snapshot mendapat kartu **Camera** (gambar terbaru, "x ago", klik → galeri) di
+depan kartu variabelnya. Kabar WebSocket `snapshot` kini membawa `device` dan `thumb`, jadi kartu
+diganti di tempat; versi polling dashboard ikut memperhitungkan snapshot terakhir.
+
+### Aksi aturan *Capture snapshot*
+
+- Jenis aksi baru `CAPTURE` di ECA, rule chain (node *Action*), dan state machine (migrasi rules 0011:
+  pilihan `CAPTURE` + kolom `send_photo`). Field: device kamera, *Send the photo to Telegram*,
+  recipients (id chat; kosong = chat pemilik aturan), message (keterangan foto, dengan placeholder).
+- `rules/actions.capture_snapshot()` → `cameras.services.rule_capture()`: command `capture` (berlaku
+  120 s) + `CaptureRequest` (command, aturan, chat Telegram, keterangan). Pemilik aturan perlu peran
+  Operator pada device kamera. Di edge (micro rule) aksi ini termasuk aksi cloud.
+- Saat gambar jawaban tiba (`X-Command-Id`): sumber `Rule`, ditautkan ke aturan dan ke **alarm aktif
+  aturan itu** (yang terbaru), lalu bila diminta dikirim ke Telegram (`notifications.telegram.send_photo`,
+  multipart `sendPhoto`) di thread terpisah setelah commit, supaya ESP32-CAM tidak menunggu Telegram.
+- Tabel alarm (daftar alarm, halaman aturan, halaman device) menampilkan sampai 4 thumbnail; galeri
+  menampilkan nama aturan dan nomor alarm.
+- Ekspor/impor JSON aturan mendukung aksi/node `CAPTURE` (`device`, `send_photo`, `message`, `recipients`).
+
+### Kuota
+
+`CAMERA_STORAGE_QUOTA_MB` (bawaan 0 = tanpa batas; contoh produksi 1024): total ukuran gambar semua
+device milik satu pengguna. Bila gambar baru tidak muat, gambar **tertua** pemilik itu dihapus lebih dulu
+(seperti CCTV yang menimpa rekaman lama). Galeri menampilkan pemakaian kepada pemilik.
+
+### Log aktivitas
+
+`camera.capture` (Capture now, kategori Control), `camera.snapshot_deleted` dan `camera.settings`
+(kategori Device). Gambar berkala dan gambar dari aturan tidak dicatat satu per satu (log aturan sudah
+mencatat aksinya), supaya log tidak penuh.
+
+### API v2 untuk MQTT client
+
+`/api/v2/me/devices` menambah `snapshot_url` per device (alamat `POST /api/v1/<token>/snapshot`, hanya
+untuk Editor ke atas, sama seperti `access_token`). Dipakai simulasi kamera di repo `mqtt_client`
+(tahap M11), yang meneruskan gambar dari browser ke alamat ini.
+
+### Deploy tambahan
+
+`update.sh` memasang Pillow dan menjalankan migrasi cameras 0002 dan rules 0011. Opsional: isi
+`CAMERA_STORAGE_QUOTA_MB` di `.env`, lalu `manage.py camera_thumbnails` untuk gambar lama.
+
+### Tes tambahan
+
+10 tes di `cameras/tests.py`: thumbnail (tersimpan, disajikan, ikut terhapus; Pillow sungguhan), kuota,
+aksi aturan (tautan alarm, Telegram, tanpa akses, tanpa Telegram), multipart `sendPhoto`, form aksi,
+kartu dashboard, log aktivitas.
+
 ## Belum dikerjakan
 
-IP camera, thumbnail, widget dashboard, aksi aturan khusus *Capture snapshot*, foto di Telegram
-(`sendPhoto`), kuota per pengguna, log aktivitas snapshot.
+Live view (27b), perekaman/timelapse (27c). Firmware ESP32-CAM belum diuji pada perangkat.

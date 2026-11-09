@@ -9,3 +9,5 @@ from .models import Snapshot
 def delete_file(sender, instance, **kwargs):
     if instance.file:
         instance.file.delete(save=False)
+    if instance.thumb:
+        instance.thumb.delete(save=False)

@@ -1,5 +1,6 @@
 <p>An <strong>ESP32-CAM</strong> can send pictures (JPEG snapshots) to the platform: at a fixed interval, and whenever you press
-<em>Capture now</em>. Pictures appear on the device page and in a gallery, and are kept for a set number of days. Live video is not part of this version.</p>
+<em>Capture now</em>. Pictures appear on the device page, on the dashboard and in a gallery, and are kept for a set number of days.
+Rules can take a picture and send it to Telegram. Live video is not part of this version.</p>
 
 <h2 id="setup">Setting up an ESP32-CAM</h2>
 <ol>
@@ -12,10 +13,27 @@
 <h2 id="card">The Camera card and the gallery</h2>
 <ul>
   <li>The card shows the latest picture (it changes by itself when a new one arrives) and the six most recent ones. Click a picture to open it full size.</li>
-  <li><strong>Capture now</strong> (Operator and up) sends the command <code>capture</code>; the device takes a picture and uploads it at once. Rules can do the same with the action <em>Send command</em>, method <code>capture</code>.</li>
+  <li><strong>Capture now</strong> (Operator and up) sends the command <code>capture</code>; the device takes a picture and uploads it at once.</li>
   <li><strong>All snapshots</strong> opens the gallery: newest first, page by page, with a day filter, download, and delete (Editor and up).</li>
   <li>Snapshots older than {{ camera.retention_days }} days are deleted automatically every hour. In the gallery, Editors can set another number of days for this camera (0 = keep forever).</li>
   <li>A picture also counts as data from the device: it updates <em>Last data</em> and the online status.</li>
+  <li>Lists show small copies (thumbnails, 320 px wide); click a picture for the full image.</li>
+  {% if camera.quota_mb %}<li>All pictures of your devices may use at most {{ camera.quota_mb }} MB. When that is full, the oldest pictures are deleted to make room; the gallery shows how much is used.</li>{% endif %}
+  <li><em>Capture now</em>, deleting a picture and changing the number of days are written to the <a href="{% url 'userdocs:page' 'activity-log' %}">activity log</a>.</li>
+</ul>
+
+<h2 id="dashboard">On the dashboard</h2>
+<p>A device that has sent pictures gets a <em>Camera</em> card on the dashboard with its latest picture, updated as new ones arrive.
+Click it to open the gallery. Hide the device under <em>Customize</em> to remove the card.</p>
+
+<h2 id="rules">Pictures from rules</h2>
+<p>Add the action <strong>Capture snapshot</strong> (rules, rule chains and state machines) and choose the camera device. For example
+“when the door opens: raise an alarm, capture a snapshot of the gate camera and send it to Telegram”:</p>
+<ul>
+  <li>The device receives the command <code>capture</code> (valid for two minutes) and uploads a picture. It is offline? Then no picture is taken.</li>
+  <li>The picture is marked with the rule in the gallery and is linked to the rule's active alarm: it appears next to the alarm in the alarm list.</li>
+  <li><em>Send the photo to Telegram</em>: the picture goes to the recipients (blank = the chat connected in the rule owner's profile) with the message as caption, e.g. <code>{rule}: {device}</code>.</li>
+  <li>The rule owner needs Operator access to the camera device. In rule chains, put a <em>Rate limit</em> node in front of it.</li>
 </ul>
 
 <h2 id="upload">Uploading from your own firmware</h2>

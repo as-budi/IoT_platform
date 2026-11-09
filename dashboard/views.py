@@ -19,6 +19,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.generic import TemplateView
 
+from cameras.models import Snapshot
 from devices.models import Telemetry, Variable
 from devices.views import visible_devices, with_latest_values
 from realtime.routing import DASHBOARD_WS_PATH
@@ -65,7 +66,17 @@ def dashboard_version(user):
     devices = visible_devices(user)
     last = Telemetry.objects.filter(variable__device__in=devices).aggregate(m=Max("pk"))["m"]
     desired = Variable.objects.filter(device__in=devices).aggregate(s=Sum("desired_version"))["s"]
-    return f"{last or 0}-{desired or 0}"
+    snapshot = Snapshot.objects.filter(camera__device__in=devices).aggregate(m=Max("pk"))["m"]
+    return f"{last or 0}-{desired or 0}-{snapshot or 0}"
+
+
+def latest_snapshots(device_ids):
+    """{device_id: Snapshot terbaru} untuk kartu kamera di dashboard (tahap 27a). Dua query."""
+    newest = (
+        Snapshot.objects.filter(camera__device__in=device_ids)
+        .values("camera__device").annotate(last=Max("pk")).values_list("last", flat=True)
+    )
+    return {s.camera.device_id: s for s in Snapshot.objects.filter(pk__in=list(newest)).select_related("camera")}
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -110,6 +121,11 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 devices.append(device)
             if devices:
                 groups.append({"location": location, "devices": devices})
+
+        shots = latest_snapshots([d.pk for group in groups for d in group["devices"]])
+        for group in groups:
+            for device in group["devices"]:
+                device.camera_latest = shots.get(device.pk)
 
         context["groups"] = groups
         context["stats"] = {
