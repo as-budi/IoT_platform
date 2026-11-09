@@ -1705,3 +1705,10 @@ body > main.container { padding-top: 2rem; }
 .device-table td.text-end { white-space: nowrap; }
 .device-table .owner-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .device-table td .badge { white-space: normal; text-align: left; }
+
+/* Kamera (tahap 27a): kartu di halaman device dan galeri snapshot. */
+.camera-latest { display: block; width: 100%; max-height: 420px; object-fit: contain; border-radius: 0.6rem; background: var(--app-surface-2); }
+.camera-strip { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.camera-strip img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.45rem; background: var(--app-surface-2); }
+.camera-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.9rem; }
+.camera-grid img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 0.85rem 0.85rem 0 0; background: var(--app-surface-2); }

@@ -113,6 +113,9 @@ the server address, port, topic prefix and root certificate are already filled i
     <code>esp32c3_oled_mqtt</code> template instead. It does everything above, shows text sent with the command <code>oled</code> <code>{"x": 0, "y": 0, "msg": "Hello"}</code>,
     and has a menu on the BOOT button: press once for the next item, hold to open, press twice to go back (Display, Firmware, Mode auto/manual, Telemetry).
     Extra library: U8g2. Set <code>OLED</code> to <code>false</code> for a board without a display.</li>
+  <li id="esp32cam"><strong>ESP32-CAM</strong> (AI-Thinker): set the device's board to <em>ESP32-CAM</em> and the download gives the
+    <code>esp32cam_mqtt</code> template. It does everything above and also sends JPEG snapshots to the platform, periodically and on the command
+    <code>capture</code>; see <a href="{% url 'userdocs:page' 'cameras' %}">Cameras</a>.</li>
 </ul>
 {% include "devices/includes/connect_download.html" with protocol="mqtt" %}
 

@@ -1,7 +1,9 @@
 #!/bin/bash
 # Backup harian (dijalankan iot-backup.timer sebagai user iot):
 #   - dump database MySQL (dikompres)
-#   - file firmware yang diunggah (private_media)
+#   - file firmware yang diunggah (private_media), TANPA gambar kamera (private_media/camera,
+#     tahap 27a): gambarnya bisa sangat banyak dan punya masa simpan sendiri
+#     (CAMERA_RETENTION_DAYS). Hapus --exclude di bawah bila gambar ikut dibackup.
 # Disimpan di /srv/iot/backups, yang lebih tua dari 14 hari dihapus.
 # Backup di server yang SAMA tidak menolong bila servernya hilang: aktifkan juga
 # snapshot otomatis di penyedia VPS, dan sesekali unduh backup ke komputer Anda.
@@ -21,7 +23,7 @@ mkdir -p "$DEST"
 MYSQL_PWD="$DB_PASSWORD" mysqldump --single-transaction --no-tablespaces -u "$DB_USER" "$DB_NAME" \
   | gzip > "$DEST/db-$STAMP.sql.gz"
 if [ -d "$APP/private_media" ]; then
-  tar -czf "$DEST/media-$STAMP.tar.gz" -C "$APP" private_media
+  tar -czf "$DEST/media-$STAMP.tar.gz" -C "$APP" --exclude=private_media/camera private_media
 fi
 find "$DEST" -type f -mtime +"$KEEP_DAYS" -delete
 echo "Backup done: $DEST/db-$STAMP.sql.gz"

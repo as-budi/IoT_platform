@@ -33,6 +33,12 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
             "reach": host_reach(connect.url_host(base_url)),
             "telemetry": f"{base_url}/api/v1/{token}/telemetry",
             "firmware": f"{base_url}/api/v1/{token}/firmware",
+            "snapshot": f"{base_url}/api/v1/{token}/snapshot",
+        },
+        "camera": {
+            "max_kb": settings.CAMERA_MAX_SNAPSHOT_KB,
+            "min_interval": settings.CAMERA_MIN_INTERVAL_S,
+            "retention_days": settings.CAMERA_RETENTION_DAYS,
         },
         "mqtt": {
             "host": settings.MQTT_PUBLIC_HOST,

@@ -50,6 +50,8 @@ urlpatterns = [
     path("sharing/", include("sharing.urls")),
     # Dokumentasi pengguna dengan pencarian (tahap 25), terbuka tanpa login.
     path("docs/", include("userdocs.urls")),
+    # /cameras/ -> snapshot kamera (tahap 27a)
+    path("cameras/", include("cameras.urls")),
     # Halaman depan langsung diarahkan ke dashboard.
     path("", RedirectView.as_view(pattern_name="dashboard:index"), name="home"),
 ]

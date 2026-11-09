@@ -39,6 +39,8 @@ PAGES = [
          "Following data live, charts with time ranges and zoom, and downloading data."),
     Page("control", "Controlling devices", "Devices and data",
          "Switching actuators with requested states, and sending commands."),
+    Page("cameras", "Cameras (ESP32-CAM)", "Devices and data",
+         "Snapshots from an ESP32-CAM: the Camera card, Capture now, the gallery and how long images are kept."),
     Page("connect-esp32", "Connect an ESP32", "Connecting devices",
          "Step-by-step guide with ready-made firmware templates for HTTP, MQTT and CoAP."),
     Page("device-api", "Device API reference", "Connecting devices",

@@ -56,6 +56,12 @@ class Command(BaseCommand):
                      f"from {timezone.localtime(result['from']):%Y-%m-%d %H:%M} ({took:.1f} s)")
 
     def run_cleanup(self):
+        # Tahap 27a: snapshot kamera yang melewati masa simpannya.
+        from cameras.services import delete_expired
+
+        removed = delete_expired(timezone.now())
+        if removed:
+            self.log(f"Cameras: removed {removed} snapshot(s) past their retention")
         days = settings.ACTIVITY_LOG_DAYS
         if days <= 0:
             return

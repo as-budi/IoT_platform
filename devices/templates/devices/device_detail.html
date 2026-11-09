@@ -129,6 +129,9 @@
 </div>
 {% endif %}
 
+{# ---------- Kamera: snapshot ESP32-CAM (tahap 27a) ---------- #}
+{% if camera_show %}{% include "cameras/includes/device_camera.html" %}{% endif %}
+
 {# ---------- Firmware & pembaruan OTA (tahap 9) ---------- #}
 {% include "ota/includes/device_firmware.html" %}
 

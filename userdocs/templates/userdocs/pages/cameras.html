@@ -1,0 +1,41 @@
+<p>An <strong>ESP32-CAM</strong> can send pictures (JPEG snapshots) to the platform: at a fixed interval, and whenever you press
+<em>Capture now</em>. Pictures appear on the device page and in a gallery, and are kept for a set number of days. Live video is not part of this version.</p>
+
+<h2 id="setup">Setting up an ESP32-CAM</h2>
+<ol>
+  <li>Add a device and set its board to <em>ESP32-CAM</em> (device → <em>Edit</em>). The device page then shows the <em>Camera</em> card.</li>
+  <li>Download the firmware template from <a href="{% url 'userdocs:page' 'connect-esp32' %}#esp32cam">Connect an ESP32</a> (MQTT, with the device selected): it contains your server, token and certificate.</li>
+  <li>Arduino IDE: board <em>AI Thinker ESP32-CAM</em>, partition scheme <em>Minimal SPIFFS (1.9MB APP with OTA)</em>. The ESP32-CAM has no USB port: use a USB-to-serial adapter (connect IO0 to GND while uploading). Power it with 5 V and at least 1 A.</li>
+  <li>Optional actuators (add them as variables, kind "Actuator"): <code>snapshot_interval</code> (number, seconds, 0 = only on request), <code>flash</code> (on / off, the white LED is used while taking a picture), <code>framesize</code> (number, 5 = QVGA … 10 = UXGA, 8 = VGA by default) and <code>quality</code> (number, 10 = best … 63 = smallest).</li>
+</ol>
+
+<h2 id="card">The Camera card and the gallery</h2>
+<ul>
+  <li>The card shows the latest picture (it changes by itself when a new one arrives) and the six most recent ones. Click a picture to open it full size.</li>
+  <li><strong>Capture now</strong> (Operator and up) sends the command <code>capture</code>; the device takes a picture and uploads it at once. Rules can do the same with the action <em>Send command</em>, method <code>capture</code>.</li>
+  <li><strong>All snapshots</strong> opens the gallery: newest first, page by page, with a day filter, download, and delete (Editor and up).</li>
+  <li>Snapshots older than {{ camera.retention_days }} days are deleted automatically every hour. In the gallery, Editors can set another number of days for this camera (0 = keep forever).</li>
+  <li>A picture also counts as data from the device: it updates <em>Last data</em> and the online status.</li>
+</ul>
+
+<h2 id="upload">Uploading from your own firmware</h2>
+<p>Send the JPEG as the body of an HTTP POST:</p>
+<pre>POST {{ http.snapshot }}
+Content-Type: image/jpeg
+X-Source: periodic          (optional: periodic, command, device)
+X-Command-Id: 42            (optional: the id of the capture command being answered)
+
+&lt;JPEG bytes&gt;</pre>
+<p>Trying it from a computer:</p>
+<pre>curl -X POST {{ http.snapshot }} -H "Content-Type: image/jpeg" --data-binary @photo.jpg</pre>
+<table class="table table-sm w-auto">
+  <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>201</code></td><td>saved: <code>{"id": 12, "size": 23456, "width": 640, "height": 480}</code></td></tr>
+    <tr><td><code>401</code> / <code>403</code></td><td>unknown token / device inactive</td></tr>
+    <tr><td><code>413</code></td><td>larger than {{ camera.max_kb }} KB</td></tr>
+    <tr><td><code>415</code></td><td>not a JPEG image</td></tr>
+    <tr><td><code>429</code></td><td>more than one picture every {{ camera.min_interval }} s (pictures answering a <code>capture</code> command are always accepted)</td></tr>
+  </tbody>
+</table>
+<p>Pictures are not sent over MQTT: the broker accepts messages of at most 64 KB, and images are better kept out of it. MQTT carries the <code>capture</code> command and the settings.</p>

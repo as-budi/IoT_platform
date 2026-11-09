@@ -106,6 +106,12 @@ SMOOTHING_MAX = 1000   # batas jumlah titik pada pilihan "custom"
 CHART_PALETTE = ("#2a78d6", "#1f9d55", "#e8710a", "#d93a3a", "#7b5cd6", "#0f9fb5", "#c2428f", "#c99a06")
 HEX_COLOR_RE = re.compile(r"^#[0-9a-f]{6}$")
 
+def _latest_snapshot_id(device):
+    from cameras.models import Snapshot
+
+    return Snapshot.objects.filter(camera__device=device).order_by("-pk").values_list("pk", flat=True).first()
+
+
 def data_version(device, variable=None):
     """"Sidik jari" data sebuah device (atau satu variabelnya), berupa teks pendek.
 
@@ -141,6 +147,8 @@ def data_version(device, variable=None):
             device.firmware_reported_at and device.firmware_reported_at.timestamp(),
             # Status online/offline (tahap 16).
             device.status_changed_at and device.status_changed_at.timestamp(),
+            # Snapshot kamera terbaru (tahap 27a).
+            _latest_snapshot_id(device),
         ]
     return "-".join(str(part or 0) for part in parts)
 
@@ -321,6 +329,10 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         from ota.views import device_firmware_context
 
         context.update(device_firmware_context(self.request, device))
+        # Kartu "Camera" (tahap 27a): snapshot terbaru dan tombol Capture now.
+        from cameras.views import device_camera_context
+
+        context.update(device_camera_context(self.request, device))
         # Alarm aktif device ini (dibuat oleh rule engine, lihat app rules).
         context["active_alarms"] = device.alarms.active().select_related("rule", "acknowledged_by")
         # Micro rule (tahap 26): aturan milik pengguna yang punya bagian di device ini.
@@ -1016,11 +1028,16 @@ class ConnectFirmwareView(LoginRequiredMixin, View):
             if device is None:
                 raise Http404("No such device.")
         coap_server, _ = coap_host(request)
-        values = connect.server_values(request, coap_server)[protocol]
+        all_values = connect.server_values(request, coap_server)
+        values = dict(all_values[protocol])
         # ?board=esp32c3_oled: template khusus board itu (tanpa device, atau menggantikan board device).
         board = request.GET.get("board", "")
         if board and (protocol, board) not in connect.BOARD_TEMPLATES:
             raise Http404("No template for this board.")
+        # Template khusus board bisa butuh pengaturan protokol lain (ESP32-CAM: alamat web untuk gambar).
+        info = connect.template_info(protocol, board or (device.board if device else ""))
+        for other, name in info.get("extra_values", []):
+            values[name] = all_values[other][name]
         filename, data = connect.build_firmware_zip(protocol, values, device, board)
         response = HttpResponse(data, content_type="application/zip")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'

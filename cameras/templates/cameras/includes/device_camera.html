@@ -1,0 +1,65 @@
+{% comment %}
+  Kartu "Camera" di halaman device (devices/device_detail.html), tahap 27a.
+  Data dari cameras/views.py: device_camera_context(). Gambar baru datang lewat kabar
+  WebSocket {"type": "snapshot"} dan diganti di tempat (skrip di bawah).
+{% endcomment %}
+{% load device_tags humanize %}
+{% can_access device.pk "OPERATOR" as can_capture %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2 class="h5 mb-0" id="camera">Camera</h2>
+  <div class="d-flex gap-2">
+    {% if can_capture %}
+    <form method="post" action="{% url 'cameras:capture' device.pk %}">{% csrf_token %}
+      <button class="btn btn-sm btn-primary" title="Sends the command &quot;capture&quot;; the device takes a picture and uploads it">Capture now</button>
+    </form>
+    {% endif %}
+    <a class="btn btn-sm btn-outline-secondary" href="{% url 'cameras:gallery' device.pk %}">All snapshots{% if camera_count %} ({{ camera_count|intcomma }}){% endif %}</a>
+  </div>
+</div>
+<div class="card shadow-sm mb-4">
+  <div class="card-body">
+    {% if camera_latest %}
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <a href="{% url 'cameras:image' camera_latest.pk %}" target="_blank" rel="noopener" data-camera-link>
+          <img class="camera-latest" src="{% url 'cameras:image' camera_latest.pk %}" alt="Latest snapshot of {{ device.name }}" data-camera-image>
+        </a>
+        <div class="small text-muted mt-2" data-camera-meta>
+          <span title="{{ camera_latest.ts|date:'d M Y H:i:s' }}">{{ camera_latest.ts|date:"d M Y H:i:s" }}</span>
+          · {{ camera_latest.get_source_display }}{% if camera_latest.resolution %} · {{ camera_latest.resolution }}{% endif %} · {{ camera_latest.size|filesizeformat }}
+        </div>
+      </div>
+      <div class="col-lg-5">
+        <div class="small text-muted mb-2">Recent</div>
+        <div class="camera-strip">
+          {% for snapshot in camera_recent %}
+          <a href="{% url 'cameras:image' snapshot.pk %}" target="_blank" rel="noopener" title="{{ snapshot.ts|date:'d M Y H:i:s' }}">
+            <img src="{% url 'cameras:image' snapshot.pk %}" alt="Snapshot {{ snapshot.ts|date:'d M H:i:s' }}" loading="lazy">
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-muted mb-2">No snapshot yet.</p>
+    <p class="small mb-0">The ESP32-CAM template sends a picture every <code>snapshot_interval</code> seconds and when it receives the command
+      <code>capture</code>. Other firmware can upload a JPEG with <code>POST {{ camera_upload_url }}</code> (body = the image, <code>Content-Type: image/jpeg</code>),
+      see <a href="{% url 'userdocs:page' 'cameras' %}">Cameras</a>.</p>
+    {% endif %}
+  </div>
+</div>
+<script>
+  // Snapshot baru: ganti gambar terbaru di tempat. Belum ada gambar sebelumnya -> muat ulang halaman.
+  if (window.AutoRefresh) {
+    AutoRefresh.on("snapshot", (event) => {
+      const img = document.querySelector("[data-camera-image]");
+      if (!img) return false;
+      img.src = event.url;
+      document.querySelector("[data-camera-link]").href = event.url;
+      const meta = document.querySelector("[data-camera-meta]");
+      meta.textContent = [LiveFormat.dateTime(event.ts), event.source, event.resolution,
+                          Math.round(event.size / 1024) + " KB"].filter(Boolean).join(" · ");
+      return true;
+    });
+  }
+</script>

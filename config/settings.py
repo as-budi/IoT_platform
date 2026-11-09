@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     "activity",       # log aktivitas seluruh platform (tahap 18)
     "sharing",        # berbagi device antar-pengguna dan grup (tahap 19)
     "userdocs",       # dokumentasi pengguna dengan pencarian (tahap 25)
+    "cameras",        # snapshot kamera ESP32-CAM (tahap 27a)
     # Login untuk aplikasi lain lewat OAuth 2.0 / OpenID Connect (tahap 22).
     # "oauth" (milik project) SEBELUM "oauth2_provider" (paket django-oauth-toolkit),
     # supaya template halaman izin milik kita yang dipakai.
@@ -484,6 +485,17 @@ OTA_STORAGE_DIR = Path(os.getenv("OTA_STORAGE_DIR", "") or BASE_DIR / "private_m
 # Kosong = alamat dari address bar browser (127.0.0.1 tidak bisa dijangkau ESP32!).
 OTA_BASE_URL = os.getenv("OTA_BASE_URL", "").rstrip("/")
 OTA_MAX_FIRMWARE_SIZE = int(os.getenv("OTA_MAX_FIRMWARE_SIZE", str(4 * 1024 * 1024)))  # 4 MB
+
+# --- Kamera: snapshot ESP32-CAM (tahap 27a) -----------------------------------------
+# Lihat cameras/ dan docs/tahap-27a-snapshot-esp32cam.md. Gambar di luar static/media, hanya
+# bisa dibuka lewat halaman yang memeriksa hak akses.
+CAMERA_STORAGE_DIR = Path(os.getenv("CAMERA_STORAGE_DIR", "") or BASE_DIR / "private_media" / "camera")
+CAMERA_MAX_SNAPSHOT_KB = int(os.getenv("CAMERA_MAX_SNAPSHOT_KB", "512"))     # per gambar
+CAMERA_MIN_INTERVAL_S = int(os.getenv("CAMERA_MIN_INTERVAL_S", "2"))         # jarak minimum antar-gambar per kamera
+CAMERA_RETENTION_DAYS = int(os.getenv("CAMERA_RETENTION_DAYS", "30"))        # 0 = simpan selamanya
+# Produksi (nginx): awalan location "internal" yang menyajikan CAMERA_STORAGE_DIR, mis. /protected/camera/.
+# Kosong = Django sendiri yang mengirim file (pengembangan).
+CAMERA_X_ACCEL_PREFIX = os.getenv("CAMERA_X_ACCEL_PREFIX", "").strip()
 OTA_COMMAND_TTL = int(os.getenv("OTA_COMMAND_TTL", "600"))       # device harus mengambil command dalam 10 menit
 OTA_DOWNLOAD_TTL = int(os.getenv("OTA_DOWNLOAD_TTL", "1800"))    # link unduhan berlaku 30 menit
 OTA_UPDATE_TIMEOUT = int(os.getenv("OTA_UPDATE_TIMEOUT", "900")) # seluruh update harus selesai dalam 15 menit

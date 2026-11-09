@@ -1,6 +1,6 @@
 # Rencana: Data visual dari ESP32-CAM dan IP camera (tahap 27)
 
-Status: **rencana**, belum dikerjakan.
+Status: **27a selesai untuk ESP32-CAM** (lihat [tahap-27a-snapshot-esp32cam.md](tahap-27a-snapshot-esp32cam.md)); IP camera, 27b dan 27c belum dikerjakan.
 
 ## 1. Ringkasan
 
@@ -150,6 +150,9 @@ sampai kebutuhan nyata, karena biaya disk dan bandwidth VPS paling besar di bagi
 ## 6. Tahapan pengerjaan
 
 ### Tahap 27a: Snapshot (prioritas)
+
+Sudah dikerjakan untuk ESP32-CAM. Belum: thumbnail, widget dashboard, aksi aturan *Capture snapshot*,
+Telegram `sendPhoto`, kuota, log aktivitas, dan semua bagian IP camera.
 
 1. Model `Camera`, `Snapshot`, migrasi; board `esp32cam`.
 2. Endpoint `POST /api/v1/<token>/snapshot`, validasi, thumbnail, penyimpanan privat; lokasi nginx khusus.

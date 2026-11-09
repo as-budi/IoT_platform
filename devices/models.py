@@ -105,6 +105,8 @@ class Board(models.TextChoices):
     # (template firmware/esp32c3_oled_mqtt). Board terpisah supaya OTA tidak tertukar dan halaman
     # Connect memberikan template yang tepat.
     ESP32C3_OLED = "esp32c3_oled", "ESP32-C3 OLED"
+    # ESP32-CAM (AI-Thinker, tahap 27a): template firmware firmware/esp32cam_mqtt, kartu Camera.
+    ESP32CAM = "esp32cam", "ESP32-CAM"
     ESP8266 = "esp8266", "ESP8266"
     SIMULATED = "sim", "Simulated device"
 

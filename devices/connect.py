@@ -67,6 +67,19 @@ BOARD_TEMPLATES = {
                    "board without a display.",
         "board_hint": 'Tools > Board "ESP32C3 Dev Module", USB CDC On Boot "Enabled", a partition scheme with OTA.',
     },
+    ("mqtt", "esp32cam"): {
+        "label": "MQTT · ESP32-CAM",
+        "sketch": "esp32cam_mqtt",
+        "folder": "esp32cam-mqtt",
+        "libraries": ["PubSubClient (Nick O'Leary)", "ArduinoJson 7 (Benoit Blanchon)"],
+        "summary": "Everything in the MQTT template, plus JPEG snapshots sent to the platform over HTTP: every "
+                   "snapshot_interval seconds and on the command \"capture\" (button Capture now). See the "
+                   "documentation chapter Cameras (ESP32-CAM).",
+        "board_hint": 'Tools > Board "AI Thinker ESP32-CAM", Partition Scheme "Minimal SPIFFS (1.9MB APP with OTA)", '
+                      "PSRAM Enabled. Upload with a USB-to-serial adapter (IO0 to GND while uploading).",
+        # Pengaturan tambahan dari protokol lain: alamat web server untuk mengunggah gambar.
+        "extra_values": [("http", "SERVER")],
+    },
 }
 
 

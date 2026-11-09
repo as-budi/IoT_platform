@@ -5,6 +5,7 @@
 """
 from django.urls import path
 
+from cameras import views as camera_views
 from ota import views as ota_views
 
 from . import v2, views
@@ -23,6 +24,9 @@ urlpatterns = [
     # Unduhan file firmware. Token di sini BUKAN access token device, melainkan
     # token unduhan sekali pakai milik satu pembaruan (lihat ota/services.py).
     path("v1/ota/<str:token>.bin", ota_views.download, name="ota_download"),
+    # Tahap 27a: kamera (ESP32-CAM) mengunggah gambar JPEG.
+    path("v1/<str:token>/snapshot", camera_views.upload, name="snapshot"),
+    path("v1/<str:token>/snapshot/", camera_views.upload),
     # Tahap 22: aplikasi luar (mis. MQTT client web), lihat api/v2.py.
     path("v2/me", v2.me, name="v2_me"),
     path("v2/me/devices", v2.my_devices, name="v2_devices"),
