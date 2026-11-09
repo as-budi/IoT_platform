@@ -31,13 +31,9 @@
           <td class="small text-nowrap">{{ package.created_at|date:"d M Y" }}{% if user.is_admin %} · {{ package.uploaded_by.username }}{% endif %}</td>
           <td class="text-end">{{ package.updated_count }}{% if package.update_count != package.updated_count %} <span class="text-muted small">of {{ package.update_count }} tries</span>{% endif %}</td>
           <td class="text-end text-nowrap">
-            {# Firmware yang pernah dipakai pembaruan disimpan untuk riwayatnya (ota.views.PackageDeleteView). #}
+            {# Selalu boleh dihapus; riwayat pembaruan menyimpan judul dan versinya (ota.views.PackageDeleteView). #}
             {% url 'ota:package_delete' package.pk as delete_url %}
-            {% if package.update_count %}
-            {% include "includes/row_actions.html" with delete_url=delete_url delete_blocked="Used by updates; kept for their history" label=package.title %}
-            {% else %}
             {% include "includes/row_actions.html" with delete_url=delete_url label=package.title %}
-            {% endif %}
           </td>
         </tr>
         {% endfor %}

@@ -1662,3 +1662,43 @@ body > main.container { padding-top: 2rem; }
 .chart-color-option.active { border-color: var(--bs-body-color); box-shadow: inset 0 0 0 2px var(--app-surface); }
 .chart-color-menu .form-control-color { width: 2.4rem; height: 2rem; padding: 0.15rem; }
 .command-table .command-rtt { margin-top: 0.15rem; font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+
+/* Tabel device (devices/includes/device_table.html): lebar kolom tetap dalam persen, jadi tabel selalu
+   selebar kartu dan menyesuaikan lebar browser. Variables mendapat bagian terbesar (banyak variabel). */
+.device-table { table-layout: fixed; width: 100%; min-width: 900px; }
+/* Persen = ikut melebar/menyempit bersama browser; Status, Rows dan tombol aksi lebar tetap.
+   Di bawah 900 px (layar sempit, atau side menu terbuka di layar < ~1150 px) tabel digulir. */
+.device-table .col-name { width: 16%; }
+.device-table .col-location { width: 12%; }
+.device-table .col-variables { width: auto; }
+.device-table .col-owner { width: 9%; }
+.device-table .col-status { width: 6.6rem; }
+.device-table .col-rows { width: 4.8rem; }
+.device-table .col-last { width: 11%; }
+.device-table .col-actions { width: 6.5rem; }
+/* Nama device: huruf lebih kecil, satu baris, dipotong "…" (nama lengkap di tooltip). */
+.device-table .entity-chip { font-size: 0.85rem; gap: 0.35rem; padding: 0.15rem 0.5rem 0.15rem 0.2rem; }
+.device-table .entity-chip .entity-icon { width: 1.35rem; height: 1.35rem; }
+.device-table .entity-chip .entity-icon .icon { width: 14px; height: 14px; }
+.device-table .entity-chip .entity-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Lokasi: satu baris juga, dipotong "…" (nama lengkap di tooltip). */
+.device-table .entity-pill { font-size: 0.78rem; }
+.device-table .entity-pill .entity-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Status: Active/Inactive dan Online/Offline bertumpuk, lebar dan tinggi sama. */
+.device-status { display: inline-grid; grid-template-columns: 5rem; row-gap: 0.3rem; }
+.device-status > :is(.badge, .status-pill) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 1.45rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.device-table td { overflow-wrap: break-word; }
+.device-table td.text-end { white-space: nowrap; }
+.device-table .owner-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-table td .badge { white-space: normal; text-align: left; }

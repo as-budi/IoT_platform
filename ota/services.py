@@ -113,7 +113,7 @@ def expire_due(device=None, now=None):
             fail(update, "The device did not pick up the update command in time (is it online?).")
         elif (now - update.created_at).total_seconds() > timeout:
             if update.status == OtaStatus.UPDATING:
-                why = f"The device did not come back with version {update.package.version}"
+                why = f"The device did not come back with version {update.package_version}"
             else:
                 why = f"No progress after {update.get_status_display().lower()}"
             fail(update, f"{why} within {timeout // 60} minutes.")
@@ -391,7 +391,7 @@ def report_version(device, version, board, protocol):
     with transaction.atomic():
         update = device.ota_updates.select_for_update().active().select_related("package").first()
         if update is not None:
-            target = update.package.version
+            target = update.package_version
             if version == target:
                 record(update, OtaStatus.UPDATED, f"The device restarted with version {version}", source=protocol)
                 message += f"; update {update.pk}: UPDATED"

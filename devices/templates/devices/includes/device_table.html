@@ -7,7 +7,15 @@
 {% endcomment %}
 <div class="card shadow-sm">
   <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
+    {# Lebar kolom tetap dalam persen (app.css .device-table, table-layout: fixed): tabel selalu selebar #}
+    {# kartu dan mengikuti lebar browser; Variables mendapat bagian terbesar. Bila kartu < 900 px    #}
+    {# tabel digulir ke samping. #}
+    <table class="table table-hover align-middle mb-0 device-table{% if user.is_admin %} with-owner{% endif %}">
+      <colgroup>
+        <col class="col-name"><col class="col-location"><col class="col-variables">
+        {% if user.is_admin %}<col class="col-owner">{% endif %}
+        <col class="col-status"><col class="col-rows"><col class="col-last"><col class="col-actions">
+      </colgroup>
       <thead class="table-light">
         <tr>
           <th>Name</th>
@@ -48,19 +56,22 @@
             <span class="text-muted">—</span>
             {% endfor %}
           </td>
-          {% if user.is_admin %}<td>{{ device.owner.username }}</td>{% endif %}
+          {% if user.is_admin %}<td class="owner-cell" title="{{ device.owner.username }}">{{ device.owner.username }}</td>{% endif %}
           <td>
+            {# Active/Inactive dan Online/Offline bertumpuk dengan lebar sama (.device-status). #}
+            <div class="device-status">
             {% if device.is_active %}
             <span class="badge text-bg-success">Active</span>
             {% else %}
             <span class="badge text-bg-secondary">Inactive</span>
             {% endif %}
             {% include "devices/includes/online_pill.html" %}
+            </div>
           </td>
           {# telemetry_count dihitung oleh Subquery di DeviceListView. #}
           {# intcomma: 1234 -> 1,234 (butuh django.contrib.humanize). #}
           <td class="text-end">{{ device.telemetry_count|intcomma }}</td>
-          <td>
+          <td class="small">
             {% if device.last_seen %}
             {{ device.last_seen|timesince }} ago
             {% if device.last_protocol %}<span class="badge protocol-badge ms-1">{{ device.get_last_protocol_display }}</span>{% endif %}

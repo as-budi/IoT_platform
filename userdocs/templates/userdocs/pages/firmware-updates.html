@@ -17,7 +17,8 @@ then update any compatible device from its page. The device downloads the file, 
 </ol>
 <p>The version must match what the new firmware reports after it starts: that report is how the platform knows the update worked.
 Firmware you upload is visible only to you (administrators see all).
-The delete button at the end of each row removes a firmware; firmware that was already used by an update is kept for its history (the button is greyed out).</p>
+The delete button at the end of each row removes a firmware and its .bin file. Updates that used it keep their history (title and version);
+an update that is still running with it is stopped as failed.</p>
 
 <h2 id="update">Updating a device</h2>
 <p>Device page → <em>Firmware</em> card → choose the version under <em>Update to</em> → <em>Update firmware</em>.

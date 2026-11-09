@@ -91,11 +91,18 @@ class PackageDeleteView(LoginRequiredMixin, DeleteView):
     def get_queryset(self):
         return visible_packages(self.request.user)
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["used_count"] = self.object.updates.count()
+        context["running"] = self.object.updates.active().select_related("device")
+        return context
+
     def form_valid(self, form):
         package = self.get_object()
-        if package.updates.exists():
-            messages.error(self.request, "This firmware was used by updates and is kept for their history.")
-            return redirect("ota:package_detail", pk=package.pk)
+        # Pembaruan yang masih berjalan dengan firmware ini dihentikan (file-nya akan hilang).
+        # Riwayat pembaruan lain tetap ada: judul, versi dan MD5 sudah disalin ke setiap pembaruan.
+        for update in package.updates.active():
+            services.fail(update, "The firmware file was deleted.")
         package.file.delete(save=False)  # hapus juga file .bin-nya dari disk
         messages.success(self.request, f"Firmware {package.title} {package.version} deleted.")
         return super().form_valid(form)
@@ -139,7 +146,7 @@ class StartUpdateView(LoginRequiredMixin, View):
                 )
                 messages.success(
                     request,
-                    f"Update to {update.package.version} queued. The device receives it as the "
+                    f"Update to {update.package_version} queued. The device receives it as the "
                     f"command \"ota\" the next time it checks for commands.",
                 )
             except services.OtaError as exc:
@@ -202,6 +209,8 @@ def download(request, token):
         status, message = rejected
         return JsonResponse({"error": message}, status=status)
     package = update.package
+    if package is None:                       # firmware dihapus sesudah link dibuat
+        return JsonResponse({"error": "This firmware was deleted."}, status=410)
     response = FileResponse(
         package.file.open("rb"),
         as_attachment=True,

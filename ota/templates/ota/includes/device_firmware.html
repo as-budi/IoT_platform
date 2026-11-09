@@ -32,7 +32,7 @@
     <div class="ota-active border rounded p-3 mb-3" data-ota-update="{{ ota_active.pk }}">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div>
-          Updating to <strong>{{ ota_active.package.version }}</strong>
+          Updating to <strong>{{ ota_active.package_version }}</strong>
           {% include "ota/includes/status_badge.html" with update=ota_active %}
           <a class="small ms-1" href="{% url 'ota:update_detail' ota_active.pk %}">Details</a>
         </div>
@@ -46,7 +46,7 @@
       {% include "ota/includes/progress.html" with update=ota_active %}
       <p class="small text-muted mt-2 mb-0">
         {% if ota_active.status == "QUEUED" %}Waiting for the device to pick up the command <code>ota</code> (it needs to be online).
-        {% elif ota_active.status == "UPDATING" %}The device is restarting. The update succeeds when it reports version {{ ota_active.package.version }}.
+        {% elif ota_active.status == "UPDATING" %}The device is restarting. The update succeeds when it reports version {{ ota_active.package_version }}.
         {% else %}The device reports each step; this box updates by itself.{% endif %}
       </p>
     </div>

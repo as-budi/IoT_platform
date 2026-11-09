@@ -135,8 +135,14 @@ class OtaUpdateQuerySet(models.QuerySet):
 
 class OtaUpdate(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name="ota_updates")
-    # PROTECT: paket yang pernah dipakai tidak bisa dihapus, supaya riwayat tetap utuh.
-    package = models.ForeignKey(FirmwarePackage, on_delete=models.PROTECT, related_name="updates")
+    # Paket boleh dihapus kapan saja (tahap 26). Riwayat tetap terbaca karena judul, versi dan MD5
+    # paket disalin ke pembaruan ini saat dibuat (package_title/version/md5); package lalu kosong.
+    package = models.ForeignKey(
+        FirmwarePackage, null=True, blank=True, on_delete=models.SET_NULL, related_name="updates"
+    )
+    package_title = models.CharField("firmware", max_length=80, blank=True)
+    package_version = models.CharField("target version", max_length=40, blank=True)
+    package_md5 = models.CharField("MD5", max_length=32, blank=True)
     status = models.CharField("status", max_length=12, choices=OtaStatus.choices, default=OtaStatus.QUEUED)
     progress = models.PositiveSmallIntegerField("download progress (%)", default=0)
     error = models.CharField("error", max_length=255, blank=True)
@@ -167,7 +173,15 @@ class OtaUpdate(models.Model):
         indexes = [models.Index(fields=["device", "status"], name="ota_device_status")]
 
     def __str__(self):
-        return f"{self.device} → {self.package.version} ({self.status})"
+        return f"{self.device} → {self.package_version} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        # Salinan data paket, untuk riwayat setelah paketnya dihapus.
+        if self.package_id and not self.package_version:
+            self.package_title = self.package.title
+            self.package_version = self.package.version
+            self.package_md5 = self.package.md5
+        super().save(*args, **kwargs)
 
     @property
     def is_final(self):

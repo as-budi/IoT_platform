@@ -228,9 +228,8 @@ def ota_event(sender, instance, created, raw=False, **kwargs):
         return
     update = instance.update
     device = update.device
-    package = update.package
     failed = instance.status == OtaStatus.FAILED
-    text = f"Firmware {package.version} on {device.name}: {instance.get_status_display().lower()}"
+    text = f"Firmware {update.package_version} on {device.name}: {instance.get_status_display().lower()}"
     if instance.message:
         text += f" ({instance.message})"
     record(f"firmware.{instance.status.lower()}", text, category=Category.FIRMWARE,

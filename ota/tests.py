@@ -408,12 +408,20 @@ class OtaViewTests(OtaData):
         self.assertFalse(FirmwarePackage.objects.filter(pk=package.pk).exists())
         import os
         self.assertFalse(os.path.exists(path), "the .bin is removed too")
-        # Paket yang pernah dipakai disimpan untuk riwayat.
-        self.start()
-        response = self.client.post(reverse("ota:package_delete", args=[self.package.pk]), follow=True)
-        self.assertContains(response, "kept for their history")
-        self.assertContains(self.client.get(reverse("ota:package_list")), "Used by updates; kept for their history")
-        self.assertNotContains(self.client.get(reverse("ota:package_delete", args=[self.package.pk])), "Yes, delete")
+        # Paket yang pernah dipakai tetap boleh dihapus (tahap 26): pembaruan yang berjalan dihentikan,
+        # riwayat menyimpan judul dan versinya.
+        update = self.start()
+        confirm = self.client.get(reverse("ota:package_delete", args=[self.package.pk]))
+        self.assertContains(confirm, "Yes, delete")
+        self.assertContains(confirm, "will be stopped as failed")
+        self.client.post(reverse("ota:package_delete", args=[self.package.pk]))
+        self.assertFalse(FirmwarePackage.objects.filter(pk=self.package.pk).exists())
+        update.refresh_from_db()
+        self.assertEqual((update.package, update.status), (None, OtaStatus.FAILED))
+        self.assertEqual((update.package_title, update.package_version), ("Greenhouse firmware", "1.1.0"))
+        detail = self.client.get(reverse("ota:update_detail", args=[update.pk]))
+        self.assertContains(detail, "(firmware deleted)")
+        self.assertEqual(self.client.get(f"/api/v1/ota/{update.download_token}.bin").status_code, 410)
 
     def test_other_users(self):
         self.client.force_login(self.budi)
