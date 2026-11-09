@@ -17,6 +17,10 @@ proses housekeeping.
 
 ---
 
+> **Tahap 26:** pengguna bisa mematikan pemakaian ringkasan di chart dengan pilihan *All readings*
+> (lihat [tahap-26-tambahan-hasil-uji-esp32.md](tahap-26-tambahan-hasil-uji-esp32.md), no. 14). Tabel ringkasan
+> tetap diisi worker; yang berubah hanya sumber titik chart.
+
 ## Bagian A — Tabel ringkasan telemetri
 
 ### Masalahnya

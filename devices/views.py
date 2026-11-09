@@ -31,7 +31,7 @@ from realtime.routing import device_ws_path
 from sharing import access
 
 from . import connect
-from .charts import CUSTOM, PERIODS, chart_series, describe_seconds
+from .charts import CUSTOM, DATA_MODES, PERIODS, chart_series, describe_seconds
 from .connect import host_reach
 from .forms import (
     ChartPeriodForm,
@@ -550,11 +550,30 @@ class OwnedVariableMixin(LoginRequiredMixin):
         return context
 
 
+CHART_MODE_COOKIE = "chart_data"
+
+
+def chart_data_mode(request):
+    """Cara chart memperlakukan data (tahap 26): ?data=..., lalu pilihan terakhir (cookie),
+    lalu bawaan situs CHART_DATA_MODE."""
+    for mode in (request.GET.get("data"), request.COOKIES.get(CHART_MODE_COOKIE)):
+        if mode in DATA_MODES:
+            return mode
+    return settings.CHART_DATA_MODE
+
+
 class VariableDetailView(OwnedVariableMixin, DetailView):
     """Tampilan per variabel: nilai terkini, chart per periode, dan tabel history."""
 
     template_name = "devices/variable_detail.html"
     context_object_name = "variable"
+
+    def render_to_response(self, context, **response_kwargs):
+        response = super().render_to_response(context, **response_kwargs)
+        # Pilihan "Average / All readings" diingat browser ini untuk semua variabel.
+        if self.request.GET.get("data") in DATA_MODES:
+            response.set_cookie(CHART_MODE_COOKIE, self.request.GET["data"], max_age=365 * 24 * 3600, samesite="Lax")
+        return response
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -569,7 +588,8 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
         # langsung terlihat di ujung kanan chart.
         period_form = ChartPeriodForm(self.request.GET)
         period, start, end = period_form.get_window(timezone.now())
-        series = chart_series(variable, start, end)
+        data_mode = chart_data_mode(self.request)
+        series = chart_series(variable, start, end, data_mode)
         # Titik {x: waktu dalam milidetik, y: nilai}, urut lama -> baru.
         context["chart_points"] = series["points"]
         context["chart"] = {
@@ -581,11 +601,15 @@ class VariableDetailView(OwnedVariableMixin, DetailView):
             "bucket": describe_seconds(series["bucket_seconds"]) if series["bucket_seconds"] else "",
             # Tahap 16: titik dibaca dari tabel ringkasan per menit/jam (0 = data asli).
             "source": describe_seconds(series["source"]) if series["source"] else "",
+            # Tahap 26: "average" / "raw"; minmax = nilai terkecil & terbesar per interval.
+            "mode": data_mode,
+            "minmax": series.get("minmax", False),
             # Batas sumbu x = seluruh periode, walau datanya hanya sebagian.
             "range": {"min": int(start.timestamp() * 1000), "max": int(end.timestamp() * 1000)},
         }
         context["period_form"] = period_form
         context["periods"] = [(key, label) for key, (label, _) in PERIODS.items()]
+        context["data_modes"] = list(DATA_MODES.items())
         context["custom_period"] = CUSTOM
         # Kotak custom terbuka bila dipilih, atau bila isiannya salah.
         context["custom_open"] = period == CUSTOM or self.request.GET.get("period") == CUSTOM

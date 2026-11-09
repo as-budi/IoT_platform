@@ -798,6 +798,33 @@ class ChartPeriodTests(TestCase):
         self.assertAlmostEqual(points[0]["y"], 20)
         self.assertContains(response, "average per 12 h")
 
+    def test_all_readings_mode_skips_averaging_and_is_remembered(self):
+        # Mode "All readings" (tahap 26): data asli tanpa rata-rata, walau titiknya "banyak".
+        with mock.patch("devices.charts.CHART_MAX_POINTS", 2):
+            response = self.client.get(self.url, {"period": "1d", "data": "raw"})
+        self.assertEqual([p["y"] for p in response.context["chart_points"]], [30, 20, 10])
+        self.assertEqual(response.context["chart"]["mode"], "raw")
+        self.assertContains(response, "all readings")
+        self.assertContains(response, '<option value="raw" selected>All readings</option>', html=True)
+        self.assertEqual(response.cookies["chart_data"].value, "raw")
+        # Pilihan diingat (cookie) tanpa ?data=.
+        self.assertEqual(self.client.get(self.url).context["chart"]["mode"], "raw")
+        self.client.get(self.url, {"data": "average"})
+        self.assertEqual(self.client.get(self.url).context["chart"]["mode"], "average")
+
+    @override_settings(CHART_RAW_MAX_POINTS=2)
+    def test_all_readings_beyond_the_limit_keep_lowest_and_highest(self):
+        with mock.patch("devices.charts.CHART_MAX_POINTS", 2):
+            response = self.client.get(self.url, {"period": "1d", "data": "raw"})
+        chart = response.context["chart"]
+        self.assertTrue(chart["minmax"])
+        self.assertEqual([p["y"] for p in response.context["chart_points"]], [10, 30])   # bukan rata-rata 20
+        self.assertContains(response, "lowest and highest reading per 12 h")
+
+    @override_settings(CHART_DATA_MODE="raw")
+    def test_site_default_mode(self):
+        self.assertEqual(self.client.get(self.url).context["chart"]["mode"], "raw")
+
     def test_boolean_buckets_keep_the_highest_value(self):
         lamp = Variable.objects.create(
             device=self.device, key="lamp", value_type=Variable.ValueType.BOOLEAN

@@ -435,6 +435,13 @@ DEVICE_OFFLINE_SECONDS = int(os.getenv("DEVICE_OFFLINE_SECONDS", "300"))
 # disconnect yang rapi tanpa "offline", broker di-restart). Template firmware mengirim "online"
 # setiap 5 menit sebagai detak. 0 = tidak dipakai (hanya Last Will, perilaku lama).
 DEVICE_MQTT_SILENT_SECONDS = int(os.getenv("DEVICE_MQTT_SILENT_SECONDS", "900"))
+# Chart halaman variabel (tahap 26): cara bawaan memperlakukan data. "average" = rata-rata per
+# interval (tabel ringkasan/rollup untuk periode panjang); "raw" = semua bacaan asli, tanpa rata-rata.
+# Setiap pengguna bisa memilih sendiri di atas chart (diingat browser lewat cookie).
+CHART_DATA_MODE = "raw" if os.getenv("CHART_DATA_MODE", "average").strip().lower() == "raw" else "average"
+# Mode "raw": paling banyak sekian bacaan dikirim apa adanya; lebih dari itu, nilai terkecil dan
+# terbesar per interval (lonjakan tetap terlihat).
+CHART_RAW_MAX_POINTS = int(os.getenv("CHART_RAW_MAX_POINTS", "20000"))
 # Ringkasan per menit dihitung ulang mundur sejauh ini (detik), supaya data yang
 # datang terlambat (device menyimpan data saat offline) ikut terhitung.
 TELEMETRY_ROLLUP_LATE_SECONDS = int(os.getenv("TELEMETRY_ROLLUP_LATE_SECONDS", "600"))

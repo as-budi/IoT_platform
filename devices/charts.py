@@ -24,14 +24,31 @@ halaman dibuka, tetapi membaca TABEL RINGKASAN (devices/rollups.py):
 "Bagian terbaru" = waktu setelah RollupProgress.done_until, yang belum diringkas
 worker. Bila ringkasan belum pernah dibuat (worker housekeeping belum berjalan),
 chart memakai data asli seperti sebelumnya.
+
+Tahap 26: pengguna bisa memilih cara chart memperlakukan data (MODE_AVERAGE / MODE_RAW,
+bawaan situs = CHART_DATA_MODE di .env):
+
+    average   cara di atas: rata-rata per ember (tabel ringkasan bila periodenya panjang)
+    raw       SEMUA bacaan asli, tanpa rata-rata dan tanpa tabel ringkasan. Bila lebih dari
+              CHART_RAW_MAX_POINTS, tiap ember menyumbang nilai TERKECIL dan TERBESAR-nya
+              (dihitung database dari data asli), sehingga lonjakan sesaat tetap terlihat.
 """
 import math
 from datetime import timedelta
 
-from django.db.models import Avg, Count, DateTimeField, F, Func, IntegerField, Max, Sum, Value
+from django.conf import settings
+from django.db.models import Avg, Count, DateTimeField, F, Func, IntegerField, Max, Min, Sum, Value
 
 # Batas atas jumlah titik yang dikirim ke browser.
 CHART_MAX_POINTS = 1000
+
+# Cara chart memperlakukan data (tahap 26): key -> label pilihan di halaman variabel.
+MODE_AVERAGE = "average"
+MODE_RAW = "raw"
+DATA_MODES = {
+    MODE_AVERAGE: "Average per interval",
+    MODE_RAW: "All readings",
+}
 
 # key -> (label tombol, panjang periode). Urutan di sini = urutan tombol.
 # "custom" tidak punya panjang tetap: awal dan akhirnya diisi pengguna.
@@ -103,7 +120,7 @@ def describe_seconds(seconds):
     return " ".join(parts[:2]) or "0 s"
 
 
-def chart_series(variable, start, end):
+def chart_series(variable, start, end, mode=MODE_AVERAGE):
     """Titik chart `variable` antara `start` dan `end`.
 
     Mengembalikan dict:
@@ -111,7 +128,10 @@ def chart_series(variable, start, end):
         rows            jumlah baris telemetri asli dalam rentang ini
         bucket_seconds  0 bila titik = data asli; selain itu lebar ember (detik)
         source          0 = data asli; 60 / 3600 = tabel ringkasan per menit / per jam
+        minmax          True bila titik = nilai terkecil & terbesar per ember (mode raw, data banyak)
     """
+    if mode == MODE_RAW:
+        return all_readings_series(variable, start, end)
     span = end - start
     if span > RAW_MAX_SPAN:
         from .rollups import HOUR, MINUTE, progress
@@ -156,6 +176,44 @@ def raw_series(variable, start, end):
         for b in buckets
     ]
     return {"points": points, "rows": total, "bucket_seconds": width, "source": 0}
+
+
+def all_readings_series(variable, start, end):
+    """Mode "All readings": data asli tanpa rata-rata.
+
+    Sampai CHART_RAW_MAX_POINTS bacaan dikirim apa adanya (browser menggambarnya dengan
+    decimation min/max Chart.js). Lebih dari itu, rentang dibagi menjadi <= CHART_MAX_POINTS
+    ember dan setiap ember menyumbang dua titik: nilai terkecil dan terbesarnya. Hasilnya
+    "pita" naik-turun yang memuat setiap lonjakan, berbeda dengan rata-rata yang meratakannya.
+    """
+    rows = variable.telemetry.filter(ts__gte=start, ts__lte=end)
+    total = rows.count()
+    if total <= settings.CHART_RAW_MAX_POINTS:
+        points = [
+            {"x": to_ms(ts), "y": value}
+            for ts, value in rows.order_by("ts").values_list("ts", "value")
+        ]
+        return {"points": points, "rows": total, "bucket_seconds": 0, "source": 0, "minmax": False}
+
+    span = (end - start).total_seconds()
+    width = max(1, math.ceil(span / CHART_MAX_POINTS))
+    buckets = (
+        rows.annotate(bucket=BucketIndex(start, width))
+        .values("bucket")
+        .annotate(lo=Min("value"), hi=Max("value"))
+        .order_by("bucket")
+    )
+    start_ms = to_ms(start)
+    quarter = width * 250                      # seperempat ember, dalam milidetik
+    points = []
+    for b in buckets:
+        middle = start_ms + int((int(b["bucket"]) + 0.5) * width * 1000)
+        if b["lo"] == b["hi"]:
+            points.append({"x": middle, "y": b["lo"]})
+        else:
+            points.append({"x": middle - quarter, "y": b["lo"]})
+            points.append({"x": middle + quarter, "y": b["hi"]})
+    return {"points": points, "rows": total, "bucket_seconds": width, "source": 0, "minmax": True}
 
 
 def rollup_series(variable, start, end, resolution, done):

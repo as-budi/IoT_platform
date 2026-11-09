@@ -90,7 +90,9 @@
           Last {{ chart.label }}
           {% endif %}
           · {{ chart.rows|intcomma }} reading{{ chart.rows|pluralize }}
-          {% if chart.bucket %}· {% if variable.is_discrete %}highest value{% else %}average{% endif %} per {{ chart.bucket }}{% endif %}
+          {% if chart.minmax %}· lowest and highest reading per {{ chart.bucket }}
+          {% elif chart.bucket %}· {% if variable.is_discrete %}highest value{% else %}average{% endif %} per {{ chart.bucket }}
+          {% elif chart.mode == "raw" %}· all readings{% endif %}
           {% if chart.source %}<span title="Read from the pre-computed {{ chart.source }} summary table (plus raw data for the last few minutes), not from every reading">· from {{ chart.source }} summaries</span>{% endif %}
         </p>
       </div>
@@ -99,15 +101,15 @@
         {# Pilihan periode: dropdown di dalam form GET. Saat pilihan berubah, #}
         {# JavaScript langsung mengirim form, sehingga alamat menjadi ?period=... #}
         {# (parameter page, start, dan end ikut hilang karena tidak ada di form). #}
-        <form method="get" action="#chart" id="period-form" class="m-0">
-          <div class="input-group input-group-sm">
+        <form method="get" action="#chart" id="period-form" class="m-0 d-flex flex-nowrap align-items-center gap-2">
+          <div class="input-group input-group-sm w-auto flex-nowrap">
             <label class="input-group-text" for="period-select" title="Time range">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
               </svg>
               <span class="visually-hidden">Time range</span>
             </label>
-            <select class="form-select form-select-sm" id="period-select" name="period">
+            <select class="form-select form-select-sm w-auto" id="period-select" name="period">
               {% for key, label in periods %}
               <option value="{{ key }}"{% if key == chart.period %} selected{% endif %}>{% if key == custom_period %}Custom range…{% else %}Last {{ label }}{% endif %}</option>
               {% endfor %}
@@ -115,6 +117,15 @@
             {# Tanpa JavaScript, tombol ini yang mengirim pilihan. #}
             <noscript><button type="submit" class="btn btn-outline-secondary">Show</button></noscript>
           </div>
+          {# Rentang custom ikut terkirim saat mengganti cara data (di bawah). #}
+          {% if chart.period == custom_period %}
+          <input type="hidden" name="start" value="{{ custom_start }}"><input type="hidden" name="end" value="{{ custom_end }}">
+          {% endif %}
+          {# Tahap 26: rata-rata per interval (tabel ringkasan/rollup) atau semua bacaan asli. #}
+          <select class="form-select form-select-sm w-auto" name="data" id="data-mode" aria-label="Chart data"
+                  title="Average per interval: fast, from the summary tables, hides short spikes. All readings: every reading as received; when there are very many, the lowest and highest per interval.">
+            {% for key, label in data_modes %}<option value="{{ key }}"{% if key == chart.mode %} selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
         </form>
 
         {% if chart_points and not variable.is_discrete %}
@@ -179,6 +190,7 @@
     {% if custom_open %}
     <form method="get" action="#chart" class="row g-2 align-items-end mb-3">
       <input type="hidden" name="period" value="{{ custom_period }}">
+      <input type="hidden" name="data" value="{{ chart.mode }}">
       <div class="col-12 col-sm-5 col-lg-4">
         <label class="form-label small mb-1" for="period-start">Start</label>
         <input type="datetime-local" class="form-control form-control-sm{% if period_form.start.errors %} is-invalid{% endif %}"
@@ -500,6 +512,9 @@
         interaction: { mode: "index", axis: "x", intersect: false },
         plugins: {
           legend: { display: false },  // satu seri: judul kartu sudah menamainya
+          // Banyak titik (mode "All readings"): gambar hanya nilai terkecil & terbesar per piksel.
+          // Bentuk garis sama dengan menggambar semuanya (lonjakan tetap terlihat), tetapi jauh lebih ringan.
+          decimation: { enabled: true, algorithm: "min-max" },
           // Pengaturan plugin zoom. mode "x": hanya sumbu waktu yang di-zoom,
           // sumbu nilai tetap, supaya bentuk grafik tidak menipu.
           zoom: {
@@ -678,8 +693,13 @@
 <script>
   // Dropdown periode: kirim form begitu pilihan berubah.
   document.getElementById("period-select").addEventListener("change", (event) => {
+    // Rentang custom lama hanya dibawa saat mengganti cara data, bukan saat mengganti periode.
+    event.target.form.querySelectorAll("input[name=start], input[name=end]").forEach((input) => input.remove());
     event.target.form.submit();
   });
+  // Pilihan data chart (Average / All readings): kirim juga begitu berubah.
+  const dataMode = document.getElementById("data-mode");
+  if (dataMode) dataMode.addEventListener("change", (event) => event.target.form.submit());
 
   // Pembaruan langsung untuk halaman variabel (lihat static/js/auto_refresh.js).
   (function () {

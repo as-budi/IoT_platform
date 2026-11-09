@@ -70,6 +70,7 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
         "time_zone": settings.TIME_ZONE,
         "telegram_enabled": bool(getattr(settings, "TELEGRAM_BOT_TOKEN", "")),
         "boards": Board.choices,
+        "chart_raw_max": f"{settings.CHART_RAW_MAX_POINTS:,}",
         "protocols": connect.PROTOCOLS,
         # Template khusus board (tahap 26), mis. {"mqtt": [("esp32c3_oled", "ESP32-C3 OLED")]}.
         "board_templates": {protocol: connect.board_variants(protocol) for protocol in connect.PROTOCOLS},
