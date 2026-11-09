@@ -127,6 +127,12 @@ class PageTests(CameraData):
         image = self.client.get(reverse("cameras:image", args=[self.snapshot.pk]))
         self.assertEqual(image["X-Accel-Redirect"], "/protected/camera/" + self.snapshot.file.name)
 
+    @override_settings(CAMERA_X_ACCEL_PREFIX="/protected/camera/", DEBUG=True)
+    def test_x_accel_is_ignored_without_nginx(self):
+        response = self.client.get(reverse("cameras:image", args=[self.snapshot.pk]))
+        self.assertNotIn("X-Accel-Redirect", response)
+        self.assertTrue(b"".join(response.streaming_content).startswith(b"\xff\xd8"))
+
     def test_access_follows_sharing(self):
         url = reverse("cameras:image", args=[self.snapshot.pk])
         self.client.force_login(self.budi)

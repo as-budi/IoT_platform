@@ -495,8 +495,10 @@ CAMERA_MIN_INTERVAL_S = int(os.getenv("CAMERA_MIN_INTERVAL_S", "2"))         # j
 CAMERA_RETENTION_DAYS = int(os.getenv("CAMERA_RETENTION_DAYS", "30"))        # 0 = simpan selamanya
 # Kuota gambar per pemilik device (MB); bila penuh, gambar tertua dihapus. 0 = tanpa batas.
 CAMERA_STORAGE_QUOTA_MB = int(os.getenv("CAMERA_STORAGE_QUOTA_MB", "0"))
-# Produksi (nginx): awalan location "internal" yang menyajikan CAMERA_STORAGE_DIR, mis. /protected/camera/.
-# Kosong = Django sendiri yang mengirim file (pengembangan).
+# Kosong (bawaan, disarankan) = Django sendiri yang mengirim file; gambar kecil (puluhan KB), cukup.
+# Opsional di produksi: awalan location "internal" nginx, mis. /protected/camera/. Syaratnya nginx
+# (www-data) BISA MEMBACA CAMERA_STORAGE_DIR; dengan izin bawaan deploy (private_media 750 iot:iot)
+# tidak bisa, dan gambar tampil rusak. Diabaikan bila DEBUG (runserver tanpa nginx).
 CAMERA_X_ACCEL_PREFIX = os.getenv("CAMERA_X_ACCEL_PREFIX", "").strip()
 OTA_COMMAND_TTL = int(os.getenv("OTA_COMMAND_TTL", "600"))       # device harus mengambil command dalam 10 menit
 OTA_DOWNLOAD_TTL = int(os.getenv("OTA_DOWNLOAD_TTL", "1800"))    # link unduhan berlaku 30 menit

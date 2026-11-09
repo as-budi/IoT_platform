@@ -31,8 +31,8 @@ Gambar dikirim lewat HTTP, bukan MQTT, karena broker membatasi ukuran paket (`ma
   *last seen* / status online device.
 - **Ukuran gambar** dibaca dari marker SOF JPEG (tanpa Pillow).
 - **Penyimpanan privat** di `CAMERA_STORAGE_DIR`, disajikan lewat `/cameras/snapshots/<id>.jpg` setelah
-  pemeriksaan akses (minimal VIEWER). Di produksi file dikirim nginx dengan `X-Accel-Redirect`
-  (`CAMERA_X_ACCEL_PREFIX=/protected/camera/`).
+  pemeriksaan akses (minimal VIEWER). Bawaannya Django sendiri yang mengirim file. Opsional: nginx
+  dengan `X-Accel-Redirect` (`CAMERA_X_ACCEL_PREFIX=/protected/camera/`), lihat *Catatan X-Accel*.
 - **Halaman device**: kartu *Camera* (muncul bila board ESP32-CAM atau sudah ada snapshot) berisi
   snapshot terbaru, 6 snapshot terakhir, tombol *Capture now* (OPERATOR) dan tautan galeri. Snapshot baru
   langsung tampil lewat WebSocket.
@@ -66,7 +66,7 @@ sudah terisi).
 | `CAMERA_MIN_INTERVAL_S` | 2 | jarak minimum antar unggahan per kamera |
 | `CAMERA_RETENTION_DAYS` | 30 | retensi bawaan (0 = selamanya) |
 | `CAMERA_STORAGE_QUOTA_MB` | 0 | kuota gambar per pemilik; penuh = gambar tertua dihapus (0 = tanpa batas) |
-| `CAMERA_X_ACCEL_PREFIX` | kosong | `/protected/camera/` di produksi (nginx) |
+| `CAMERA_X_ACCEL_PREFIX` | kosong | kosong = Django mengirim gambar (disarankan); `/protected/camera/` hanya dengan izin baca untuk nginx |
 
 ## Deploy
 
@@ -74,7 +74,25 @@ sudah terisi).
 2. Pasang ulang `deploy/nginx/iot-platform.conf`: zona `iot_snapshot` (2 r/s), lokasi
    `/api/v1/<token>/snapshot` (`client_max_body_size 1m`) dan lokasi internal `/protected/camera/`; lalu
    `nginx -t && systemctl reload nginx`.
-3. Tambahkan `CAMERA_X_ACCEL_PREFIX=/protected/camera/` di `.env` produksi, restart layanan.
+3. Biarkan `CAMERA_X_ACCEL_PREFIX` kosong di `.env` produksi.
+
+### Catatan X-Accel (perbaikan)
+
+Versi awal menyarankan `CAMERA_X_ACCEL_PREFIX=/protected/camera/` di produksi. Akibatnya gambar tampil
+rusak: Django menyerahkan pengiriman file ke nginx, tetapi nginx (user `www-data`) tidak boleh membaca
+`/srv/iot/app/private_media` (mode 750, milik `iot`, lihat deploy-vps.md), sehingga menjawab 403. Di
+laptop (runserver, tanpa nginx) hasilnya jawaban kosong. Perbaikan: bawaan kosong (Django mengirim file;
+snapshot hanya puluhan KB), dan prefix diabaikan saat `DEBUG=True`.
+
+Bila tetap ingin nginx yang mengirim file, beri www-data izin baca khusus folder kamera, mis.:
+
+```bash
+sudo setfacl -m u:www-data:x /srv/iot/app/private_media
+sudo setfacl -R -m u:www-data:rX /srv/iot/app/private_media/camera
+sudo setfacl -R -d -m u:www-data:rX /srv/iot/app/private_media/camera   # juga untuk file baru
+```
+
+lalu isi `CAMERA_X_ACCEL_PREFIX=/protected/camera/` dan restart.
 
 ## Pengujian
 

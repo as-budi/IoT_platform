@@ -83,7 +83,7 @@ def image(request, pk):
     disposition = "attachment" if request.GET.get("download") else "inline"
     # ?thumb=1: gambar kecil bila ada (gambar lama / tanpa Pillow: gambar asli).
     field = snapshot.thumb if request.GET.get("thumb") and snapshot.thumb else snapshot.file
-    if settings.CAMERA_X_ACCEL_PREFIX:
+    if settings.CAMERA_X_ACCEL_PREFIX and not settings.DEBUG:
         response = HttpResponse(content_type="image/jpeg")
         response["X-Accel-Redirect"] = settings.CAMERA_X_ACCEL_PREFIX.rstrip("/") + "/" + field.name
     else:
