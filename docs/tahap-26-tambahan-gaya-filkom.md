@@ -1,11 +1,15 @@
 # Tahap 26 (tambahan) — Gaya tampilan FILKOM
 
-Selain gaya **Standard** (biru), platform punya gaya **FILKOM** yang warnanya selaras dengan
-[filkom.ub.ac.id](https://filkom.ub.ac.id/). Gaya dan mode warna (Light / Dark / System) dipilih
-terpisah, jadi keempat kombinasi bisa dipakai.
+Selain gaya **Standard** (biru), platform punya gaya **FILKOM** yang warnanya mengikuti
+**FILKOM Apps** ([filkom.ub.ac.id/legacy/apps](https://filkom.ub.ac.id/legacy/apps)), sama dengan gaya
+FILKOM di MQTT Client (`mqtt_client/docs/tahap-m12-gaya-filkom.md`). Gaya dan mode warna
+(Light / Dark / System) dipilih terpisah, jadi keempat kombinasi bisa dipakai.
 
-**Kedua gaya memakai tata letak, logo, identitas, bentuk, dan huruf (Inter) yang sama.** Yang
-berbeda hanya warna.
+**Kedua gaya memakai tata letak, logo, identitas, dan bentuk yang sama.** Yang berbeda warna dan
+huruf (Standard: Inter, FILKOM: Roboto seperti FILKOM Apps).
+
+> Pembaruan: versi pertama gaya FILKOM memakai navy `#002647` / oranye `#EC831E` dari situs
+> filkom.ub.ac.id. Sekarang diganti dengan palet FILKOM Apps (tabel di bawah), agar sama dengan MQTT Client.
 
 ## Kerangka bersama (kedua gaya)
 
@@ -21,17 +25,22 @@ berbeda hanya warna.
 
 ## Perbedaan warna
 
-| Bagian | Standard | FILKOM |
+| Bagian | Standard | FILKOM (FILKOM Apps) |
 |---|---|---|
-| Warna utama | biru | navy `#002647`, navy gelap `#000D18`, oranye `#EC831E` |
-| Logo | kotak biru, gambar putih | kotak navy, gelombang oranye, node putih |
-| Side menu | warna kartu, menu aktif biru muda | navy, menu aktif oranye transparan bergaris oranye |
-| Bilah atas | warna kartu, garis tipis abu-abu | navy gelap, garis oranye 3 px |
-| Kaki halaman | warna kartu | navy, garis oranye |
-| Judul | biasa | navy; judul lokasi di dashboard bergaris oranye |
-| Tombol utama | biru, teks putih | oranye, teks navy (putih di atas oranye hanya ±2,7:1, navy ±6:1) |
-| Kepala tabel | abu-abu muda | navy |
-| Mode gelap | abu-abu gelap | navy sangat gelap (`#07131F`), kartu `#0E2033` |
+| Warna utama | biru | slate gelap `#232E40`, slate `#2D3A50`, oranye `#FB9337` |
+| Huruf | Inter | Roboto |
+| Logo | kotak biru, gambar putih | kotak oranye, gelombang slate, node putih |
+| Bilah atas dan kepala side menu | warna kartu, garis tipis abu-abu | `#232E40` dengan pita `#2D3A50` 6 px di bawahnya; nama aplikasi huruf besar |
+| Side menu | warna kartu, menu aktif biru muda | putih (seperti FILKOM Apps), menu aktif abu-abu slate muda bergaris oranye |
+| Menu akun | warna kartu | panel gelap `#202939` |
+| Latar halaman | abu-abu sangat muda | `#D8DCE3` |
+| Judul | biasa | `#32415A`; judul lokasi di dashboard bergaris oranye; label angka huruf besar |
+| Tombol utama | biru, teks putih | slate `#2D3A50`, teks putih (seperti tombol *Sign In* FILKOM Apps); mode gelap: oranye, teks slate |
+| Kepala tabel | abu-abu muda | slate `#2D3A50`, teks putih |
+| Tautan | biru | `#0062CC` |
+| Teks oranye (pill lokasi) | — | `#B85D0F` (oranye `#FB9337` di atas putih hanya ±2,3:1) |
+| Kaki halaman | warna kartu | `#232E40` |
+| Mode gelap | abu-abu gelap | slate gelap: latar `#141B26`, kartu `#1F2938`, garis `#314057` |
 
 Logo (`templates/includes/ui_logo.html`) adalah gambar SVG sendiri (bukan logo FILKOM/UB):
 kotak membulat, gelombang sinyal di atas node dan jalur sirkuitnya. Warnanya diambil dari
@@ -53,7 +62,7 @@ variabel `--ui-logo-bg`, `--ui-logo-frame`, `--ui-logo-wave`, `--ui-logo-node`.
    `includes/ui_footer.html`. Untuk gaya FILKOM, `static/css/filkom.css` dimuat sesudah `app.css`.
 3. `app.css` berisi kerangka bersama dengan warna dari variabel `--ui-*` (bilah atas, kaki
    halaman, avatar, menu aktif, logo) dan `--app-*`; nilai bawaannya adalah warna Standard.
-4. `filkom.css` **hanya mengganti warna**: variabel `--app-*` dan `--ui-*` (terang dan gelap),
+4. `filkom.css` **hanya mengganti warna dan huruf** (`base.html` memuat Roboto, bukan Inter, untuk gaya FILKOM): variabel `--app-*` dan `--ui-*` (terang dan gelap),
    ditambah warna beberapa komponen (side menu, tombol utama, kepala tabel, chip device, pill
    lokasi). Semua aturannya diawali `html[data-ui="filkom"]`.
 5. Tombol pilihan: `includes/ui_style_switch.html` → `POST /accounts/ui-style/`

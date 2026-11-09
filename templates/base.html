@@ -10,7 +10,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}IoT Platform{% endblock %}</title>
-  {# Ikon tab browser = logo IoT Platform, warnanya mengikuti gaya (Standard biru, FILKOM navy-oranye). #}
+  {# Ikon tab browser = logo IoT Platform, warnanya mengikuti gaya (Standard biru, FILKOM oranye-slate). #}
   {% with icon_style=ui_style|default:"standard" %}
   <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon-'|add:icon_style|add:'.svg' %}">
   <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-'|add:icon_style|add:'-32.png' %}">
@@ -22,11 +22,15 @@
   <script src="{% static 'js/sidebar.js' %}"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  {% if ui_style == "filkom" %}
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap">
+  {% else %}
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  {% endif %}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
   {% if ui_style == "filkom" %}
-  {# Gaya FILKOM: hanya warna FILKOM UB di atas app.css; tata letak dan huruf sama (docs/tahap-26-tambahan-gaya-filkom.md). #}
+  {# Gaya FILKOM: warna FILKOM Apps dan huruf Roboto di atas app.css; tata letak sama (docs/tahap-26-tambahan-gaya-filkom.md). #}
   <link rel="stylesheet" href="{% static 'css/filkom.css' %}">
   {% endif %}
 </head>

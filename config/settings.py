@@ -248,7 +248,7 @@ OAUTH2_PROVIDER = {
 
 # --- Gaya tampilan (docs/tahap-26-tambahan-gaya-filkom.md) -----------------------
 # UI_STYLE = gaya bawaan untuk pengunjung dan akun yang belum memilih: "standard" atau
-# "filkom" (navy-oranye FILKOM UB). UI_STYLE_SELECTABLE=False mengunci semua akun ke gaya bawaan
+# "filkom" (warna FILKOM Apps, filkom.ub.ac.id/legacy/apps). UI_STYLE_SELECTABLE=False mengunci semua akun ke gaya bawaan
 # dan menyembunyikan tombol pilihan di side menu.
 UI_STYLES = ("standard", "filkom")
 UI_STYLE = os.getenv("UI_STYLE", "standard").strip().lower() or "standard"

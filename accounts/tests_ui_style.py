@@ -25,6 +25,7 @@ class UiStyleTests(TestCase):
         self.assertContains(page, 'class="ui-topbar-end d-none d-lg-flex"')
         self.assertNotContains(page, "fonts.googleapis.com/css2?family=Archivo")
         self.assertContains(page, 'name="style" value="filkom"')            # tombol pilihan
+        self.assertContains(page, "family=Inter")
 
     def test_choose_filkom_per_account(self):
         self.client.force_login(self.siti)
@@ -36,6 +37,8 @@ class UiStyleTests(TestCase):
         page = self.page()
         self.assertContains(page, 'data-ui="filkom"')
         self.assertContains(page, "css/filkom.css")
+        self.assertContains(page, "family=Roboto")                   # huruf FILKOM Apps
+        self.assertNotContains(page, "family=Inter")
         self.assertContains(page, "Robotic and Embedded System Laboratory")
         self.assertContains(page, "Computer Engineering Study Program - Faculty of Computer Science - Universitas Brawijaya")
         self.assertContains(page, 'aria-label="IoT Platform logo"')
