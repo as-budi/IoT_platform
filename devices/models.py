@@ -184,6 +184,9 @@ class Device(models.Model):
     # Versi firmware yang SEDANG berjalan, menurut laporan device (bukan menurut
     # server): hanya device yang tahu pasti firmware mana yang menyala.
     firmware_version = models.CharField("firmware version", max_length=40, blank=True, editable=False)
+    # Nama program yang berjalan ("title" di laporan firmware). Kosong = firmware lama yang
+    # belum melaporkan nama: platform hanya bisa membandingkan versi.
+    firmware_title = models.CharField("firmware name", max_length=80, blank=True, editable=False)
     firmware_reported_at = models.DateTimeField("firmware reported", null=True, blank=True, editable=False)
     # MAC address Wi-Fi yang dilaporkan device bersama versi firmware (tahap 24),
     # disimpan seragam "AA:BB:CC:DD:EE:FF". Berguna untuk mengenali alat fisik mana

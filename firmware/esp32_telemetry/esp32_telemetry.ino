@@ -27,6 +27,10 @@
 #include <HTTPClient.h>
 
 // ---- this firmware ------------------------------------------------------------------
+// FW_TITLE and FW_VERSION must be EXACTLY the name and version you enter when uploading the .bin
+// file to the platform (capital letters in the name do not matter). The name tells programs apart:
+// change it when this sketch becomes a different program, e.g. "Greenhouse node".
+#define FW_TITLE   "ESP32 HTTP node"
 #define FW_VERSION "1.0.0"
 #define FW_BOARD   "esp32"   // esp32, esp32s2, esp32s3 or esp32c3
 
@@ -90,9 +94,9 @@ int postJson(const char* endpoint, const String& body) {
   return status;
 }
 
-// Firmware report: version, board and Wi-Fi MAC address.
+// Firmware report: name, version, board and Wi-Fi MAC address.
 void reportFirmware() {
-  String body = String("{\"version\":\"") + FW_VERSION + "\",\"board\":\"" + FW_BOARD +
+  String body = String("{\"title\":\"") + FW_TITLE + "\",\"version\":\"" + FW_VERSION + "\",\"board\":\"" + FW_BOARD +
                 "\",\"mac\":\"" + WiFi.macAddress() + "\"}";
   firmwareReported = postJson("firmware", body) == 200;
 }
@@ -106,7 +110,7 @@ void sendTelemetry(float temperature, float humidity) {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\nFirmware %s (%s)\n", FW_VERSION, FW_BOARD);
+  Serial.printf("\nFirmware %s %s (%s)\n", FW_TITLE, FW_VERSION, FW_BOARD);
   secureClient.setCACert(ROOT_CA);
   connectWifi();
   Serial.printf("MAC address: %s\n", WiFi.macAddress().c_str());

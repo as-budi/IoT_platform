@@ -11,7 +11,7 @@
 </nav>
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
   <div>
-    <h1 class="h3 mb-1">{{ update.previous_version|default:"?" }} → {{ update.package_version }} {% include "ota/includes/status_badge.html" %}</h1>
+    <h1 class="h3 mb-1">{{ update.previous_label }} → {{ update.target_label }} {% include "ota/includes/status_badge.html" %}</h1>
     <div class="text-muted"><a href="{% url 'devices:detail' update.device_id %}">{{ update.device.name }}</a> ·
       {% if update.package_id %}<a href="{% url 'ota:package_detail' update.package_id %}">{{ update.package_title }} {{ update.package_version }}</a>{% else %}{{ update.package_title }} {{ update.package_version }} <span class="small">(firmware deleted)</span>{% endif %} · started by {{ update.created_by.username|default:"—" }}</div>
   </div>

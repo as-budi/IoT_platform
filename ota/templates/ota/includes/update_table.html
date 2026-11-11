@@ -5,7 +5,7 @@
       <tr>
         <th>Started</th>
         {% if show_device %}<th>Device</th>{% endif %}
-        <th>Version</th>
+        <th>Firmware</th>
         <th>Status</th>
         <th>By</th>
         <th></th>
@@ -16,7 +16,7 @@
       <tr>
         <td class="text-nowrap">{{ update.created_at|date:"d M H:i:s" }}</td>
         {% if show_device %}<td><a href="{% url 'devices:detail' update.device_id %}">{{ update.device.name }}</a></td>{% endif %}
-        <td class="text-nowrap">{{ update.previous_version|default:"?" }} → <strong>{{ update.package_version }}</strong></td>
+        <td>{{ update.previous_label }} → <strong class="text-nowrap">{{ update.target_label }}</strong></td>
         <td>{% include "ota/includes/status_badge.html" %}{% if update.error %} <span class="small text-muted">{{ update.error|truncatechars:70 }}</span>{% endif %}</td>
         <td>{{ update.created_by.username|default:"—" }}</td>
         <td class="text-end"><a class="small" href="{% url 'ota:update_detail' update.pk %}">Details</a></td>

@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Count, Q
 from django.http import FileResponse, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.decorators.http import require_GET
 from django.views.generic import CreateView, DeleteView, DetailView, ListView, View
@@ -138,15 +138,23 @@ class StartUpdateView(LoginRequiredMixin, View):
         packages = services.compatible_packages(visible_packages(request.user), device)
         form = StartUpdateForm(request.POST, packages=packages)
         if not form.is_valid():
-            messages.error(request, "Choose a firmware version for this device's board.")
+            messages.error(request, "Choose a firmware for this device's board.")
         else:
+            package = form.cleaned_data["package"]
+            reason = services.confirmation_needed(device, package)
+            if reason and request.POST.get("confirm") != "1":
+                # Program lain, atau hasil yang tidak bisa dipastikan: tanya dulu.
+                return render(request, "ota/update_confirm.html", {
+                    "device": device, "package": package, "reason": reason,
+                    "replaces": bool(device.firmware_title) and not services.same_title(device.firmware_title, package.title),
+                })
             try:
                 update = services.start_update(
-                    device, form.cleaned_data["package"], request.user, services.base_url_for(request)
+                    device, package, request.user, services.base_url_for(request), confirmed=True
                 )
                 messages.success(
                     request,
-                    f"Update to {update.package_version} queued. The device receives it as the "
+                    f"Update to {update.target_label} queued. The device receives it as the "
                     f"command \"ota\" the next time it checks for commands.",
                 )
             except services.OtaError as exc:

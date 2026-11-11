@@ -177,9 +177,9 @@
           <textarea class="form-control font-monospace small" id="curl-example" rows="3" readonly>curl -X POST {{ telemetry_url }} -H "Content-Type: application/json" -d '{"temperature": 25.1}'</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-example">Copy</button>
         </div>
-        <label class="form-label small mb-1" for="curl-firmware-example">Report the running firmware version (for firmware updates)</label>
+        <label class="form-label small mb-1" for="curl-firmware-example">Report the running firmware name and version (for firmware updates)</label>
         <div class="input-group mb-3">
-          <textarea class="form-control font-monospace small" id="curl-firmware-example" rows="2" readonly>curl -X POST {{ firmware_url }} -H "Content-Type: application/json" -d '{"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}'</textarea>
+          <textarea class="form-control font-monospace small" id="curl-firmware-example" rows="2" readonly>curl -X POST {{ firmware_url }} -H "Content-Type: application/json" -d '{"title": "Greenhouse node", "version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}'</textarea>
           <button type="button" class="btn btn-outline-secondary" data-copy-target="curl-firmware-example">Copy</button>
         </div>
       </div>

@@ -38,7 +38,7 @@
  *
  * Updating this device over the air later
  *   Change FW_VERSION, Sketch > Export Compiled Binary, upload the .ino.bin file (NOT .merged.bin)
- *   on the platform's Firmware page with board "ESP32-CAM", then "Update firmware" on the device page.
+ *   on the platform's Firmware page with the same name (FW_TITLE), version and board "ESP32-CAM", then "Update firmware" on the device page.
  *
  * Libraries: PubSubClient by Nick O'Leary and ArduinoJson 7 by Benoit Blanchon. The camera driver
  * (esp_camera.h), WiFiClientSecure, HTTPClient and HTTPUpdate come with the board package "esp32".
@@ -57,7 +57,10 @@
 #include "esp_camera.h"
 
 // ---- this firmware ----------------------------------------------------------------
-// Must be EXACTLY the version you enter when uploading the .bin file to the platform.
+// FW_TITLE and FW_VERSION must be EXACTLY the name and version you enter when uploading the .bin
+// file to the platform (capital letters in the name do not matter). The name tells programs apart:
+// change it when this sketch becomes a different program, e.g. "Greenhouse node".
+#define FW_TITLE   "ESP32-CAM node"
 #define FW_VERSION "1.0.0"
 #define FW_BOARD   "esp32cam"   // board "ESP32-CAM" on the platform
 
@@ -154,6 +157,7 @@ void publishJson(const String& topic, JsonDocument& doc) {
 
 void reportFirmwareVersion() {
   JsonDocument doc;
+  doc["title"] = FW_TITLE;       // firmware name: name + version identify the firmware
   doc["version"] = FW_VERSION;
   doc["board"] = FW_BOARD;
   doc["mac"] = WiFi.macAddress();   // Wi-Fi MAC address, e.g. "24:6F:28:AA:BB:CC"
@@ -395,10 +399,12 @@ void handleCommand(const String& id, JsonDocument& command) {
   } else if (strcmp(method, "ota") == 0) {
     long update = command["params"]["update"] | 0L;
     const char* version = command["params"]["version"] | "";
+    const char* title = command["params"]["title"] | "";
     if (update == lastOtaUpdateId) return;
-    if (strcmp(version, FW_VERSION) == 0) {
+    // Same name AND version = already running. Same version of another program is a real update.
+    if (strcmp(version, FW_VERSION) == 0 && strcasecmp(title, FW_TITLE) == 0) {
       result["success"] = false;
-      result["error"] = String("Already running ") + FW_VERSION;
+      result["error"] = String("Already running ") + FW_TITLE + " " + FW_VERSION;
     } else if (otaUpdateId != 0) {
       result["success"] = false;
       result["error"] = "Another update is running";
@@ -551,7 +557,7 @@ void connectMqtt() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\nFirmware %s (%s)\n", FW_VERSION, FW_BOARD);
+  Serial.printf("\nFirmware %s %s (%s)\n", FW_TITLE, FW_VERSION, FW_BOARD);
   pinMode(LED_PIN, OUTPUT);
   pinMode(FLASH_PIN, OUTPUT);
   digitalWrite(FLASH_PIN, LOW);

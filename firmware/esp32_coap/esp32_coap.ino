@@ -51,6 +51,10 @@ const char* ACCESS_TOKEN  = "paste-the-device-access-token-here";
 const char* ACTUATOR_KEY  = "pump";        // key of the actuator variable shown by the LED
 // -----------------------------------------------------------------------------
 
+// FW_TITLE and FW_VERSION must be EXACTLY the name and version you enter when uploading the .bin
+// file to the platform (capital letters in the name do not matter). The name tells programs apart:
+// change it when this sketch becomes a different program, e.g. "Greenhouse node".
+#define FW_TITLE   "ESP32 CoAP node"
 #define FW_VERSION "1.0.0"
 #define FW_BOARD   "esp32"   // esp32, esp32s2, esp32s3 or esp32c3
 
@@ -98,9 +102,10 @@ void sendTelemetry() {
   postJson(pathTelemetry, doc);
 }
 
-// Firmware report: version, board and Wi-Fi MAC address.
+// Firmware report: name, version, board and Wi-Fi MAC address.
 void reportFirmware() {
   JsonDocument doc;
+  doc["title"] = FW_TITLE;       // firmware name: name + version identify the firmware
   doc["version"] = FW_VERSION;
   doc["board"] = FW_BOARD;
   doc["mac"] = WiFi.macAddress();

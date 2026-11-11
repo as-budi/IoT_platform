@@ -22,7 +22,7 @@ Command yang dikenal: ping, reboot, blink {"times": 3}, dan ota (tahap 9).
 Method lain dijawab gagal, supaya status Failed juga bisa dicoba.
 
 Pembaruan firmware (OTA, tahap 9):
-    python scripts/fake_mqtt_device.py <TOKEN> --firmware-version 1.0.0 --board sim
+    python scripts/fake_mqtt_device.py <TOKEN> --firmware-title "Fake node" --firmware-version 1.0.0 --board sim
 Device tiruan ini melaporkan versinya setiap kali tersambung, menerima command
 "ota", MENGUNDUH file dari URL di command (HTTP sungguhan), memeriksa MD5,
 melaporkan setiap langkah, lalu "restart" dengan versi baru. Untuk mencoba
@@ -72,6 +72,7 @@ class FakeDevice:
         self.topic_firmware = f"{base}/firmware"
         self.topic_status = f"{base}/status"
         # Firmware yang "sedang berjalan" di device tiruan ini.
+        self.firmware_title = args.firmware_title
         self.firmware_version = args.firmware_version
         # MAC tiruan yang tetap untuk token yang sama (tahap 24). Byte pertama 02 =
         # "locally administered": tidak akan bentrok dengan MAC kartu jaringan asli.
@@ -119,7 +120,7 @@ class FakeDevice:
             client.publish(self.topic_status, "online", qos=1, retain=True)
         # Setiap kali (re)start: beri tahu platform firmware apa yang berjalan.
         # Laporan inilah yang menyelesaikan pembaruan OTA (UPDATED).
-        self.publish(self.topic_firmware, {"version": self.firmware_version, "board": self.args.board,
+        self.publish(self.topic_firmware, {"title": self.firmware_title, "version": self.firmware_version, "board": self.args.board,
                                            "mac": self.mac})
 
     # --- pesan masuk --------------------------------------------------------------
@@ -166,8 +167,10 @@ class FakeDevice:
             result = {"success": True, "blinked": int(params.get("times", 3))}
         elif method == "ota":
             update_id = params.get("update")
-            if params.get("version") == self.firmware_version:
-                result = {"success": False, "error": f"Already running {self.firmware_version}."}
+            # Nama + versi sama = sudah berjalan; versi sama dari program lain = pembaruan sungguhan.
+            if (params.get("version") == self.firmware_version
+                    and str(params.get("title", "")).casefold() == self.firmware_title.casefold()):
+                result = {"success": False, "error": f"Already running {self.firmware_title} {self.firmware_version}."}
             elif update_id in self.seen_updates:
                 return  # kiriman ulang dari broker; pembaruan ini sudah ditangani
             else:
@@ -224,11 +227,12 @@ class FakeDevice:
         time.sleep(delay)
         # "Restart": putuskan koneksi, ganti versi, sambung lagi. Setelah tersambung,
         # on_connect() melaporkan versi baru. --ota-fail boot meniru rollback.
-        print(f"{now()}  restarting into firmware {params['version']} …")
+        print(f"{now()}  restarting into firmware {params.get('title', '')} {params['version']} …")
         self.client.disconnect()
         time.sleep(2)
         if fail != "boot":
             self.firmware_version = params["version"]
+            self.firmware_title = params.get("title") or self.firmware_title
         else:
             print(f"{now()}  new firmware did not start: rolled back to {self.firmware_version}")
         self.client.reconnect()
@@ -280,6 +284,7 @@ def main():
     parser.add_argument("--password", default=os.getenv("MQTT_PASSWORD", ""))
     parser.add_argument("--tls", action="store_true", default=os.getenv("MQTT_TLS") == "True")
     parser.add_argument("--interval", type=float, default=10, help="Seconds between telemetry messages")
+    parser.add_argument("--firmware-title", default="Fake node", help="Firmware name this device starts with")
     parser.add_argument("--firmware-version", default="1.0.0", help="Firmware version this device starts with")
     parser.add_argument("--board", default="sim", help="Board reported to the platform (sim, esp32, ...)")
     parser.add_argument("--ota-fail", choices=["download", "md5", "boot"], help="Make the next update fail")

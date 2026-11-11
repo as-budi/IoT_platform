@@ -27,7 +27,7 @@ class DeviceAdmin(admin.ModelAdmin):
     search_fields = ("name", "location__name", "owner__username")
     inlines = [VariableInline]
     # Token hanya ditampilkan, tidak bisa diketik manual di admin.
-    readonly_fields = ("access_token", "firmware_version", "mac_address", "mac_reported_at")
+    readonly_fields = ("access_token", "firmware_title", "firmware_version", "mac_address", "mac_reported_at")
 
 
 @admin.register(Variable)

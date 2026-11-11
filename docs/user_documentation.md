@@ -660,6 +660,8 @@ The issuer printed is an intermediate certificate; the root is the one that sign
 
 A device running the MQTT firmware template can be updated over the air (OTA): you upload a compiled firmware file once, then update any compatible device from its page. The device downloads the file, checks it, restarts into it and reports the new version.
 
+A firmware is identified by its **name and version**, e.g. *Greenhouse node 1.1.0*. Devices with the same board can run different programs, so *Pump controller 1.1.0* and *Greenhouse node 1.1.0* are two different firmwares.
+
 <a id="firmware-updates--prepare"></a>
 
 #### Preparing a device
@@ -672,17 +674,22 @@ A device running the MQTT firmware template can be updated over the air (OTA): y
 
 #### Uploading firmware
 
-1.  Change `FW_VERSION` in the sketch, e.g. from `"1.0.0"` to `"1.1.0"`.
+1.  Set `FW_TITLE` to the name of your program, e.g. `"Greenhouse node"`, and change `FW_VERSION`, e.g. from `"1.0.0"` to `"1.1.0"`.
 2.  Arduino IDE: *Sketch → Export Compiled Binary*. This creates a `.bin` file in the sketch folder.
-3.  Firmware → *Upload firmware*: title, **version exactly as in `FW_VERSION`**, board, the .bin file, and release notes if you like. Files up to 4.0 MB are accepted; the platform computes the MD5 and SHA-256 checksums.
+3.  Firmware → *Upload firmware*: **name as in `FW_TITLE`**, **version exactly as in `FW_VERSION`**, board, the .bin file, and release notes if you like. Files up to 4.0 MB are accepted; the platform computes the MD5 and SHA-256 checksums.
 
-The version must match what the new firmware reports after it starts: that report is how the platform knows the update worked. Firmware you upload is visible only to you (administrators see all).
+The name and version must match what the new firmware reports after it starts: that report is how the platform knows the update worked (capital letters in the name do not matter). A name + version can be uploaded only once per board; the same version under another name is accepted. Firmware you upload is visible only to you (administrators see all).
 
 <a id="firmware-updates--update"></a>
 
 #### Updating a device
 
-Device page → *Firmware* card → choose the version under *Update to* → *Update firmware*. Only firmware for the device's board is offered. The device must be online. Progress appears in the card by itself:
+Device page → *Firmware* card → choose the firmware under *Update to* → *Update firmware*. Only firmware for the device's board is offered, except the one it runs now. The device must be online.
+
+  - **Another program** (a different name) can be sent too, e.g. turning a *Greenhouse node* into a *Pump controller*. The platform asks you to confirm this first, because the device will do something else afterwards.
+  - A device whose firmware does not report its name yet (no `FW_TITLE`) is compared by version only. Sending it firmware with the version it already runs also asks for confirmation: the platform cannot tell the new firmware from the old one, so a failed update may look successful.
+
+Progress appears in the card by itself:
 
 |                      |                                                                        |
 | -------------------- | ---------------------------------------------------------------------- |
@@ -690,11 +697,11 @@ Device page → *Firmware* card → choose the version under *Update to* → *Up
 | Downloading          | the device downloads the file (with percentage)                        |
 | Downloaded, Verified | the file is complete and its MD5 matches                               |
 | Updating             | the device restarts into the new firmware                              |
-| Updated              | the device started and reported the new version                        |
+| Updated              | the device started and reported the new name and version               |
 | Failed               | see the reason in the update's details; the old firmware keeps running |
 | Canceled             | you clicked *Cancel*                                                   |
 
-Common reasons for *Failed*: the device was offline and did not pick up the command in time; the download broke or the checksum did not match; the new firmware did not start and the device went back to the old version; or nothing was heard from the device for a long time. Starting and canceling updates needs the Editor role on a shared device. The Firmware page lists recent updates of all your devices.
+Common reasons for *Failed*: the device was offline and did not pick up the command in time; the download broke or the checksum did not match; the new firmware did not start and the device went back to the old firmware (or `FW_TITLE` in the sketch differs from the name on the platform); or nothing was heard from the device for a long time. Starting and canceling updates needs the Editor role on a shared device. The Firmware page lists recent updates of all your devices.
 
 <a id="firmware-updates--report"></a>
 
@@ -702,7 +709,7 @@ Common reasons for *Failed*: the device was offline and did not pick up the comm
 
 Every template reports, when it starts (MQTT: on every connection), which firmware it runs and on which board:
 
-    {"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}
+    {"title": "Greenhouse node", "version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}
 
 | Protocol | Send it to                                                       |
 | -------- | ---------------------------------------------------------------- |
@@ -710,7 +717,7 @@ Every template reports, when it starts (MQTT: on every connection), which firmwa
 | MQTT     | topic `<prefix>/<token>/firmware`                                |
 | CoAP     | `POST coap://iot.reslab-csub.cloud:5683/api/v1/<token>/firmware` |
 
-`board` is one of: `esp32`, `esp32s2`, `esp32s3`, `esp32c3`, `esp8266`, `sim`. The version may contain letters, digits and `. _ + -`.
+`board` is one of: `esp32`, `esp32s2`, `esp32s3`, `esp32c3`, `esp8266`, `sim`. The version may contain letters, digits and `. _ + -`. `title` is the firmware name (up to 80 characters); a report without it is accepted, but then the platform compares versions only.
 
 <a id="firmware-updates--mac"></a>
 

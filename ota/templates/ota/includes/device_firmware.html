@@ -10,9 +10,9 @@
   <div class="card-body">
     <div class="row g-3 mb-3">
       <div class="col-sm-4">
-        <div class="small text-muted">Running version</div>
-        <div class="fs-5 fw-semibold">{{ device.firmware_version|default:"unknown" }}</div>
-        <div class="small text-muted">{% if device.firmware_reported_at %}reported {{ device.firmware_reported_at|timesince }} ago{% else %}the device has not reported it yet{% endif %}</div>
+        <div class="small text-muted">Running firmware</div>
+        <div class="fs-5 fw-semibold">{% if device.firmware_title %}{{ device.firmware_title }} {% endif %}{{ device.firmware_version|default:"unknown" }}</div>
+        <div class="small text-muted">{% if device.firmware_reported_at %}reported {{ device.firmware_reported_at|timesince }} ago{% if not device.firmware_title %}, without a name (add <code>FW_TITLE</code> to the sketch){% endif %}{% else %}the device has not reported it yet{% endif %}</div>
       </div>
       <div class="col-sm-4">
         <div class="small text-muted">Board</div>
@@ -32,7 +32,7 @@
     <div class="ota-active border rounded p-3 mb-3" data-ota-update="{{ ota_active.pk }}">
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
         <div>
-          Updating to <strong>{{ ota_active.package_version }}</strong>
+          Updating to <strong>{{ ota_active.target_label }}</strong>
           {% include "ota/includes/status_badge.html" with update=ota_active %}
           <a class="small ms-1" href="{% url 'ota:update_detail' ota_active.pk %}">Details</a>
         </div>
@@ -46,7 +46,7 @@
       {% include "ota/includes/progress.html" with update=ota_active %}
       <p class="small text-muted mt-2 mb-0">
         {% if ota_active.status == "QUEUED" %}Waiting for the device to pick up the command <code>ota</code> (it needs to be online).
-        {% elif ota_active.status == "UPDATING" %}The device is restarting. The update succeeds when it reports version {{ ota_active.package_version }}.
+        {% elif ota_active.status == "UPDATING" %}The device is restarting. The update succeeds when it reports {{ ota_active.target_label }}.
         {% else %}The device reports each step; this box updates by itself.{% endif %}
       </p>
     </div>

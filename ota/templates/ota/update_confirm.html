@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% comment %}
+  Konfirmasi sebelum memperbarui firmware (ota/views.py StartUpdateView), bila
+  services.confirmation_needed() memberi alasan: device menjalankan program lain
+  (nama firmware berbeda), atau device belum melaporkan nama dan versinya sama.
+{% endcomment %}
+
+{% block title %}Update firmware · {{ device.name }} · IoT Platform{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'devices:list' %}">Devices</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Update firmware</li>
+  </ol>
+</nav>
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4">{% if replaces %}Replace the program on {{ device.name }}?{% else %}Update {{ device.name }}?{% endif %}</h1>
+        <table class="table table-sm mb-3">
+          <tbody>
+            <tr><th class="fw-normal text-muted w-25">Running now</th><td><strong>{% if device.firmware_title %}{{ device.firmware_title }} {% endif %}{{ device.firmware_version|default:"unknown" }}</strong></td></tr>
+            <tr><th class="fw-normal text-muted">New firmware</th><td><strong>{{ package.title }} {{ package.version }}</strong> ({{ package.get_board_display }})</td></tr>
+          </tbody>
+        </table>
+        <div class="alert alert-warning small">{{ reason }}</div>
+        {% if replaces %}<p class="small text-muted">The device will run a different program afterwards. Its variables, rules and dashboards stay as they are; check that they still fit the new program.</p>{% endif %}
+        <form method="post" action="{% url 'ota:start' device.pk %}" class="d-flex flex-wrap gap-2">
+          {% csrf_token %}
+          <input type="hidden" name="package" value="{{ package.pk }}">
+          <input type="hidden" name="confirm" value="1">
+          <button type="submit" class="btn btn-warning">{% if replaces %}Replace with {{ package.title }}{% else %}Update anyway{% endif %}</button>
+          <a class="btn btn-link" href="{% url 'devices:detail' device.pk %}#firmware">Cancel</a>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -117,6 +117,7 @@ def my_devices(request):
             "last_seen_at": _iso(device.last_seen_at),
             "last_protocol": device.last_protocol or None,
             "board": device.board or None,
+            "firmware_title": device.firmware_title or None,
             "firmware_version": device.firmware_version or None,
             "mac_address": device.mac_address or None,
             "url": request.build_absolute_uri(reverse("devices:detail", args=[device.pk])),

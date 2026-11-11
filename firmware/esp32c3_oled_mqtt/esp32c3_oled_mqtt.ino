@@ -49,7 +49,7 @@
  *   1. Upload this sketch once over USB with FW_VERSION "1.0.0".
  *   2. Change FW_VERSION (e.g. "1.1.0"), then Sketch > Export Compiled Binary.
  *   3. Upload the .ino.bin file (NOT .ino.merged.bin) on the platform's Firmware page with the
- *      same version and board "ESP32-C3 OLED", then choose it under "Update firmware" on the device page.
+ *      same name (FW_TITLE), version and board "ESP32-C3 OLED", then choose it under "Update firmware" on the device page.
  *
  * Libraries (Arduino IDE: Sketch > Include Library > Manage Libraries):
  * PubSubClient by Nick O'Leary, ArduinoJson 7 by Benoit Blanchon, and with OLED true also
@@ -86,7 +86,10 @@ const unsigned long OLED_MESSAGE_MS = 15000;       // command "oled": shown this
 #endif
 
 // ---- this firmware ----------------------------------------------------------------
-// Must be EXACTLY the version you enter when uploading the .bin file to the platform.
+// FW_TITLE and FW_VERSION must be EXACTLY the name and version you enter when uploading the .bin
+// file to the platform (capital letters in the name do not matter). The name tells programs apart:
+// change it when this sketch becomes a different program, e.g. "Greenhouse node".
+#define FW_TITLE   "ESP32-C3 OLED node"
 #define FW_VERSION "1.0.0"
 #define FW_BOARD   "esp32c3_oled"   // board "ESP32-C3 OLED" on the platform
 
@@ -161,6 +164,7 @@ void publishJson(const String& topic, JsonDocument& doc) {
 
 void reportFirmwareVersion() {
   JsonDocument doc;
+  doc["title"] = FW_TITLE;       // firmware name: name + version identify the firmware
   doc["version"] = FW_VERSION;
   doc["board"] = FW_BOARD;
   doc["mac"] = WiFi.macAddress();   // Wi-Fi MAC address, e.g. "24:6F:28:AA:BB:CC"
@@ -299,10 +303,12 @@ void handleCommand(const String& id, JsonDocument& command) {
   if (strcmp(method, "ota") == 0) {
     long update = command["params"]["update"] | 0L;
     const char* version = command["params"]["version"] | "";
+    const char* title = command["params"]["title"] | "";
     if (update == lastOtaUpdateId) return;            // sent again: already handled
-    if (strcmp(version, FW_VERSION) == 0) {
+    // Same name AND version = already running. Same version of another program is a real update.
+    if (strcmp(version, FW_VERSION) == 0 && strcasecmp(title, FW_TITLE) == 0) {
       result["success"] = false;
-      result["error"] = String("Already running ") + FW_VERSION;
+      result["error"] = String("Already running ") + FW_TITLE + " " + FW_VERSION;
     } else if (otaUpdateId != 0) {
       result["success"] = false;
       result["error"] = "Another update is running";
@@ -746,7 +752,7 @@ void connectMqtt() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.printf("\nFirmware %s (%s)\n", FW_VERSION, FW_BOARD);
+  Serial.printf("\nFirmware %s %s (%s)\n", FW_TITLE, FW_VERSION, FW_BOARD);
   pinMode(LED_PIN, OUTPUT);
   setLamp(false);
   prefs.begin("iot", false);        // flash storage for the telemetry mode

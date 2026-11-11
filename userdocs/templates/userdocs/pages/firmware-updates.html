@@ -1,5 +1,7 @@
 <p>A device running the MQTT firmware template can be updated over the air (OTA): you upload a compiled firmware file once,
 then update any compatible device from its page. The device downloads the file, checks it, restarts into it and reports the new version.</p>
+<p>A firmware is identified by its <strong>name and version</strong>, e.g. <em>Greenhouse node 1.1.0</em>. Devices with the same board can run
+different programs, so <em>Pump controller 1.1.0</em> and <em>Greenhouse node 1.1.0</em> are two different firmwares.</p>
 
 <h2 id="prepare">Preparing a device</h2>
 <ul>
@@ -10,37 +12,48 @@ then update any compatible device from its page. The device downloads the file, 
 
 <h2 id="upload">Uploading firmware</h2>
 <ol>
-  <li>Change <code>FW_VERSION</code> in the sketch, e.g. from <code>"1.0.0"</code> to <code>"1.1.0"</code>.</li>
+  <li>Set <code>FW_TITLE</code> to the name of your program, e.g. <code>"Greenhouse node"</code>, and change <code>FW_VERSION</code>,
+    e.g. from <code>"1.0.0"</code> to <code>"1.1.0"</code>.</li>
   <li>Arduino IDE: <em>Sketch → Export Compiled Binary</em>. This creates a <code>.bin</code> file in the sketch folder.</li>
-  <li>Firmware → <em>Upload firmware</em>: title, <strong>version exactly as in <code>FW_VERSION</code></strong>, board, the .bin file, and release notes if you like.
+  <li>Firmware → <em>Upload firmware</em>: <strong>name as in <code>FW_TITLE</code></strong>, <strong>version exactly as in <code>FW_VERSION</code></strong>, board, the .bin file, and release notes if you like.
     Files up to {{ limits.firmware_max_mb }} MB are accepted; the platform computes the MD5 and SHA-256 checksums.</li>
 </ol>
-<p>The version must match what the new firmware reports after it starts: that report is how the platform knows the update worked.
+<p>The name and version must match what the new firmware reports after it starts: that report is how the platform knows the update worked
+(capital letters in the name do not matter). A name + version can be uploaded only once per board; the same version under another name is accepted.
 Firmware you upload is visible only to you (administrators see all).
-The delete button at the end of each row removes a firmware and its .bin file. Updates that used it keep their history (title and version);
+The delete button at the end of each row removes a firmware and its .bin file. Updates that used it keep their history (name and version);
 an update that is still running with it is stopped as failed.</p>
 
 <h2 id="update">Updating a device</h2>
-<p>Device page → <em>Firmware</em> card → choose the version under <em>Update to</em> → <em>Update firmware</em>.
-Only firmware for the device's board is offered. The device must be online. Progress appears in the card by itself:</p>
+<p>Device page → <em>Firmware</em> card → choose the firmware under <em>Update to</em> → <em>Update firmware</em>.
+Only firmware for the device's board is offered, except the one it runs now. The device must be online.</p>
+<ul>
+  <li><strong>Another program</strong> (a different name) can be sent too, e.g. turning a <em>Greenhouse node</em> into a <em>Pump controller</em>.
+    The platform asks you to confirm this first, because the device will do something else afterwards.</li>
+  <li>A device whose firmware does not report its name yet (no <code>FW_TITLE</code>) is compared by version only. Sending it firmware with the
+    version it already runs also asks for confirmation: the platform cannot tell the new firmware from the old one, so a failed update
+    may look successful.</li>
+</ul>
+<p>Progress appears in the card by itself:</p>
 <table class="table table-sm">
   <tbody>
     <tr><th>Queued</th><td>waiting for the device to pick up the update command</td></tr>
     <tr><th>Downloading</th><td>the device downloads the file (with percentage)</td></tr>
     <tr><th>Downloaded, Verified</th><td>the file is complete and its MD5 matches</td></tr>
     <tr><th>Updating</th><td>the device restarts into the new firmware</td></tr>
-    <tr><th>Updated</th><td>the device started and reported the new version</td></tr>
+    <tr><th>Updated</th><td>the device started and reported the new name and version</td></tr>
     <tr><th>Failed</th><td>see the reason in the update's details; the old firmware keeps running</td></tr>
     <tr><th>Canceled</th><td>you clicked <em>Cancel</em></td></tr>
   </tbody>
 </table>
 <p>Common reasons for <em>Failed</em>: the device was offline and did not pick up the command in time; the download broke or the checksum did not match;
-the new firmware did not start and the device went back to the old version; or nothing was heard from the device for a long time.
+the new firmware did not start and the device went back to the old firmware (or <code>FW_TITLE</code> in the sketch differs from the name
+on the platform); or nothing was heard from the device for a long time.
 Starting and canceling updates needs the Editor role on a shared device. The Firmware page lists recent updates of all your devices.</p>
 
 <h2 id="report">The firmware report</h2>
 <p>Every template reports, when it starts (MQTT: on every connection), which firmware it runs and on which board:</p>
-<pre>{"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}</pre>
+<pre>{"title": "Greenhouse node", "version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}</pre>
 <table class="table table-sm">
   <thead class="table-light"><tr><th>Protocol</th><th>Send it to</th></tr></thead>
   <tbody>
@@ -50,7 +63,8 @@ Starting and canceling updates needs the Editor role on a shared device. The Fir
   </tbody>
 </table>
 <p><code>board</code> is one of: {% for value, label in boards %}<code>{{ value }}</code>{% if not forloop.last %}, {% endif %}{% endfor %}.
-The version may contain letters, digits and <code>. _ + -</code>.</p>
+The version may contain letters, digits and <code>. _ + -</code>. <code>title</code> is the firmware name (up to 80 characters);
+a report without it is accepted, but then the platform compares versions only.</p>
 
 <h2 id="mac">MAC address</h2>
 <p>The report also carries the board's Wi-Fi <strong>MAC address</strong>. The platform stores it with the device and shows it in the Firmware card.

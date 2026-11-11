@@ -26,6 +26,7 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.core.signals import setting_changed
 from django.db import models
+from django.db.models.functions import Lower
 from django.dispatch import receiver
 from django.utils import timezone
 from django.utils.functional import LazyObject, empty
@@ -59,8 +60,11 @@ def firmware_storage_callable():
 
 
 class FirmwarePackage(models.Model):
+    # Nama firmware = program-nya. Device yang board-nya sama bisa menjalankan program berbeda,
+    # jadi versi hanya unik per (pengunggah, nama, board); lihat constraint di Meta.
     title = models.CharField(
-        "title", max_length=80, help_text="What the firmware is, e.g. Greenhouse node."
+        "name", max_length=80,
+        help_text="Which program this is, e.g. Greenhouse node. Must match FW_TITLE in the sketch.",
     )
     version = models.CharField(
         "version", max_length=40,
@@ -85,8 +89,9 @@ class FirmwarePackage(models.Model):
         verbose_name = "firmware package"
         verbose_name_plural = "firmware packages"
         constraints = [
+            # Nama dibandingkan tanpa beda huruf besar-kecil: "Greenhouse" = "greenhouse".
             models.UniqueConstraint(
-                fields=["uploaded_by", "board", "version"], name="firmware_unique_version_per_board"
+                "uploaded_by", Lower("title"), "board", "version", name="firmware_unique_version_per_title"
             ),
         ]
 
@@ -146,6 +151,7 @@ class OtaUpdate(models.Model):
     status = models.CharField("status", max_length=12, choices=OtaStatus.choices, default=OtaStatus.QUEUED)
     progress = models.PositiveSmallIntegerField("download progress (%)", default=0)
     error = models.CharField("error", max_length=255, blank=True)
+    previous_title = models.CharField("firmware before", max_length=80, blank=True)
     previous_version = models.CharField("version before", max_length=40, blank=True)
     # Command "ota" yang membawa perintah ini ke device (lihat ota/services.py).
     command = models.OneToOneField(
@@ -182,6 +188,17 @@ class OtaUpdate(models.Model):
             self.package_version = self.package.version
             self.package_md5 = self.package.md5
         super().save(*args, **kwargs)
+
+    @property
+    def previous_label(self):
+        """Firmware sebelum pembaruan, mis. "Greenhouse 1.0.0" (tanpa nama: "1.0.0")."""
+        if not self.previous_version:
+            return "?"
+        return f"{self.previous_title} {self.previous_version}" if self.previous_title else self.previous_version
+
+    @property
+    def target_label(self):
+        return f"{self.package_title} {self.package_version}".strip()
 
     @property
     def is_final(self):

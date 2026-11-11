@@ -33,6 +33,9 @@ class FirmwareUploadForm(BootstrapFormMixin, forms.ModelForm):
         self.user = user
         self.fields["board"].choices = [("", "— Board —")] + list(Board.choices)
 
+    def clean_title(self):
+        return " ".join(self.cleaned_data["title"].split())
+
     def clean_version(self):
         version = self.cleaned_data["version"].strip()
         if not VERSION_RE.match(version):
@@ -63,13 +66,16 @@ class FirmwareUploadForm(BootstrapFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        board, version = cleaned.get("board"), cleaned.get("version")
+        board, version, title = cleaned.get("board"), cleaned.get("version"), cleaned.get("title")
         if cleaned.get("file") and board and board != Board.SIMULATED and self.first_byte != ESP_IMAGE_MAGIC:
             self.add_error("file", "This is not an ESP firmware image (the first byte must be 0xE9).")
-        if board and version and FirmwarePackage.objects.filter(
-            uploaded_by=self.user, board=board, version=version
+        # Versi boleh sama untuk program lain (nama berbeda); yang ditolak hanya nama + board + versi
+        # yang sama persis (nama tanpa beda huruf besar-kecil), sesuai constraint di models.py.
+        if board and version and title and FirmwarePackage.objects.filter(
+            uploaded_by=self.user, title__iexact=title, board=board, version=version
         ).exists():
-            self.add_error("version", "You already uploaded this version for this board.")
+            self.add_error("version", f"You already uploaded {title} {version} for this board. "
+                                      f"Use a new version, or another name for a different program.")
         return cleaned
 
     def save(self, commit=True):
@@ -85,11 +91,11 @@ class FirmwareUploadForm(BootstrapFormMixin, forms.ModelForm):
 
 class PackageChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, package):
-        return f"{package.version} — {package.title} ({package.size // 1024} KB)"
+        return f"{package.title} {package.version} ({package.size // 1024} KB)"
 
 
 class StartUpdateForm(BootstrapFormMixin, forms.Form):
-    package = PackageChoiceField(queryset=FirmwarePackage.objects.none(), empty_label="— Firmware version —")
+    package = PackageChoiceField(queryset=FirmwarePackage.objects.none(), empty_label="— Firmware —")
 
     def __init__(self, *args, packages, **kwargs):
         super().__init__(*args, **kwargs)

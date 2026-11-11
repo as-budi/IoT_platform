@@ -11,8 +11,12 @@ Alur satu pembaruan (lihat juga docs/tahap-09-ota.md):
       └─ claim_download()            token dipakai SEKALI; QUEUED -> DOWNLOADING
     device melapor {"update": 7, "state": "DOWNLOADING", "progress": 40} ... "UPDATING"
       └─ handle_report() -> report_state()
-    device restart, menyala dengan firmware baru, melapor {"version": "1.2.0"}
-      └─ handle_report() -> report_version()   versi cocok -> UPDATED
+    device restart, menyala dengan firmware baru, melapor {"title": "Greenhouse", "version": "1.2.0"}
+      └─ handle_report() -> report_version()   nama + versi cocok -> UPDATED
+
+Firmware dikenali dari NAMA + versi (seperti fw_title + fw_version di ThingsBoard): device
+dengan board yang sama bisa menjalankan program berbeda dengan nomor versi yang sama.
+Firmware lama yang belum melaporkan "title" hanya bisa dibandingkan versinya.
     tidak ada kabar dalam OTA_UPDATE_TIMEOUT
       └─ expire_due()                -> FAILED
 
@@ -40,6 +44,7 @@ REPORTABLE = {
     OtaStatus.DOWNLOADING, OtaStatus.DOWNLOADED, OtaStatus.VERIFIED, OtaStatus.UPDATING, OtaStatus.FAILED,
 }
 VERSION_RE = re.compile(r"^[0-9A-Za-z][0-9A-Za-z._+\-]{0,39}$")
+TITLE_MAX = 80
 # MAC address (tahap 24): 12 digit heksadesimal, boleh dipisah ":", "-", atau ".".
 MAC_DIGITS_RE = re.compile(r"^[0-9A-Fa-f]{12}$")
 MAC_SEPARATORS_RE = re.compile(r"[:\-.]")
@@ -147,17 +152,59 @@ def reach(base_url):
     return "loopback" if address.is_loopback else "private" if address.is_private else "public"
 
 
+# --- nama + versi ------------------------------------------------------------------------
+
+def same_title(a, b):
+    """Nama firmware dibandingkan tanpa beda huruf besar-kecil dan spasi di ujung."""
+    return (a or "").strip().casefold() == (b or "").strip().casefold()
+
+
+def firmware_label(title, version):
+    """"Greenhouse 1.2.0", atau "1.2.0" bila namanya tidak diketahui."""
+    return f"{title} {version}" if title else (version or "?")
+
+
+def runs_package(device, package):
+    """Apakah device SUDAH menjalankan paket ini (nama + versi; tanpa nama: versi saja)?"""
+    if not device.firmware_version or package.version != device.firmware_version:
+        return False
+    return not device.firmware_title or same_title(device.firmware_title, package.title)
+
+
+def confirmation_needed(device, package):
+    """Alasan pengguna harus menegaskan pembaruan ini, atau "" bila tidak perlu.
+
+    - device menjalankan program LAIN (nama berbeda): programnya akan diganti;
+    - device belum melaporkan nama dan versinya sama: platform tidak bisa membedakan
+      firmware baru dari firmware lama, jadi hasil pembaruan tidak bisa dipastikan.
+    """
+    if device.firmware_title and not same_title(device.firmware_title, package.title):
+        return (f"This device runs {firmware_label(device.firmware_title, device.firmware_version)}. "
+                f"Replace it with {firmware_label(package.title, package.version)}?")
+    if not device.firmware_title and device.firmware_version and device.firmware_version == package.version:
+        return (f"This device already runs version {package.version} and does not report its firmware name, "
+                f"so the platform cannot tell {package.title} {package.version} from the firmware it runs now. "
+                f"The update may be marked as successful even if the old firmware comes back.")
+    return ""
+
+
 # --- memulai dan membatalkan -------------------------------------------------------------
 
 def compatible_packages(packages, device):
-    """Paket untuk board device ini, yang versinya bukan versi yang sedang berjalan."""
+    """Paket untuk board device ini, kecuali firmware (nama + versi) yang sedang berjalan."""
     if not device.board:
         return packages.none()
-    return packages.filter(board=device.board).exclude(version=device.firmware_version)
+    packages = packages.filter(board=device.board)
+    if device.firmware_version and device.firmware_title:
+        return packages.exclude(title__iexact=device.firmware_title.strip(), version=device.firmware_version)
+    return packages
 
 
-def start_update(device, package, user, base_url):
-    """Buat OtaUpdate + command "ota". Melempar OtaError bila tidak boleh."""
+def start_update(device, package, user, base_url, confirmed=False):
+    """Buat OtaUpdate + command "ota". Melempar OtaError bila tidak boleh.
+
+    Bila confirmation_needed() memberi alasan, pembaruan hanya dimulai dengan confirmed=True
+    (halaman web menampilkan halaman konfirmasi lebih dulu)."""
     expire_due(device)
     if not device.is_active:
         raise OtaError("This device is inactive.")
@@ -168,16 +215,19 @@ def start_update(device, package, user, base_url):
             f"This firmware is for {package.get_board_display()}, but the device is "
             f"{device.get_board_display()}."
         )
-    if device.firmware_version and package.version == device.firmware_version:
-        raise OtaError(f"The device already runs version {package.version}.")
+    if device.firmware_title and runs_package(device, package):
+        raise OtaError(f"The device already runs {firmware_label(package.title, package.version)}.")
     if device.ota_updates.active().exists():
         raise OtaError("Another update for this device is still running. Wait for it, or cancel it.")
+    if not confirmed and confirmation_needed(device, package):
+        raise OtaError(confirmation_needed(device, package))
 
     now = timezone.now()
     with transaction.atomic():
         update = OtaUpdate.objects.create(
             device=device,
             package=package,
+            previous_title=device.firmware_title,
             previous_version=device.firmware_version,
             token_expires_at=now + timedelta(seconds=settings.OTA_DOWNLOAD_TTL),
             created_by=user,
@@ -204,7 +254,8 @@ def start_update(device, package, user, base_url):
         who = user.username if user else "system"
         OtaEvent.objects.create(
             update=update, status=OtaStatus.QUEUED, source="web", created_at=now,
-            message=f"Update {device.firmware_version or '?'} → {package.version} queued by {who}",
+            message=(f"Update {firmware_label(device.firmware_title, device.firmware_version)} → "
+                     f"{firmware_label(package.title, package.version)} queued by {who}"),
         )
     events.command_changed(command)
     emit(update)
@@ -279,7 +330,7 @@ def claim_download(token, address):
 def handle_report(device, data, protocol):
     """Laporan firmware dari device (HTTP, MQTT, atau CoAP; payload sama):
 
-        {"version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}   saat menyala
+        {"title": "Greenhouse", "version": "1.0.0", "board": "esp32", "mac": "24:6F:28:AA:BB:CC"}   saat menyala
         {"update": 7, "state": "DOWNLOADING", "progress": 40}      selama pembaruan
         {"update": 7, "state": "FAILED", "error": "MD5 mismatch"}
 
@@ -297,7 +348,7 @@ def handle_report(device, data, protocol):
     if "state" in data:
         done.append(report_state(device, data, protocol))
     if "version" in data:
-        done.append(report_version(device, data.get("version"), data.get("board"), protocol))
+        done.append(report_version(device, data.get("version"), data.get("board"), protocol, data.get("title")))
     if mac is not None:
         done.append(report_mac(device, mac))
     return "; ".join(done)
@@ -367,40 +418,51 @@ def report_state(device, data, protocol):
         return f"update {update_id}: {state}"
 
 
-def report_version(device, version, board, protocol):
+def report_version(device, version, board, protocol, title=None):
     """Device memberi tahu firmware apa yang SEDANG berjalan (biasanya saat menyala).
 
     Inilah satu-satunya bukti bahwa pembaruan berhasil: file sudah ditulis dan
-    device benar-benar menyala dengan firmware baru.
+    device benar-benar menyala dengan firmware baru. Dengan "title", berhasil berarti
+    nama DAN versi sama dengan paket; tanpa "title" (firmware lama) hanya versinya.
     """
     if not isinstance(version, str) or not VERSION_RE.match(version):
         raise PayloadError('"version" must be text like "1.2.0" (letters, digits, . _ + -).')
     if board is not None and board not in Board.values:
         raise PayloadError(f'"board" must be one of {", ".join(Board.values)}.')
+    if title is not None and (not isinstance(title, str) or not title.strip() or len(title.strip()) > TITLE_MAX):
+        raise PayloadError(f'"title" must be the firmware name, e.g. "Greenhouse node" (at most {TITLE_MAX} characters).')
+    # Laporan tanpa "title" berarti firmware yang tidak mengenal nama: nama lama dihapus.
+    title = title.strip() if title else ""
 
-    changed = device.firmware_version != version or (board and device.board != board)
+    changed = (device.firmware_version != version or device.firmware_title != title
+               or (board and device.board != board))
     device.firmware_version = version
+    device.firmware_title = title
     device.firmware_reported_at = timezone.now()
-    fields = ["firmware_version", "firmware_reported_at"]
+    fields = ["firmware_version", "firmware_title", "firmware_reported_at"]
     if board:
         device.board = board
         fields.append("board")
     device.save(update_fields=fields)
 
-    message = f"running {version}"
+    running = firmware_label(title, version)
+    message = f"running {running}"
     with transaction.atomic():
         update = device.ota_updates.select_for_update().active().select_related("package").first()
         if update is not None:
-            target = update.package_version
-            if version == target:
-                record(update, OtaStatus.UPDATED, f"The device restarted with version {version}", source=protocol)
+            target = firmware_label(update.package_title, update.package_version)
+            if version == update.package_version and (not title or same_title(title, update.package_title)):
+                record(update, OtaStatus.UPDATED, f"The device restarted with {running}", source=protocol)
                 message += f"; update {update.pk}: UPDATED"
             elif update.status == OtaStatus.UPDATING:
-                # Restart setelah UPDATING tetapi versinya lama: firmware baru gagal
+                # Restart setelah UPDATING tetapi firmware-nya lain: firmware baru gagal
                 # menyala dan bootloader kembali ke partisi lama (rollback).
-                fail(update, f"The device restarted with version {version}, not {target} "
-                             f"(the new firmware did not start).", source=protocol)
+                why = "the new firmware did not start"
+                if version == update.package_version:
+                    # Versi cocok, nama tidak: mungkin FW_TITLE di sketch berbeda dengan nama di platform.
+                    why += f", or FW_TITLE in the sketch is not \"{update.package_title}\""
+                fail(update, f"The device restarted with {running}, not {target} ({why}).", source=protocol)
                 message += f"; update {update.pk}: FAILED"
     if changed and update is None:
-        events.emit(device.pk, {"type": "firmware", "version": version})
+        events.emit(device.pk, {"type": "firmware", "version": version, "title": title})
     return message

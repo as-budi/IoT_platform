@@ -51,9 +51,9 @@ class OtaData(TestCase):
         cls.package = cls.make_package(cls.siti, "1.1.0")
 
     @classmethod
-    def make_package(cls, user, version, board=Board.ESP32, content=IMAGE):
+    def make_package(cls, user, version, board=Board.ESP32, content=IMAGE, title="Greenhouse firmware"):
         form = FirmwareUploadForm(
-            {"title": "Greenhouse firmware", "version": version, "board": board, "notes": ""},
+            {"title": title, "version": version, "board": board, "notes": ""},
             {"file": SimpleUploadedFile("greenhouse.ino.bin", content)},
             user=user,
         )
@@ -79,19 +79,36 @@ class PackageFormTests(OtaData):
             self.assertEqual(handle.read(), IMAGE)
         self.assertTrue(package.file.path.startswith(self.storage_dir), "not in a public media folder")
 
-    def form(self, name="fw.bin", content=IMAGE, board=Board.ESP32, version="2.0.0", user=None):
+    def form(self, name="fw.bin", content=IMAGE, board=Board.ESP32, version="2.0.0", user=None, title="x"):
         return FirmwareUploadForm(
-            {"title": "x", "version": version, "board": board},
+            {"title": title, "version": version, "board": board},
             {"file": SimpleUploadedFile(name, content)}, user=user or self.siti,
         )
 
     def test_rejections(self):
         self.assertIn("compiled .bin", str(self.form(name="fw.ino").errors))
         self.assertIn("not an ESP firmware image", str(self.form(content=b"hello").errors))
-        self.assertIn("already uploaded this version", str(self.form(version="1.1.0").errors))
+        self.assertIn("already uploaded Greenhouse firmware 1.1.0",
+                      str(self.form(version="1.1.0", title="Greenhouse firmware").errors))
+        # Nama dibandingkan tanpa beda huruf besar-kecil dan spasi berlebih.
+        self.assertIn("already uploaded", str(self.form(version="1.1.0", title="  greenhouse   FIRMWARE ").errors))
         self.assertIn("Use letters, digits", str(self.form(version="1.0 beta").errors))
         with override_settings(OTA_MAX_FIRMWARE_SIZE=100):
             self.assertIn("larger than", str(self.form().errors))
+
+    def test_same_version_is_allowed_for_another_program(self):
+        """Board sama, versi sama, nama lain (program lain): boleh diunggah."""
+        form = self.form(version="1.1.0", title="Pump controller")
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.save().title, "Pump controller")
+        self.assertTrue(self.form(version="1.1.0", title="Greenhouse firmware", board=Board.ESP32S3).is_valid())
+
+    def test_database_refuses_duplicate_name_and_version(self):
+        from django.db import IntegrityError, transaction
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            FirmwarePackage.objects.create(title="GREENHOUSE FIRMWARE", version="1.1.0", board=Board.ESP32,
+                                           file="x.bin", size=1, md5="0" * 32, sha256="0" * 64,
+                                           uploaded_by=self.siti)
 
     def test_simulated_board_accepts_any_file_and_versions_are_per_user(self):
         self.assertTrue(self.form(content=b"pretend firmware", board=Board.SIMULATED).is_valid())
@@ -117,8 +134,9 @@ class StartUpdateTests(OtaData):
         other_board = self.make_package(self.siti, "1.1.0", board=Board.ESP32S3)
         with self.assertRaisesMessage(services.OtaError, "for ESP32-S3, but the device is ESP32"):
             self.start(other_board)
+        # Device belum melaporkan nama, versinya sama: hanya dengan konfirmasi.
         same = self.make_package(self.siti, "1.0.0")
-        with self.assertRaisesMessage(services.OtaError, "already runs version 1.0.0"):
+        with self.assertRaisesMessage(services.OtaError, "does not report its firmware name"):
             self.start(same)
         self.start()
         with self.assertRaisesMessage(services.OtaError, "still running"):
@@ -129,9 +147,79 @@ class StartUpdateTests(OtaData):
 
     def test_compatible_packages(self):
         self.make_package(self.siti, "1.0.0")
+        self.make_package(self.siti, "1.0.0", title="Pump controller")
         self.make_package(self.siti, "2.0.0", board=Board.ESP32S3)
-        packages = services.compatible_packages(FirmwarePackage.objects.all(), self.device)
-        self.assertEqual([p.version for p in packages], ["1.1.0"])
+        packages = services.compatible_packages(FirmwarePackage.objects.order_by("title", "version"), self.device)
+        # Tanpa nama dari device: semua paket board ini tampil (yang versinya sama perlu konfirmasi).
+        self.assertEqual([str(p) for p in packages],
+                         ["Greenhouse firmware 1.0.0 (ESP32)", "Greenhouse firmware 1.1.0 (ESP32)", "Pump controller 1.0.0 (ESP32)"])
+        self.report({"title": "greenhouse firmware", "version": "1.0.0"})
+        self.device.refresh_from_db()
+        packages = services.compatible_packages(FirmwarePackage.objects.order_by("title", "version"), self.device)
+        self.assertEqual([str(p) for p in packages],
+                         ["Greenhouse firmware 1.1.0 (ESP32)", "Pump controller 1.0.0 (ESP32)"])
+
+
+class FirmwareNameTests(OtaData):
+    """Nama + versi (seperti fw_title + fw_version ThingsBoard)."""
+
+    def setUp(self):
+        self.report({"title": "Greenhouse firmware", "version": "1.0.0", "board": "esp32"})
+        self.device.refresh_from_db()
+        self.pump = self.make_package(self.siti, "1.0.0", title="Pump controller")
+
+    def test_report_stores_and_clears_the_name(self):
+        self.assertEqual((self.device.firmware_title, self.device.firmware_version), ("Greenhouse firmware", "1.0.0"))
+        self.report({"version": "1.0.0"})            # firmware lama tanpa FW_TITLE
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.firmware_title, "")
+        for bad in ("", "   ", 5, "x" * 81):
+            with self.assertRaisesMessage(services.PayloadError, '"title" must be'):
+                self.report({"title": bad, "version": "1.0.0"})
+
+    def test_same_program_and_version_is_refused(self):
+        same = self.make_package(self.siti, "1.0.0")
+        with self.assertRaisesMessage(services.OtaError, "already runs Greenhouse firmware 1.0.0"):
+            self.start(same)
+        with self.assertRaisesMessage(services.OtaError, "already runs"):
+            services.start_update(self.device, same, self.siti, BASE, confirmed=True)
+
+    def test_other_program_needs_confirmation(self):
+        reason = services.confirmation_needed(self.device, self.pump)
+        self.assertIn("runs Greenhouse firmware 1.0.0. Replace it with Pump controller 1.0.0?", reason)
+        with self.assertRaisesMessage(services.OtaError, "Replace it with"):
+            self.start(self.pump)
+        update = services.start_update(self.device, self.pump, self.siti, BASE, confirmed=True)
+        self.assertEqual((update.previous_label, update.target_label),
+                         ("Greenhouse firmware 1.0.0", "Pump controller 1.0.0"))
+        self.assertIn("Greenhouse firmware 1.0.0 → Pump controller 1.0.0", update.events.first().message)
+        self.assertEqual(services.confirmation_needed(self.device, self.package), "")   # versi baru program yang sama
+
+    def test_switching_program_with_the_same_version(self):
+        update = services.start_update(self.device, self.pump, self.siti, BASE, confirmed=True)
+        self.report({"update": update.pk, "state": "UPDATING"})
+        self.report({"title": "Pump controller", "version": "1.0.0"})
+        update.refresh_from_db()
+        self.assertEqual(update.status, OtaStatus.UPDATED)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.firmware_title, "Pump controller")
+
+    def test_rollback_to_the_old_program_with_the_same_version_fails(self):
+        """Dulu: versi sama dianggap berhasil. Sekarang namanya ikut diperiksa."""
+        update = services.start_update(self.device, self.pump, self.siti, BASE, confirmed=True)
+        self.report({"update": update.pk, "state": "UPDATING"})
+        self.report({"title": "Greenhouse firmware", "version": "1.0.0"})
+        update.refresh_from_db()
+        self.assertEqual(update.status, OtaStatus.FAILED)
+        self.assertIn("restarted with Greenhouse firmware 1.0.0, not Pump controller 1.0.0", update.error)
+        self.assertIn('FW_TITLE in the sketch is not "Pump controller"', update.error)
+
+    def test_name_is_compared_without_case(self):
+        update = self.start()
+        self.report({"update": update.pk, "state": "UPDATING"})
+        self.report({"title": "GREENHOUSE firmware", "version": "1.1.0"})
+        update.refresh_from_db()
+        self.assertEqual(update.status, OtaStatus.UPDATED)
 
 
 class DownloadTests(OtaData):
@@ -186,7 +274,7 @@ class ReportTests(OtaData):
         self.report({"version": "1.0.0"})
         update.refresh_from_db()
         self.assertEqual(update.status, OtaStatus.FAILED)
-        self.assertIn("restarted with version 1.0.0, not 1.1.0", update.error)
+        self.assertIn("restarted with 1.0.0, not Greenhouse firmware 1.1.0", update.error)
 
     def test_version_report_before_updating_does_not_fail(self):
         update = self.start()
@@ -367,7 +455,7 @@ class OtaViewTests(OtaData):
     def test_device_page_and_start(self):
         page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
         self.assertContains(page, 'id="firmware"')
-        self.assertContains(page, "1.1.0 — Greenhouse firmware")
+        self.assertContains(page, "Greenhouse firmware 1.1.0")
         self.assertNotContains(page, "downloading firmware updates")
         # Dibuka lewat 127.0.0.1: ESP32 tidak bisa mengunduh dari alamat itu.
         local = self.client.get(reverse("devices:detail", args=[self.device.pk]), HTTP_HOST="127.0.0.1:8000")
@@ -390,6 +478,21 @@ class OtaViewTests(OtaData):
     def test_base_url_setting(self):
         self.client.post(reverse("ota:start", args=[self.device.pk]), {"package": self.package.pk})
         self.assertTrue(OtaUpdate.objects.get().command.params["url"].startswith(BASE + "/api/v1/ota/"))
+
+    def test_other_program_asks_for_confirmation(self):
+        services.handle_report(self.device, {"title": "Greenhouse firmware", "version": "1.0.0"}, "MQTT")
+        pump = self.make_package(self.siti, "1.0.0", title="Pump controller")
+        url = reverse("ota:start", args=[self.device.pk])
+        page = self.client.post(url, {"package": pump.pk})
+        self.assertContains(page, "Replace the program on Greenhouse Node?")
+        self.assertContains(page, 'name="confirm" value="1"')
+        self.assertFalse(OtaUpdate.objects.exists())
+        response = self.client.post(url, {"package": pump.pk, "confirm": "1"})
+        self.assertRedirects(response, reverse("devices:detail", args=[self.device.pk]) + "#firmware",
+                             fetch_redirect_response=False)
+        self.assertEqual(OtaUpdate.objects.get().package, pump)
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(page, "Updating to <strong>Pump controller 1.0.0</strong>", html=False)
 
     def test_upload_list_and_delete(self):
         response = self.client.post(reverse("ota:package_upload"), {
