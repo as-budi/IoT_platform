@@ -1,0 +1,20 @@
+# Tidak masuk ke image: rahasia, data, berkas pengembangan dan dokumentasi.
+# firmware/ dan scripts/ TETAP masuk: template firmware diunduh dari halaman device,
+# dan firmware/microrule/vectors dipakai rules/edge.
+.env
+.git
+.claude-tmp
+Claude outputs
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+staticfiles
+private_media
+db.sqlite3
+*.log
+.DS_Store
+docs
+sim.pdf
+sim.csv
+edge.csv

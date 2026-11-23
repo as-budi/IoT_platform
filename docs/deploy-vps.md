@@ -10,6 +10,13 @@ lainnya):
 - OTA,
 - MySQL dan Redis.
 
+> **Container (fase 4 rencana container, repo `infra`).** Sejak fase 4, layanan Python platform
+> (web, `mqtt_bridge`, rule engine, housekeeping, CoAP) berjalan sebagai container
+> (`compose.yml`, `Dockerfile`); MySQL, Redis, Mosquitto, Nginx, dan certbot **tetap** dipasang di
+> host seperti di panduan ini, dan `.env` tidak berubah. Langkah 7.3, 8.1, dan 10 di bawah menjelaskan
+> cara lama (virtualenv + systemd), yang berlaku sampai server dipindah; pemindahan, cara kembali,
+> dan pemecahan masalahnya ada di **bagian 14.7**.
+
 Setiap langkah disertai alasan keamanannya. Semua berkas konfigurasi yang dirujuk ada di
 folder [`deploy/`](../deploy/README.md). Langkah yang bergantung pada penyedia (membuat
 server, IP tetap, firewall di panel, snapshot) dijelaskan secara umum di bagian 2, dengan
@@ -1157,9 +1164,9 @@ Setelah selesai, hapus salinannya di server dengan `rm -r /tmp/iot-backup`.
 Memulihkan database dari dump:
 
 ```bash
-sudo systemctl stop iot.target
+sudo docker compose -f /srv/iot/app/compose.yml stop      # cara lama: sudo systemctl stop iot.target
 sudo sh -c 'gunzip < /srv/iot/backups/db-20261015-0230.sql.gz | mysql iot_platform'
-sudo systemctl start iot.target
+sudo docker compose -f /srv/iot/app/compose.yml start     # cara lama: sudo systemctl start iot.target
 ```
 
 Uji pemulihan sekali, misalnya ke server percobaan dari snapshot. Backup yang belum pernah
@@ -1175,15 +1182,18 @@ Setelah perubahan kode di-commit dan di-push dari Mac:
 sudo /srv/iot/app/deploy/scripts/update.sh
 ```
 
-Skrip itu menjalankan langkah berikut:
+Skrip itu (container, bagian 14.7) menjalankan langkah berikut:
 
 1. `git pull`,
-2. memasang paket baru,
-3. `check --deploy` (berhenti bila ada peringatan keamanan),
+2. membangun image baru (paket Python ada di dalam image),
+3. `check --deploy` (berhenti bila ada peringatan keamanan), di container sementara dari image baru,
 4. migrasi database,
 5. `collectstatic` (di produksi juga membuat salinan ber-hash, mis. `app.3f9a1c0b7d2e.css`,
    sehingga browser langsung memakai CSS/JS terbaru; lihat `docs/tahap-15-cache-busting-file-statis.md`),
-6. restart semua layanan.
+6. mengganti container yang berjalan (`docker compose up -d`) dan menunggu web menjawab.
+
+Server yang belum dipindah ke container memakai `deploy/scripts/update-systemd.sh` (langkah yang
+sama dengan `pip install` dan `systemctl restart iot.target`).
 
 Perubahan `deploy/systemd/` (mis. unit baru `iot-housekeeping.service` di tahap 16) juga tidak
 ikut diterapkan: salin ulang seperti langkah 8.1, lalu `sudo systemctl daemon-reload` dan
@@ -1487,6 +1497,104 @@ sudo -u iot -H /srv/iot/venv/bin/python /srv/iot/app/manage.py edge_report --out
 ```
 
 ---
+
+### 14.7 Container (fase 4 rencana container)
+
+Layanan Python platform dijalankan Docker Compose dari image yang dibangun di server (`Dockerfile`).
+Semua service memakai **jaringan host** (`network_mode: host`), sengaja: platform melayani device, dan
+dengan jaringan host semua alamat tetap persis seperti sebelumnya (Daphne `127.0.0.1:8001`, Mosquitto
+`127.0.0.1:1883`, Redis `127.0.0.1:6379`, CoAP UDP 5683). Tidak ada port yang di-*publish* Docker,
+jadi ufw tetap berlaku seperti untuk proses biasa. Isolasi lainnya tetap: sistem file read-only,
+berjalan sebagai user `iot` (UID/GID diisi `update.sh`), tanpa *capability*, batas memori.
+
+| Service | Perintah | Pengganti |
+|---|---|---|
+| `web` | `daphne --proxy-headers -b 127.0.0.1 -p 8001` | `iot-web.service` |
+| `mqtt` | `manage.py mqtt_bridge` | `iot-mqtt.service` |
+| `rules` | `manage.py rule_engine` | `iot-rules.service` |
+| `housekeeping` | `manage.py housekeeping` | `iot-housekeeping.service` |
+| `coap` (profile `coap`, opsional) | `manage.py coap_server` | `iot-coap.service` |
+| `manage` (profile `tools`) | `manage.py <perintah>` sekali jalan | `migrate`, `collectstatic`, timer |
+
+Yang **tidak** berubah: `.env`, Nginx (kecuali satu perbaikan di bawah), MySQL (dicapai lewat unix
+socket `/var/run/mysqld` yang dipasang read-only, jadi `DB_HOST=localhost` tetap berlaku), Redis,
+Mosquitto, `iot-backup` (mysqldump + tar di host), `iot-mqtt-reload.path`/`.service` (menyalin akun
+ke Mosquitto). `private_media/` dan `staticfiles/` adalah bind mount di jalur yang sama, jadi `alias`
+Nginx (`/static/`, `/protected/camera/`) dan backup tetap berlaku. Hanya `web` (unggahan firmware dan
+snapshot) dan `manage` yang boleh menulis `private_media/`.
+
+Image membawa `mosquitto_passwd` (paket Debian `mosquitto` 2.0) untuk `mqtt_accounts`; hash-nya
+(`$7$`) sama dengan Mosquitto 2.0 di Ubuntu 24.04.
+
+**Perbaikan Nginx yang ikut di fase ini.** `deploy/nginx/iot-platform.conf` sekarang **menimpa**
+`X-Forwarded-For` dengan alamat asli (`$remote_addr`). Daphne `--proxy-headers` memakai entri
+*pertama* header itu sebagai alamat pengunjung (log aktivitas, klaim unduhan OTA); dengan
+`$proxy_add_x_forwarded_for` (sebelumnya) pengunjung bisa mengirim entri pertama palsu. Berlaku juga
+untuk cara lama, jadi pasang ulang konfigurasi Nginx (langkah 8.3, buat cadangan dulu).
+
+#### Pindah dari cara lama
+
+1. Docker: pasang Docker Engine + plugin Compose dari repositori resmi
+   (<https://docs.docker.com/engine/install/ubuntu/>) dan `infra/docker/daemon.json` (rotasi log).
+   Image dibangun di server: sisakan ±2 GB disk.
+2. CoAP: bila `iot-coap` sedang dipakai (`systemctl is-active iot-coap`), tambahkan
+   `COMPOSE_PROFILES=coap` ke `/srv/iot/app/.env`. Tanpa itu `update.sh` menolak berjalan, supaya
+   device CoAP tidak kehilangan server.
+3. Tarik kode baru dengan `git pull` saja dulu: `update.sh` versi lama yang sedang berjalan belum
+   mengenal container.
+   ```bash
+   sudo -u iot -H git -C /srv/iot/app pull --ff-only
+   ```
+4. Pilih waktu di luar jam praktikum (device terputus dari platform beberapa detik; broker tetap
+   jalan, jadi device tetap tersambung ke Mosquitto dan `desired`/command tertahan sebentar), lalu:
+   ```bash
+   sudo /srv/iot/app/deploy/scripts/update.sh
+   # ==> build … check --deploy … migrate … collectstatic
+   # ==> stop systemd services (first switch to containers): iot-web.service iot-mqtt.service …
+   # ==> up … web (healthy), mqtt, rules, housekeeping
+   ```
+5. Timer memanggil container:
+   ```bash
+   sudo cp /srv/iot/app/deploy/systemd/iot-mqtt-accounts.service /srv/iot/app/deploy/systemd/iot-cleanup.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl start iot-mqtt-accounts.service && journalctl -u iot-mqtt-accounts -n 3 --no-pager
+   # ✔ Wrote N device account(s) … ; iot-mqtt-reload tidak dipicu bila akun tidak berubah
+   ```
+6. Nginx dengan perbaikan `X-Forwarded-For` (langkah 8.3, buat cadangan dulu), lalu
+   `sudo nginx -t && sudo systemctl reload nginx`.
+7. Periksa: login dan dashboard real-time; telemetri HTTP, MQTT 8883, MQTT WebSocket, CoAP (bila
+   aktif); command dan `desired` sampai ke device; aturan dan alarm; unggah firmware dan OTA;
+   snapshot kamera; login MQTT Client (OIDC); device baru bisa login ke broker dalam ±2 menit;
+   `/admin/` → Log aktivitas mencatat alamat IP pengunjung yang benar.
+
+Virtualenv `/srv/iot/venv` tidak dipakai lagi; hapus setelah beberapa minggu stabil.
+
+#### Kembali ke cara lama
+
+```bash
+sudo docker compose -f /srv/iot/app/compose.yml down
+sudo systemctl enable --now iot.target            # tambahkan iot-coap bila CoAP dipakai
+# unit timer versi lama (sebelum fase 4, commit 1e08b09)
+for u in iot-mqtt-accounts iot-cleanup; do
+  git -C /srv/iot/app show 1e08b09:deploy/systemd/$u.service | sudo tee /etc/systemd/system/$u.service >/dev/null
+done
+sudo systemctl daemon-reload
+```
+
+Pembaruan berikutnya dengan `deploy/scripts/update-systemd.sh`. Perbaikan Nginx boleh tetap dipakai.
+
+#### Pemecahan masalah (container)
+
+| Gejala | Penyebab / cara periksa |
+|---|---|
+| `update.sh`: *iot-coap is running but COMPOSE_PROFILES=coap is not in .env* | langkah 2 |
+| *Can't connect to local MySQL server through socket* | folder socket bukan `/var/run/mysqld`: `sudo ss -xlp \| grep mysql`, isi `MYSQL_SOCKET_DIR=` di `.env` |
+| `docker compose up`: *address already in use* 8001/5683 | unit lama masih jalan: `sudo systemctl disable --now iot.target iot-web iot-mqtt iot-rules iot-housekeeping iot-coap` |
+| `iot-mqtt-accounts`: *mosquitto_passwd not found* | image lama; `update.sh` membangun ulang |
+| *Permission denied* di `private_media`/`staticfiles`/`/srv/iot/mosquitto` | pemiliknya harus `iot`: `sudo chown -R iot:iot …` |
+| Dashboard tidak real-time untuk data MQTT | `REDIS_URL` harus `redis://127.0.0.1:6379/0` (jaringan host, Redis di host) |
+
+Log: `sudo docker compose -f /srv/iot/app/compose.yml logs -f web mqtt rules housekeeping`.
 
 ## 15. Pemantauan dan pemecahan masalah
 

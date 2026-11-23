@@ -1,3 +1,5 @@
+# CARA LAMA (tanpa container). Sejak fase 4 rencana container diganti service di compose.yml;
+# disimpan untuk kembali ke cara lama (docs/deploy-vps.md, bagian "Container").
 # Tahap 16: device offline bila diam > DEVICE_OFFLINE_SECONDS, dan tabel ringkasan
 # telemetri per menit/jam (lihat devices/management/commands/housekeeping.py).
 [Unit]

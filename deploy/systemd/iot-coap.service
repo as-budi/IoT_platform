@@ -1,3 +1,5 @@
+# CARA LAMA (tanpa container). Sejak fase 4 rencana container diganti service di compose.yml;
+# disimpan untuk kembali ke cara lama (docs/deploy-vps.md, bagian "Container").
 [Unit]
 Description=IoT platform CoAP server (coap_server)
 After=network-online.target mysql.service redis-server.service mosquitto.service

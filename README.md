@@ -38,7 +38,7 @@ Penjelasan konsep:
 - [docs/tahap-27a-snapshot-esp32cam.md](docs/tahap-27a-snapshot-esp32cam.md) — snapshot JPEG ESP32-CAM: board `esp32cam`, unggah `POST /api/v1/<token>/snapshot`, kartu Camera + galeri, *Capture now*, retensi, template firmware; thumbnail, kartu dashboard, aksi aturan *Capture snapshot* (alarm + Telegram), kuota, log aktivitas
 - [docs/tahap-27-tambahan-nama-firmware.md](docs/tahap-27-tambahan-nama-firmware.md) — firmware dikenali dari nama + versi: versi yang sama boleh diunggah untuk program lain, `FW_TITLE` di template, konfirmasi saat mengganti program device
 - [docs/rencana-tahap-28-fuzzy-ai-function.md](docs/rencana-tahap-28-fuzzy-ai-function.md) — rencana: fuzzy controller (juga di ESP32), model AI ONNX untuk inferensi, dan function node Python di sandbox (belum dikerjakan)
-- [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran)
+- [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran); bagian 14.7: layanan platform sebagai container (fase 4 rencana container, repo `infra`)
 
 ## Prasyarat
 

@@ -1,0 +1,110 @@
+# IoT Platform sebagai container (fase 4 rencana container, repo infra:
+# docs/rencana-migrasi-container.md). Pengganti unit systemd iot-web, iot-mqtt, iot-rules,
+# iot-housekeeping, dan iot-coap; Mosquitto, MySQL, Redis, dan Nginx TETAP di host.
+#
+#   sudo /srv/iot/app/deploy/scripts/update.sh      # di server: build, migrate, collectstatic, up
+#
+# JARINGAN HOST (network_mode: host), sengaja: platform melayani device, dan semua alamatnya
+# tetap persis seperti sebelum container: Daphne 127.0.0.1:8001, mqtt_bridge ke Mosquitto
+# 127.0.0.1:1883, Redis 127.0.0.1:6379, CoAP UDP 5683. Tidak ada port yang di-publish Docker,
+# jadi ufw tetap berlaku seperti untuk proses biasa. Isolasi lain tetap: sistem file read-only,
+# bukan root (UID/GID user "iot"), tanpa capability, batas memori.
+# .env produksi TIDAK perlu diubah. MySQL lewat unix socket (/var/run/mysqld, read-only).
+#
+# Layanan CoAP opsional (docs/deploy-vps.md bagian 11.3): aktifkan dengan COMPOSE_PROFILES=coap di .env.
+# Perintah manage.py sekali jalan dan timer memakai service "manage" (profile tools):
+#   docker compose run --rm manage python manage.py <perintah>
+name: iot
+
+x-app: &app
+  build: .
+  image: iot-platform:latest
+  restart: unless-stopped
+  env_file: ${IOT_ENV_FILE:-.env}
+  network_mode: host
+  # UID/GID user "iot" di host (id -u iot / id -g iot); diisi deploy/scripts/update.sh.
+  user: "${APP_UID:-10001}:${APP_GID:-10001}"
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  # Bawaan semua layanan: hanya MEMBACA private_media (kunci OIDC, firmware) dan staticfiles
+  # (manifest nama file ber-hash). Yang menulis disebut per layanan.
+  volumes:
+    - ${MYSQL_SOCKET_DIR:-/var/run/mysqld}:/var/run/mysqld:ro
+    - ${IOT_PRIVATE_MEDIA:-./private_media}:/app/private_media:ro
+    - ${IOT_STATICFILES:-./staticfiles}:/app/staticfiles:ro
+
+services:
+  web:
+    <<: *app
+    command: ["daphne", "--proxy-headers", "-b", "127.0.0.1", "-p", "8001", "config.asgi:application"]
+    volumes:
+      - ${MYSQL_SOCKET_DIR:-/var/run/mysqld}:/var/run/mysqld:ro
+      # unggahan firmware OTA dan snapshot kamera
+      - ${IOT_PRIVATE_MEDIA:-./private_media}:/app/private_media
+      - ${IOT_STATICFILES:-./staticfiles}:/app/staticfiles:ro
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          pids: 256
+    healthcheck:
+      # sehat = Django menjawab (bukan 5xx); 400 karena Host 127.0.0.1 tidak di ALLOWED_HOSTS juga sehat
+      test: ["CMD", "python", "-c", "import http.client as h, sys; c = h.HTTPConnection('127.0.0.1', 8001, timeout=5); c.request('GET', '/accounts/login/'); sys.exit(c.getresponse().status >= 500)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mqtt:
+    <<: *app
+    command: ["python", "manage.py", "mqtt_bridge"]
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+          pids: 64
+
+  rules:
+    <<: *app
+    command: ["python", "manage.py", "rule_engine"]
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+          pids: 64
+
+  housekeeping:
+    <<: *app
+    command: ["python", "manage.py", "housekeeping"]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          pids: 64
+
+  coap:
+    <<: *app
+    profiles: [coap]
+    command: ["python", "manage.py", "coap_server"]
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          pids: 64
+
+  # Perintah sekali jalan: migrate, collectstatic, mqtt_accounts (timer), delete_unactivated (timer).
+  manage:
+    <<: *app
+    profiles: [tools]
+    restart: "no"
+    command: ["python", "manage.py", "help"]
+    volumes:
+      - ${MYSQL_SOCKET_DIR:-/var/run/mysqld}:/var/run/mysqld:ro
+      - ${IOT_PRIVATE_MEDIA:-./private_media}:/app/private_media
+      - ${IOT_STATICFILES:-./staticfiles}:/app/staticfiles
+      # mqtt_accounts menulis passwd/acl di jalur yang sama dengan sebelumnya; iot-mqtt-reload.path
+      # di host lalu menyalinnya ke Mosquitto.
+      - ${MOSQUITTO_ACCOUNTS_DIR:-/srv/iot/mosquitto}:/srv/iot/mosquitto
