@@ -238,6 +238,24 @@ class AuthorizationFlowTests(OAuthTestCase):
         self.assertTrue(back.startswith("http://testserver/o/authorize/"))
         self.assertNotIn("prompt=create", back)
 
+    def test_prompt_create_while_signed_in_offers_to_sign_out(self):
+        # Browser masih login sebagai budi (mis. komputer lab): "Create account" dari aplikasi
+        # lain tidak boleh diam-diam kembali sebagai budi, walau persetujuannya sudah diingat.
+        self.approve()
+        self.client.force_login(self.budi)
+        url = self.authorize_url(prompt="create")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Sign out and create a new account")
+        self.assertContains(response, "Continue as budi")
+        self.assertNotIn("prompt", response.context["continue_url"])
+        # "Continue as budi" = alur biasa: persetujuan diingat -> langsung kembali ke aplikasi.
+        self.assertTrue(self.client.get(response.context["continue_url"])["Location"].startswith(REDIRECT))
+        # Sign out -> kembali ke permintaan yang sama -> sebagai pengunjung: Sign up.
+        logout = self.client.post(reverse("accounts:logout"), {"next": response.context["create_url"]})
+        self.assertRedirects(logout, response.context["create_url"], fetch_redirect_response=False)
+        signup = self.client.get(response.context["create_url"])
+        self.assertEqual(urlparse(signup["Location"]).path, reverse("accounts:register"))
 
 class ApiV2Tests(OAuthTestCase):
     @classmethod

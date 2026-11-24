@@ -147,6 +147,17 @@ Sign up dengan `next` = alamat authorize semula:
 Setiap `next` diperiksa dengan `url_has_allowed_host_and_scheme`. Hanya alamat di situs ini
 yang diterima; `?next=https://situs-palsu` diabaikan, untuk mencegah *open redirect*.
 
+**Browser masih login.** Bawaan django-oauth-toolkit menganggap `prompt=create` tidak berarti apa-apa
+bila browser sudah login: pengguna langsung dikembalikan ke aplikasi sebagai akun itu. Di komputer lab
+bersama, "Create account" di MQTT Client atau ESP32 Simulator jadi diam-diam masuk sebagai orang
+terakhir yang memakai browser (keluar dari aplikasi tidak otomatis keluar dari platform).
+`PlatformAuthorizationView.handle_prompt_create()` (`oauth/views.py`) menggantinya dengan halaman
+pilihan (`oauth/create_signed_in.html`):
+
+- **Sign out and create a new account**: logout, lalu kembali ke permintaan yang sama (masih dengan
+  `prompt=create`); sebagai pengunjung, toolkit mengarahkannya ke Sign up seperti di atas.
+- **Continue as budi**: permintaan yang sama tanpa `prompt=create`, alur login biasa.
+
 Keterbatasan: tautan dari **Resend activation link** tidak membawa `next`. Setelah aktivasi,
 pengguna sampai di dashboard dan perlu menekan "Sign in" lagi di aplikasi client.
 

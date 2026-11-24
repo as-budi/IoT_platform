@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}Create an account · IoT Platform{% endblock %}
+
+{% block content %}
+{# "Create account" dari aplikasi lain (prompt=create) saat browser masih login: oauth/views.py. #}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-5">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-2">Create an account</h1>
+        <p><strong>{{ application.name }}</strong> asked to create a new IoT Platform account, but this
+          browser is still signed in as <strong>{{ user.username }}</strong>.</p>
+        <form method="post" action="{% url 'accounts:logout' %}" class="mb-2">{% csrf_token %}
+          {# Logout lalu kembali ke permintaan ini: sebagai pengunjung, platform membuka Sign up. #}
+          <input type="hidden" name="next" value="{{ create_url }}">
+          <button type="submit" class="btn btn-primary w-100">Sign out and create a new account</button>
+        </form>
+        <a class="btn btn-outline-secondary w-100" href="{{ continue_url }}">Continue as {{ user.username }}</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -11,7 +11,7 @@ bawaan django-oauth-toolkit apa adanya (lihat oauth/urls.py).
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views import View
 from django.views.generic import ListView
 from oauth2_provider.exceptions import OAuthToolkitError
@@ -44,6 +44,38 @@ class PlatformAuthorizationView(AuthorizationView):
     """
 
     template_name = "oauth/authorize.html"
+
+    def handle_prompt_create(self):
+        """prompt=create ("Create account" di aplikasi lain) saat browser MASIH login.
+
+        Bawaan django-oauth-toolkit menganggapnya no-op: pengguna langsung dikembalikan
+        sebagai akun yang sedang login. Di komputer lab bersama, itu berarti "Create account"
+        diam-diam masuk sebagai orang terakhir yang memakai browser. Di sini pengguna ditanya:
+        lanjut sebagai akun ini, atau keluar lalu membuat akun baru. Pengunjung yang belum
+        login tetap memakai bawaan (langsung ke Sign up).
+        """
+        response = super().handle_prompt_create()
+        if response is not None or not self.request.user.is_authenticated:
+            return response
+        try:
+            _, credentials = self.validate_authorization_request(self.request)
+        except OAuthToolkitError as error:
+            return self.error_response(error, application=None)
+        application = get_application_model().objects.get(client_id=credentials["client_id"])
+        # "Continue as ..." = permintaan yang sama tanpa prompt=create (alur biasa).
+        params = self.request.GET.copy()
+        others = [p for p in params.get("prompt", "").split() if p != "create"]
+        if others:
+            params["prompt"] = " ".join(others)
+        else:
+            params.pop("prompt", None)
+        return render(self.request, "oauth/create_signed_in.html", {
+            "application": application,
+            "continue_url": f"{self.request.path}?{params.urlencode()}",
+            # Setelah logout kembali ke permintaan ini (masih dengan prompt=create): sebagai
+            # pengunjung, bawaan toolkit mengarahkannya ke Sign up.
+            "create_url": self.request.get_full_path(),
+        })
 
     def render_to_response(self, context, **response_kwargs):
         # Dipanggil HANYA bila halaman persetujuan akan ditampilkan (sesudah semua
