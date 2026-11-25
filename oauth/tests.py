@@ -322,6 +322,30 @@ class ApiV2Tests(OAuthTestCase):
         self.assertIsNone(devices["Siti viewer device"]["snapshot_url"])
         self.assertEqual(devices["Siti viewer device"]["role"], "viewer")
 
+    def test_device_firmware_template(self):
+        tokens = self.tokens()
+        auth = {"HTTP_AUTHORIZATION": f"Bearer {tokens['access_token']}"}
+        url = lambda device, q="": reverse("api:v2_device_firmware", args=[device.pk]) + q
+        data = self.client.get(url(self.own), **auth).json()
+        self.assertEqual((data["template"], data["protocol"], data["filename"]), ("esp32_mqtt", "mqtt", "esp32_mqtt.ino"))
+        self.assertRegex(data["source"], rf'const char\* ACCESS_TOKEN\s*= "{self.own.access_token}";')
+        # template khusus board
+        self.own.board = "esp32cam"
+        self.own.save(update_fields=["board"])
+        data = self.client.get(url(self.own), **auth).json()
+        self.assertEqual(data["template"], "esp32cam_mqtt")
+        self.assertRegex(data["source"], r"const char\* SERVER\s*= \"http")
+        self.assertEqual(self.client.get(url(self.own, "?protocol=http"), **auth).json()["template"], "esp32_telemetry")
+        self.assertEqual(self.client.get(url(self.own, "?protocol=coap"), **auth).status_code, 400)
+        # Editor boleh (token ikut), Viewer tidak, device orang lain tidak terlihat
+        self.assertEqual(self.client.get(url(self.edited), **auth).status_code, 200)
+        self.assertEqual(self.client.get(url(self.viewed), **auth).status_code, 403)
+        self.assertEqual(self.client.get(url(self.private), **auth).status_code, 404)
+        # scope devices:read wajib
+        other = self.tokens(scope="openid profile")
+        response = self.client.get(url(self.own), HTTP_AUTHORIZATION=f"Bearer {other['access_token']}")
+        self.assertEqual(response.status_code, 403)
+
     def test_admin_gets_only_own_and_shared_devices(self):
         tokens = self.tokens(user=self.boss)
         names = [d["name"] for d in self.api("api:v2_devices", tokens["access_token"]).json()["devices"]]

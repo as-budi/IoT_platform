@@ -3,6 +3,8 @@ API v2: untuk APLIKASI LUAR yang login atas nama pengguna (tahap 22).
 
     GET /api/v2/me            scope "profile"       profil pengguna pemilik token
     GET /api/v2/me/devices    scope "devices:read"  device milik + yang dibagikan kepadanya
+    GET /api/v2/me/devices/<id>/firmware
+                              scope "devices:read"  template firmware device itu, sudah terisi
     GET /api/v2/me/sandbox    scope "mqtt:sandbox"  akun MQTT sandbox (tahap 23)
 
 Bedanya dengan API v1 (untuk device):
@@ -27,8 +29,9 @@ from django.http import JsonResponse
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 
+from devices import connect
 from devices.models import Device
-from devices.views import mqtt_info
+from devices.views import coap_host, mqtt_info
 from mqtt_bridge import topics as mqtt_topics
 from oauth.auth import oauth_required
 from sharing import access
@@ -143,6 +146,55 @@ def my_devices(request):
             ],
         })
     return JsonResponse({"broker": broker_info(), "devices": items})
+
+
+@require_GET
+@oauth_required("devices:read")
+def my_device_firmware(request, pk):
+    """Template firmware untuk SATU device, sama dengan unduhan "Connect a device" di halaman web,
+    tetapi sebagai JSON: dipakai ESP32 Simulator untuk membuka sketch yang cocok dengan device.
+
+    ?protocol=mqtt (bawaan) atau http. Template khusus board ikut dipilih (ESP32-C3 OLED,
+    ESP32-CAM). Isinya memuat access token device, jadi hanya untuk Editor ke atas, sama dengan
+    kartu "Connect a device"; device yang tidak terlihat oleh pengguna -> 404.
+    """
+    user = request.oauth_user
+    device = (
+        Device.objects.filter(Q(owner=user) | Q(pk__in=access.shares_of(user).values("device_id")))
+        .filter(pk=pk)
+        .first()
+    )
+    if device is None:
+        return JsonResponse({"error": "not_found"}, status=404)
+    role = access.role_for(user, device)
+    if not access.has(role, access.EDITOR):
+        return JsonResponse(
+            {"error": "forbidden", "error_description": "The firmware template contains the device token: Editor role or higher needed."},
+            status=403,
+        )
+    protocol = request.GET.get("protocol", "mqtt")
+    if protocol not in ("mqtt", "http"):
+        # CoAP memakai UDP, yang tidak bisa dikirim dari browser (simulator); unduh dari halaman web.
+        return JsonResponse({"error": "invalid_request", "error_description": "protocol must be mqtt or http"}, status=400)
+    all_values = connect.server_values(request, coap_host(request)[0])
+    values = dict(all_values[protocol])
+    info = connect.template_info(protocol, device.board)
+    for other, name in info.get("extra_values", []):
+        values[name] = all_values[other][name]
+    try:
+        source = connect.render_sketch(protocol, values, device.access_token, device.board)
+    except connect.TemplateMismatch as error:
+        return JsonResponse({"error": "server_error", "error_description": str(error)}, status=500)
+    return JsonResponse({
+        "device": device.pk,
+        "protocol": protocol,
+        "board": device.board or None,
+        "template": info["sketch"],
+        "label": info["label"],
+        "filename": f"{info['sketch']}.ino",
+        "libraries": info["libraries"],
+        "source": source,
+    })
 
 
 @require_GET

@@ -28,6 +28,7 @@ call the API with the access token they receive:</p>
   <tbody>
     <tr><td><code>GET /api/v2/me</code></td><td>the signed-in user (email only with the <code>email</code> scope)</td><td><code>profile</code></td></tr>
     <tr><td><code>GET /api/v2/me/devices</code></td><td>broker details, devices with role, status, firmware, MAC address, variables, and token and topics where allowed</td><td><code>devices:read</code></td></tr>
+    <tr><td><code>GET /api/v2/me/devices/&lt;id&gt;/firmware</code></td><td>the firmware template of that device (as on <em>Connect a device</em>), filled in; Editors and owners only</td><td><code>devices:read</code></td></tr>
     <tr><td><code>GET /api/v2/me/sandbox</code></td><td>the user's MQTT sandbox account</td><td><code>mqtt:sandbox</code></td></tr>
   </tbody>
 </table>

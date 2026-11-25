@@ -78,7 +78,7 @@ Mengapa serumit ini?
 | `config/settings.py` | `OAUTH2_PROVIDER`, `OAUTH_SCOPES`, `OIDC_RSA_PRIVATE_KEY_FILE`, `OIDC_ISSUER` |
 | `oauth/` (app baru) | `views.py` (halaman persetujuan, Connected apps), `models.py` (`Consent`), `validators.py` (klaim, akun nonaktif), `auth.py` (`@oauth_required`), `signals.py`, `checks.py`, `keys.py`, perintah `oidc_key` dan `oauth_client` |
 | `oauth/urls.py` | `/o/authorize/`, `/o/token/`, `/o/revoke_token/`, `/o/userinfo/`, `/o/logout/`, `/o/.well-known/openid-configuration`, `/o/.well-known/jwks.json` |
-| `api/v2.py` | `GET /api/v2/me`, `GET /api/v2/me/devices` |
+| `api/v2.py` | `GET /api/v2/me`, `GET /api/v2/me/devices`, `GET /api/v2/me/devices/<id>/firmware` |
 | `accounts/` | `next` terbawa lewat Sign up → email aktivasi → aktivasi; tautan Sign up di halaman login membawa `next` |
 | Profil | kartu **Connected apps** → `/accounts/apps/` (daftar dan *Revoke access*) |
 | `deploy/nginx/iot-platform.conf` | batas laju untuk `/o/` |
@@ -166,6 +166,22 @@ pengguna sampai di dashboard dan perlu menekan "Sign in" lagi di aplikasi client
 ```bash
 curl -H "Authorization: Bearer <access_token>" https://iot.domain-anda/api/v2/me/devices
 ```
+
+**Tambahan: template firmware lewat API.** `GET /api/v2/me/devices/<id>/firmware?protocol=mqtt`
+(scope `devices:read`) mengembalikan sketch yang sama dengan unduhan *Connect a device* di halaman
+device, sebagai JSON, sudah terisi alamat server, broker, prefix topik, sertifikat root, dan access
+token device (`devices/connect.py render_sketch`):
+
+```json
+{"device": 7, "protocol": "mqtt", "board": "esp32cam", "template": "esp32cam_mqtt",
+ "label": "MQTT · ESP32-CAM", "filename": "esp32cam_mqtt.ino", "libraries": ["..."], "source": "/*\n * ESP32-CAM ..."}
+```
+
+Template khusus board dipilih seperti di halaman web (ESP32-C3 OLED, ESP32-CAM; board lain memakai
+`esp32_mqtt`). `protocol` boleh `mqtt` (bawaan) atau `http`; CoAP tidak, karena UDP tidak bisa dikirim
+dari browser. Karena isinya memuat token, hanya Editor ke atas yang mendapatnya (Viewer/Operator: 403);
+device yang bukan milik dan tidak dibagikan: 404. Dipakai ESP32 Simulator (tombol *Devices* → *Open
+template*) untuk membuka sketch yang cocok dengan device.
 
 ```json
 {

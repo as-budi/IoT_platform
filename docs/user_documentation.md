@@ -1237,6 +1237,7 @@ Apps are registered by the platform administrator. Registered apps use OAuth 2.0
 | ------------------------ | --------------------------------------------------------------------------------------------------------------- | -------------- |
 | `GET /api/v2/me`         | the signed-in user (email only with the `email` scope)                                                          | `profile`      |
 | `GET /api/v2/me/devices` | broker details, devices with role, status, firmware, MAC address, variables, and token and topics where allowed | `devices:read` |
+| `GET /api/v2/me/devices/<id>/firmware` | the firmware template of that device (as on *Connect a device*), filled in; Editors and owners only | `devices:read` |
 | `GET /api/v2/me/sandbox` | the user's MQTT sandbox account                                                                                 | `mqtt:sandbox` |
 
 Answers: `200` success, `401 invalid_token` (missing, wrong, expired or revoked token, or inactive account), `403 insufficient_scope` (the user did not allow that permission). A browser login session does not work on `/api/v2/`. The OpenID Connect discovery document is at `https://iot.reslab-csub.cloud/o/.well-known/openid-configuration`.
