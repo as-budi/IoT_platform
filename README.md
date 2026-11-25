@@ -4,11 +4,22 @@ Platform IoT yang dibangun bertahap dengan Django, dengan ThingsBoard sebagai ac
 Project ini sekaligus sarana belajar Django: kodenya diberi komentar, dan setiap
 tahap punya catatan penjelasan di folder `docs/`.
 
-**Tahap 1 (saat ini): dashboard dasar** — manajemen pengguna (Admin & User),
-daftar device per pemilik, card nilai terkini, dan tabel history.
-Setiap device (alat fisik) bisa punya beberapa variabel, masing-masing dengan satuannya;
-ada tampilan per device dan per variabel.
-Komunikasi dengan device belum ada; datanya diisi dengan perintah `seed_demo`.
+Berjalan di `https://iot.reslab-csub.cloud` dan menjadi pusat aplikasi lab lain
+(MQTT Client, MCU Simulator). Yang sudah ada (sampai tahap 27):
+
+- **Pengguna dan device:** role Admin & User, device dengan beberapa variabel (sensor/aktuator,
+  satuan, kategori), dashboard per lokasi dan device, chart dan history, berbagi device, log aktivitas.
+- **Komunikasi device:** HTTP API v1 (access token), MQTT (broker Mosquitto platform, TCP/TLS dan
+  WebSocket `wss://…/mqtt`), CoAP (opsional); desired/reported state, command dengan kedaluwarsa,
+  status online/offline, akun MQTT sandbox per pengguna.
+- **Real-time:** halaman diperbarui lewat WebSocket (Django Channels, Daphne, Redis).
+- **Aturan:** rule engine ECA dan rule chain, micro rule untuk device (ESP-NOW), notifikasi Telegram.
+- **Firmware:** template ESP32 / ESP32-C3 OLED / ESP32-CAM untuk diunduh, OTA dengan nama + versi firmware.
+- **Kamera:** snapshot ESP32-CAM, galeri, thumbnail, aksi aturan *Capture snapshot*.
+- **Login untuk aplikasi lain:** penyedia OAuth 2.0 / OpenID Connect dan API v2 (`/api/v2/me/...`).
+- **Dokumentasi pengguna** di `/docs/`, gaya tampilan Standard / FILKOM dengan mode light/dark/auto.
+
+Data contoh (pengguna, device, aturan) diisi dengan perintah `seed_demo`.
 
 Penjelasan konsep:
 
@@ -40,6 +51,15 @@ Penjelasan konsep:
 - [docs/rencana-tahap-28-fuzzy-ai-function.md](docs/rencana-tahap-28-fuzzy-ai-function.md) — rencana: fuzzy controller (juga di ESP32), model AI ONNX untuk inferensi, dan function node Python di sandbox (belum dikerjakan)
 - [docs/deploy-vps.md](docs/deploy-vps.md) — memasang platform di VPS Ubuntu 24.04 dari penyedia mana pun, dengan pengamanan server (contoh Lightsail di lampiran); bagian 14.7: layanan platform sebagai container (fase 4 rencana container, repo `infra`)
 
+Catatan lain (bukan per tahap):
+
+- [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md) — `manage.py runall`: web, `mqtt_bridge`, `coap_server`, `rule_engine`, dan `housekeeping` dari satu terminal
+- [docs/rencana-tahap-06-coap.md](docs/rencana-tahap-06-coap.md), [docs/rencana-ota.md](docs/rencana-ota.md) — rencana CoAP dan OTA
+- [docs/rule-engine-iot.md](docs/rule-engine-iot.md), [docs/eca-mekanisme.md](docs/eca-mekanisme.md), [docs/flow-mekanisme.md](docs/flow-mekanisme.md) — mekanisme rule engine, aturan ECA, dan rule chain
+- [docs/rencana-tahap-26-micro-rule.md](docs/rencana-tahap-26-micro-rule.md), [docs/rencana-tahap-26b-evaluator-di-sensor.md](docs/rencana-tahap-26b-evaluator-di-sensor.md), [docs/metrik_dan_simulator.md](docs/metrik_dan_simulator.md) — rencana dan metrik micro rule
+- [docs/contoh-data-dan-aturan.md](docs/contoh-data-dan-aturan.md) — isi data contoh `seed_demo` dan aturan ECA multi-variabel
+- [docs/user_documentation.md](docs/user_documentation.md) — dokumentasi pengguna (isi halaman `/docs/`)
+
 ## Prasyarat
 
 - Miniconda (atau Python 3.10+ dengan `venv`)
@@ -52,6 +72,17 @@ driver. Lihat bagian "Mengapa MySQL, bukan MariaDB" di bawah.
 ## Menjalankan pertama kali
 
 Semua perintah dijalankan dari folder project (tempat `manage.py` berada).
+
+Langkah di bawah ditulis untuk macOS. Di **Linux / WSL** bedanya hanya dua:
+
+- MySQL: `sudo apt install mysql-server` lalu `sudo service mysql start` (langkah 1 tidak perlu;
+  di langkah 3 masuk dengan `sudo mysql`, karena root MySQL di Ubuntu login lewat socket).
+- Driver: buat venv (`python3 -m venv .venv && source .venv/bin/activate`), pasang
+  `sudo apt install default-libmysqlclient-dev build-essential pkg-config`, lalu cukup
+  `pip install -r requirements.txt` (`mysqlclient` dibangun oleh `pip`; conda tidak diperlukan).
+
+Ingin semua aplikasi lab sekaligus dengan container? Pakai stack lokal di repo `infra`
+(`infra/local/up.sh`, lihat `infra/local/README.md`).
 
 **1. Pasang dan jalankan MySQL Community Server**
 
@@ -107,14 +138,13 @@ cp .env.example .env
 **5. Buat tabel**
 
 ```bash
-python manage.py makemigrations accounts devices
 python manage.py migrate
 ```
 
-`makemigrations` membaca `models.py` dan menulis file migrasi (resep perubahan
-tabel); `migrate` menjalankan resep itu ke database. File migrasi yang dihasilkan
-adalah bagian dari kode — simpan, jangan dihapus. Bila file `0001_initial.py`
-sudah ada, `makemigrations` hanya akan melaporkan "No changes detected".
+File migrasi (resep perubahan tabel, di folder `migrations/` setiap app) sudah ada di
+repo; `migrate` menjalankannya ke database. `makemigrations` baru diperlukan setelah
+Anda mengubah `models.py`: perintah itu membaca model dan menulis file migrasi baru.
+File migrasi adalah bagian dari kode — simpan, jangan dihapus.
 
 **6. Data contoh dan menjalankan server**
 
@@ -130,17 +160,33 @@ Buka <http://127.0.0.1:8000/> dan masuk dengan salah satu akun contoh
 |----------|-------|------------------------------------------------|
 | `admin`  | Admin | semua device, menu Pengguna, situs `/admin/`   |
 | `budi`   | User  | 3 device miliknya, termasuk Lab Relay Board    |
-| `siti`   | User  | 1 device (sensor + pompa yang bisa dikontrol)  |
+| `siti`   | User  | 2 device di greenhouse (dengan pompa yang bisa dikontrol) |
+| `andi`   | User  | 2 device (kandang ayam, kolam ikan)            |
+| `rina`   | User  | 1 device (gudang pendingin)                    |
 
 ## Mensimulasikan device
 
-Komunikasi dengan device sungguhan belum ada. Untuk melihat aktuator dan command
-bekerja, jalankan simulator di terminal kedua:
+Tanpa device sungguhan, data dan respons aktuator/command bisa disimulasikan dari
+terminal kedua:
 
 ```bash
 python manage.py simulate_devices          # satu putaran
 python manage.py simulate_devices --loop   # terus-menerus, tiap 5 detik
 ```
+
+Device tiruan lewat protokol sungguhan ada di `scripts/` (`fake_device.py` HTTP,
+`fake_mqtt_device.py` MQTT, `fake_coap_device.py` CoAP). Sketch ESP32 juga bisa dijalankan
+di browser dengan MCU Simulator (repo `mcu_simulator`), atau device disimulasikan
+dari MQTT Client (repo `mqtt_client`).
+
+## Menjalankan semua layanan
+
+```bash
+python manage.py runall                   # web+WebSocket, mqtt_bridge, coap_server, rule_engine, housekeeping
+python manage.py runall --only web,rules  # sebagian layanan
+```
+
+Penjelasan lengkap: [docs/menjalankan-semua-layanan.md](docs/menjalankan-semua-layanan.md).
 
 ## Menjalankan tes
 
@@ -157,8 +203,8 @@ python manage.py test
   tanpa kata "MariaDB").
 - **`Access denied for user 'iot_user'`** — periksa `DB_PASSWORD` di `.env`.
   Bila masih gagal, ganti `DB_HOST=127.0.0.1` menjadi `DB_HOST=localhost`.
-- **`Can't connect to server`** — MySQL belum berjalan (System Settings → MySQL
-  → Start MySQL Server).
+- **`Can't connect to server`** — MySQL belum berjalan (macOS: System Settings → MySQL
+  → Start MySQL Server; Linux/WSL: `sudo service mysql start`).
 - **`mysql: command not found`** — langkah `PATH` di bagian 1 belum dijalankan.
 
 ## Mengapa MySQL, bukan MariaDB
@@ -202,7 +248,8 @@ python manage.py runserver                    # harus tertulis "ASGI/Daphne"
 ```
 
 Agar data dari `mqtt_bridge` juga tampil seketika, pasang Redis
-(`brew install redis && brew services start redis`) lalu isi
+(macOS: `brew install redis && brew services start redis`; Linux/WSL:
+`sudo apt install redis-server`) lalu isi
 `REDIS_URL=redis://127.0.0.1:6379/0` di `.env`.
 Penjelasan lengkap: [docs/tahap-04-websocket.md](docs/tahap-04-websocket.md).
 
@@ -223,11 +270,29 @@ Penjelasan lengkap: [docs/tahap-22-login-untuk-aplikasi-lain.md](docs/tahap-22-l
 
 ```
 manage.py            pintu masuk semua perintah Django
-config/              pengaturan project (settings, URL utama, WSGI/ASGI)
-accounts/            app: model User + role, login, manajemen pengguna
-devices/             app: model Device & Telemetry, halaman device
-  management/commands/seed_demo.py   perintah pengisi data contoh
+config/              pengaturan project (settings, URL utama, WSGI/ASGI, storage)
+accounts/            model User + role, login, pendaftaran, manajemen pengguna, gaya tampilan per akun
+devices/             model Device, variabel & Telemetry, halaman device, chart, ekspor, kontrol aktuator
+                     management/commands: seed_demo, simulate_devices, housekeeping, rollup_telemetry, ...
+api/                 HTTP API v1 untuk device (/api/v1/<token>/...) dan API v2 untuk aplikasi lain (/api/v2/me/...)
+mqtt_bridge/         jembatan Mosquitto ⇄ Django (topics.py = kontrak topik), akun broker dan sandbox
+realtime/            consumer WebSocket (Django Channels) untuk halaman real-time
+dashboard/           dashboard per lokasi dan device
+coap_gateway/        server CoAP (aiocoap), opsional
+rules/               rule engine ECA dan rule chain, micro rule (edge/), diagram aturan
+ota/                 firmware (nama + versi) dan pembaruan OTA
+notifications/       notifikasi (Telegram)
+activity/            log aktivitas pengguna dan ekspor Excel
+sharing/             berbagi device ke pengguna lain
+cameras/             snapshot ESP32-CAM, galeri, thumbnail
+oauth/               penyedia OAuth 2.0 / OpenID Connect untuk aplikasi lain
+userdocs/            dokumentasi pengguna /docs/ dengan pencarian
+launcher/            manage.py runall (menjalankan semua layanan)
+firmware/            template firmware ESP32 / ESP32-C3 OLED / ESP32-CAM / CoAP, micro rule, sertifikat
+scripts/             device tiruan HTTP / MQTT / CoAP
 templates/           template lintas-app (base.html, login, 403)
-static/              CSS
+static/              CSS dan JavaScript (app.css, filkom.css, theme.js, ...)
+deploy/              konfigurasi server: nginx, systemd, Mosquitto, skrip, contoh .env produksi
+Dockerfile, compose.yml   layanan platform sebagai container (fase 4)
 docs/                catatan belajar per tahap
 ```
