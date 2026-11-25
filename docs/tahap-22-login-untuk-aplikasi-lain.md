@@ -149,7 +149,7 @@ yang diterima; `?next=https://situs-palsu` diabaikan, untuk mencegah *open redir
 
 **Browser masih login.** Bawaan django-oauth-toolkit menganggap `prompt=create` tidak berarti apa-apa
 bila browser sudah login: pengguna langsung dikembalikan ke aplikasi sebagai akun itu. Di komputer lab
-bersama, "Create account" di MQTT Client atau ESP32 Simulator jadi diam-diam masuk sebagai orang
+bersama, "Create account" di MQTT Client atau MCU Simulator jadi diam-diam masuk sebagai orang
 terakhir yang memakai browser (keluar dari aplikasi tidak otomatis keluar dari platform).
 `PlatformAuthorizationView.handle_prompt_create()` (`oauth/views.py`) menggantinya dengan halaman
 pilihan (`oauth/create_signed_in.html`):
@@ -180,7 +180,7 @@ token device (`devices/connect.py render_sketch`):
 Template khusus board dipilih seperti di halaman web (ESP32-C3 OLED, ESP32-CAM; board lain memakai
 `esp32_mqtt`). `protocol` boleh `mqtt` (bawaan) atau `http`; CoAP tidak, karena UDP tidak bisa dikirim
 dari browser. Karena isinya memuat token, hanya Editor ke atas yang mendapatnya (Viewer/Operator: 403);
-device yang bukan milik dan tidak dibagikan: 404. Dipakai ESP32 Simulator (tombol *Devices* → *Open
+device yang bukan milik dan tidak dibagikan: 404. Dipakai MCU Simulator (tombol *Devices* → *Open
 template*) untuk membuka sketch yang cocok dengan device.
 
 ```json

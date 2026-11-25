@@ -152,7 +152,7 @@ def my_devices(request):
 @oauth_required("devices:read")
 def my_device_firmware(request, pk):
     """Template firmware untuk SATU device, sama dengan unduhan "Connect a device" di halaman web,
-    tetapi sebagai JSON: dipakai ESP32 Simulator untuk membuka sketch yang cocok dengan device.
+    tetapi sebagai JSON: dipakai MCU Simulator untuk membuka sketch yang cocok dengan device.
 
     ?protocol=mqtt (bawaan) atau http. Template khusus board ikut dipilih (ESP32-C3 OLED,
     ESP32-CAM). Isinya memuat access token device, jadi hanya untuk Editor ke atas, sama dengan
