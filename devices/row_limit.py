@@ -51,6 +51,27 @@ class VariableFull(PayloadError):
         )
 
 
+# Mulai dari bagian ini variabel ditandai "hampir penuh" (kuning) di halaman variabel, halaman
+# device, dan dashboard, sebelum datanya ditolak pada 100% ("Full", merah).
+WARN_FRACTION = 0.9
+
+
+def usage(rows, limit):
+    """"full", "near" (>= 90%), atau None. Dari penghitung saja: tidak ada query."""
+    if not limit:
+        return None
+    if rows >= limit:
+        return "full"
+    if rows >= limit * WARN_FRACTION:
+        return "near"
+    return None
+
+
+def percent(rows, limit):
+    """Persentase terpakai, dibulatkan KE BAWAH (999 dari 1000 = 99%, bukan 100%)."""
+    return min(100, rows * 100 // limit) if limit else 0
+
+
 def limit_for(device):
     """Batas baris per variabel untuk device ini (0 = tanpa batas)."""
     from accounts.models import User

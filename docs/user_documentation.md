@@ -254,7 +254,7 @@ When a device sends a key that does not exist yet, the variable is created autom
 
 #### Row limit and deleting data
 
-Each variable stores at most **1000 rows** of telemetry (the server default; an Admin can set another number for your account). The variable page shows how many it has, e.g. *950 / 1000 rows stored*. A full variable is marked **Full** on the variable and device pages, and the activity log notes when it became full.
+Each variable stores at most **1000 rows** of telemetry (the server default; an Admin can set another number for your account). The variable page shows how many it has, e.g. *950 / 1000 rows stored*. From 90% it is marked **95% full** (yellow), and when it is full **Full** (red), on the variable page, on its card on the device page and on the dashboard. The device page also shows a banner listing the variables that are full or almost full, and the activity log notes when a variable became full.
 
   - A message that contains a value for a full variable is **refused completely**, also its other values: HTTP `409`, CoAP `4.09`, or a message on the MQTT `errors` topic. Actuators count too.
   - *Delete data* on the variable page (Editors and owners) first **downloads all the data as CSV**, then deletes it, with its averages in the charts. The variable, its settings and requested state stay, and it accepts data again. Data that arrives while the page is open is kept.

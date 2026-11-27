@@ -36,6 +36,7 @@ def device_tree(user):
     Setiap Device diberi atribut tambahan:
         .dash_variables  list Variable (dengan last_value, last_seen)
         .last_seen       waktu data terakhir dari variabel mana pun
+        .row_limit       batas baris per variabel akun pemiliknya (0 = tanpa batas)
     """
     devices = list(visible_devices(user).order_by("name"))
     # Satu query untuk semua variabel; "kind" urut abjad -> ACTUATOR dulu, lalu SENSOR.
@@ -53,6 +54,8 @@ def device_tree(user):
     groups = {}
     for device in devices:
         device.dash_variables = by_device[device.pk]
+        # Lencana Full / 90% di kartu (devices/row_limit.py); owner sudah ikut (select_related).
+        device.row_limit = device.owner.telemetry_row_limit
         seen = [v.last_seen for v in device.dash_variables if v.last_seen]
         device.last_seen = max(seen) if seen else None
         group = groups.setdefault(device.location_id, {"location": device.location, "devices": []})

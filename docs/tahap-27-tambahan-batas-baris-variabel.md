@@ -67,9 +67,16 @@ Tombol **Delete data** di halaman variabel (Editor ke atas, sama dengan menghapu
 - Variabel, pengaturannya, dan desired state tetap ada. Variabel langsung menerima data lagi.
 
 ## Tampilan
-- Halaman variabel: *523 / 1,000 rows stored*. Saat penuh ada lencana **Full** dan teks "New data for this variable is
-  refused".
-- Halaman device: lencana **Full** di kartu variabel yang penuh.
+Dua tingkat, dihitung dari penghitung saja (`row_limit.usage()`, tanpa query): **hampir penuh** mulai 90%
+(`WARN_FRACTION`, kuning, *92% full*, dibulatkan ke bawah sehingga 999/1000 = 99%) dan **penuh** (merah, **Full**).
+- Halaman variabel: *523 / 1,000 rows stored*. Hampir penuh: lencana kuning + "At 1,000 rows new data for this
+  variable is refused". Penuh: lencana **Full** + "New data for this variable is refused".
+- Halaman device: **banner** merah (variabel penuh, dengan tautannya, dan penjelasan bahwa seluruh pesan ditolak) dan
+  banner kuning (hampir penuh, dengan persentasenya). Lencana juga ada di kartu sensor dan aktuator.
+- Dashboard: lencana yang sama di kartu variabel (`device.row_limit` diisi `device_tree()`; owner sudah ikut lewat
+  `select_related`, jadi tidak ada query tambahan).
+- Lencana dibuat oleh `devices/includes/row_badge.html` (filter `row_state` / `row_percent` di `device_tags`). Sengaja
+  diletakkan di luar elemen `data-live="meta"`, karena JavaScript halaman menulis ulang elemen itu setiap ada data baru.
 - *Users*: kolom **Row limit** (abu-abu = bawaan server), dan field *Telemetry rows per variable* di *Add*/*Edit*.
 - Dokumentasi pengguna: *Variables → Row limit and deleting data*, *Device API* (409 / 4.09), *Troubleshooting*,
   *Administration*.
@@ -82,4 +89,4 @@ atas tabel telemetri, yang bisa butuh beberapa detik untuk tabel besar. Setelah 
 `devices/tests_row_limit.py`: penghitung, 409 + seluruh pesan ditolak, pesan yang melewati batas, aktuator, variabel baru
 batal, batas per akun dan `0`, log sekali, MQTT `errors`, CoAP 4.09, `save()` tidak menimpa penghitung,
 `recount_telemetry`, *Delete data* (CSV = baris yang dihapus, data baru tetap, rollup, log, Viewer 403, tanpa `up_to`),
-form Admin.
+form Admin, tingkat 90%/penuh, banner dan lencana di halaman variabel, halaman device, dan dashboard (`WarningTests`).

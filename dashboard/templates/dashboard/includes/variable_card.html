@@ -13,7 +13,8 @@
      data-desired="{{ variable.desired_value|plain_number }}"
      data-desired-at="{% if variable.desired_at %}{{ variable.desired_at|date:'U' }}000{% endif %}">
   <div class="d-flex justify-content-between align-items-start gap-2">
-    <div class="key text-muted">{{ variable.display_name }}</div>
+    {# Lencana batas baris: "Full" (data baru ditolak) / "92% full" (devices/row_limit.py). #}
+    <div class="key text-muted">{{ variable.display_name }} {% include "devices/includes/row_badge.html" %}</div>
     {% if variable.is_actuator %}
     <a class="small" href="{% url 'devices:variable_detail' variable.device_id variable.pk %}">Details</a>
     {% endif %}

@@ -23,13 +23,19 @@
       · device <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
     </div>
     {# Batas baris per variabel (devices/row_limit.py): penghitung Variable.telemetry_rows, tanpa COUNT(*). #}
-    <div class="small mt-1" id="row-usage">
+    {% with state=variable|row_state:row_limit %}
+    <div class="small mt-1" id="row-usage" data-row-state="{{ state|default:'' }}">
       {{ variable.telemetry_rows|intcomma }}{% if row_limit %} / {{ row_limit|intcomma }}{% endif %} row{{ variable.telemetry_rows|pluralize }} stored
-      {% if row_limit and variable.telemetry_rows >= row_limit %}
+      {% if state == "full" %}
       <span class="badge text-bg-danger ms-1">Full</span>
       <span class="text-danger">New data for this variable is refused.{% if can_edit %} Delete its data to receive data again.{% endif %}</span>
+      {% elif state == "near" %}
+      {# Mulai 90% (devices/row_limit.WARN_FRACTION): peringatan sebelum data ditolak. #}
+      <span class="badge text-bg-warning ms-1">{{ variable|row_percent:row_limit }}% full</span>
+      <span class="text-warning-emphasis">At {{ row_limit|intcomma }} rows new data for this variable is refused.{% if can_edit %} Download and delete its data before then.{% endif %}</span>
       {% endif %}
     </div>
+    {% endwith %}
   </div>
   <div class="text-nowrap">
     <a class="btn btn-outline-secondary" href="{% url 'devices:variable_edit' device.pk variable.pk %}">Edit</a>

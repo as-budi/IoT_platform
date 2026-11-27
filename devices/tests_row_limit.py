@@ -198,6 +198,74 @@ class DeleteDataTests(RowLimitData):
         self.assertEqual(Telemetry.objects.filter(variable=self.temperature).count(), 1)
 
 
+@override_settings(TELEMETRY_MIN_INTERVAL_SECONDS=0, TELEMETRY_MAX_ROWS_PER_VARIABLE=10)
+class WarningTests(TestCase):
+    """Peringatan mulai 90% dan tanda Full di halaman variabel, halaman device, dan dashboard."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="Node Budi")
+        cls.temperature = Variable.objects.create(device=cls.device, key="temperature")
+        cls.humidity = Variable.objects.create(device=cls.device, key="humidity")
+        cls.lamp = Variable.objects.create(
+            device=cls.device, key="lamp", kind=Variable.Kind.ACTUATOR, value_type=Variable.ValueType.BOOLEAN,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.budi)
+
+    def set_rows(self, variable, n):
+        Telemetry.objects.create(variable=variable, value=1, ts=timezone.now())     # ada data untuk kartu
+        Variable.objects.filter(pk=variable.pk).update(telemetry_rows=n)
+
+    def test_usage_states(self):
+        from .row_limit import percent, usage
+
+        self.assertEqual([usage(n, 10) for n in (0, 8, 9, 10, 11)], [None, None, "near", "full", "full"])
+        self.assertIsNone(usage(10**6, 0))                    # tanpa batas
+        self.assertEqual(percent(999, 1000), 99)              # dibulatkan ke bawah
+
+    def test_variable_page_warns_from_90_percent(self):
+        url = reverse("devices:variable_detail", args=[self.device.pk, self.temperature.pk])
+        self.set_rows(self.temperature, 8)
+        self.assertContains(self.client.get(url), 'data-row-state=""')
+        self.set_rows(self.temperature, 9)
+        page = self.client.get(url)
+        self.assertContains(page, "90% full")
+        self.assertContains(page, "At 10 rows new data for this variable is refused")
+        self.set_rows(self.temperature, 10)
+        self.assertContains(self.client.get(url), "New data for this variable is refused")
+
+    def test_device_page_banner_and_badges(self):
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertNotContains(page, 'id="row-limit-full"')
+        self.assertNotContains(page, 'id="row-limit-near"')
+        self.set_rows(self.temperature, 10)
+        self.set_rows(self.lamp, 10)
+        self.set_rows(self.humidity, 9)
+        page = self.client.get(reverse("devices:detail", args=[self.device.pk]))
+        self.assertContains(page, 'id="row-limit-full"')
+        self.assertContains(page, "2 variables are full")
+        self.assertContains(page, "almost full")
+        self.assertContains(page, "humidity</a> (90%)")
+        self.assertContains(page, 'data-row-state="full"', count=2)     # kartu sensor + kartu aktuator
+        self.assertContains(page, 'data-row-state="near"', count=1)
+
+    def test_dashboard_card_badges(self):
+        self.set_rows(self.temperature, 10)
+        self.set_rows(self.humidity, 9)
+        page = self.client.get(reverse("dashboard:index"))
+        self.assertContains(page, 'data-row-state="full"', count=1)
+        self.assertContains(page, '90% full')
+
+    def test_no_badges_without_a_limit(self):
+        User.objects.filter(pk=self.budi.pk).update(telemetry_max_rows=0)
+        self.set_rows(self.temperature, 10**6)
+        for url in (reverse("dashboard:index"), reverse("devices:detail", args=[self.device.pk])):
+            self.assertNotContains(self.client.get(url), "data-row-state=\"full\"")
+
+
 class AdminLimitTests(TestCase):
     def test_admin_sets_a_limit_per_account(self):
         admin = User.objects.create_user("admin1", password="x", role=User.Role.ADMIN)

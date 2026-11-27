@@ -1,0 +1,6 @@
+{% load humanize device_tags %}{% comment %}
+  Lencana batas baris per variabel (devices/row_limit.py): merah "Full" bila penuh (data baru
+  ditolak), kuning "92% full" mulai 90%. Butuh `variable` dan `row_limit` (0 = tanpa batas).
+  Dipakai di halaman device dan dashboard; sengaja DI LUAR elemen data-live="meta", yang
+  ditulis ulang JavaScript setiap ada data baru.
+{% endcomment %}{% with state=variable|row_state:row_limit %}{% if state == "full" %}<span class="badge text-bg-danger" data-row-state="full" title="{{ variable.telemetry_rows|intcomma }} / {{ row_limit|intcomma }} rows: new data is refused">Full</span>{% elif state == "near" %}<span class="badge text-bg-warning" data-row-state="near" title="{{ variable.telemetry_rows|intcomma }} / {{ row_limit|intcomma }} rows: new data is refused at {{ row_limit|intcomma }}">{{ variable|row_percent:row_limit }}% full</span>{% endif %}{% endwith %}

@@ -109,7 +109,7 @@
         {% endif %}
         {% for variable in device.shown_variables %}
         <div class="col-12 col-sm-6 col-xl-4 col-xxl-3">
-          {% include "dashboard/includes/variable_card.html" %}
+          {% include "dashboard/includes/variable_card.html" with row_limit=device.row_limit %}
         </div>
         {% endfor %}
       </div>

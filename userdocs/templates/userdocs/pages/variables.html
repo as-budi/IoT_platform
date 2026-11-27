@@ -53,8 +53,9 @@ and always for actuators.</p>
 <h2 id="row-limit">Row limit and deleting data</h2>
 <p>Each variable stores at most <strong>{% if limits.rows_per_variable %}{{ limits.rows_per_variable }}{% else %}an unlimited number of{% endif %} rows</strong>
   of telemetry (the server default; an Admin can set another number for your account). The variable page shows how many it has, e.g.
-  <em>950 / 1000 rows stored</em>. A full variable is marked <span class="badge text-bg-danger">Full</span> on the variable and device pages,
-  and the activity log notes when it became full.</p>
+  <em>950 / 1000 rows stored</em>. From 90% it is marked <span class="badge text-bg-warning">95% full</span>, and when it is full
+  <span class="badge text-bg-danger">Full</span>, on the variable page, on its card on the device page and on the dashboard. The device page also
+  shows a banner listing the variables that are full or almost full, and the activity log notes when a variable became full.</p>
 <ul>
   <li>A message that contains a value for a full variable is <strong>refused completely</strong>, also its other values: HTTP <code>409</code>,
     CoAP <code>4.09</code>, or a message on the MQTT <code>errors</code> topic. Actuators count too.</li>

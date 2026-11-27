@@ -45,6 +45,24 @@
 
 {% include "devices/includes/auto_refresh.html" %}
 
+{# Batas baris per variabel (devices/row_limit.py): penuh = data baru ditolak; kuning mulai 90%. #}
+{% if full_variables %}
+<div class="alert alert-danger" role="alert" id="row-limit-full">
+  <strong>{{ full_variables|length }} variable{{ full_variables|pluralize }} {{ full_variables|length|pluralize:"is,are" }} full</strong>
+  ({{ row_limit|intcomma }} rows):
+  {% for v in full_variables %}<a class="alert-link" href="{% url 'devices:variable_detail' device.pk v.pk %}">{{ v.display_name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}.
+  Every message from this device with a value for {{ full_variables|length|pluralize:"it,them" }} is refused, also its other values.
+  {% if can_edit %}Open the variable and use <em>Delete data</em> (it downloads the data as CSV first).{% else %}Ask the owner to delete the data.{% endif %}
+</div>
+{% endif %}
+{% if near_variables %}
+<div class="alert alert-warning" role="alert" id="row-limit-near">
+  <strong>{{ near_variables|length }} variable{{ near_variables|pluralize }} almost full</strong>:
+  {% for v in near_variables %}<a class="alert-link" href="{% url 'devices:variable_detail' device.pk v.pk %}">{{ v.display_name }}</a> ({{ v|row_percent:row_limit }}%){% if not forloop.last %}, {% endif %}{% endfor %}.
+  At {{ row_limit|intcomma }} rows new data is refused{% if can_edit %}; download and delete the data before then{% endif %}.
+</div>
+{% endif %}
+
 {# Alarm aktif dari rule engine. Kabar alarm lewat WebSocket memuat ulang halaman. #}
 {% if active_alarms %}
 <h2 class="h5 mb-3">Active alarms</h2>
@@ -72,7 +90,7 @@
     <div class="card shadow-sm value-card h-100 border-primary-subtle">
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-start">
-          <div class="key text-muted">{{ variable.display_name }}</div>
+          <div class="key text-muted">{{ variable.display_name }} {% include "devices/includes/row_badge.html" %}</div>
           <a class="small" href="{% url 'devices:variable_detail' device.pk variable.pk %}">Details</a>
         </div>
         {# Yang besar adalah nilai REPORTED: keadaan yang benar-benar terjadi. #}
@@ -114,8 +132,8 @@
         </div>
         <div class="small text-muted" data-live="meta" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
           {{ variable.last_seen|timesince }} ago · {{ variable.telemetry_count|intcomma }} rows
-          {% if row_limit and variable.telemetry_rows >= row_limit %}<span class="badge text-bg-danger ms-1" title="{{ row_limit|intcomma }} rows: new data is refused">Full</span>{% endif %}
         </div>
+        <div class="row-badge">{% include "devices/includes/row_badge.html" %}</div>
         {% else %}
         <div class="value text-muted" data-live="value">—</div>
         <div class="small text-muted" data-live="meta">No data yet</div>

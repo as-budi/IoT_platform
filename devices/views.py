@@ -346,6 +346,12 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
         # Dipisah di Python (bukan dua query) karena daftarnya sudah di tangan.
         context["actuators"] = [v for v in variables if v.is_actuator]
         context["sensors"] = [v for v in variables if not v.is_actuator]
+        # Banner batas baris per variabel (devices/row_limit.py): dari penghitung, tanpa query.
+        from .row_limit import usage
+
+        limit = device.owner.telemetry_row_limit
+        context["full_variables"] = [v for v in variables if usage(v.telemetry_rows, limit) == "full"]
+        context["near_variables"] = [v for v in variables if usage(v.telemetry_rows, limit) == "near"]
 
         # Bereskan command yang kedaluwarsa dulu, supaya statusnya akurat.
         device.commands.expire_due()

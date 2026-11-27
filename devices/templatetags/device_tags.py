@@ -86,6 +86,25 @@ def plain_number(value):
     return format(value, "g")
 
 
+@register.filter
+def row_state(variable, limit):
+    """Batas baris per variabel: "full", "near" (>= 90%), atau None (devices/row_limit.py).
+
+        {% with state=variable|row_state:row_limit %}
+    """
+    from devices.row_limit import usage
+
+    return usage(variable.telemetry_rows, limit)
+
+
+@register.filter
+def row_percent(variable, limit):
+    """Persentase batas baris yang terpakai, dibulatkan ke bawah."""
+    from devices.row_limit import percent
+
+    return percent(variable.telemetry_rows, limit)
+
+
 @register.simple_tag(takes_context=True)
 def can_access(context, device_id, level):
     """{% can_access variable.device_id "OPERATOR" as can_operate %} (tahap 19).
