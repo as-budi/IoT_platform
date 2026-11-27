@@ -144,8 +144,35 @@ class DashboardSettingsTests(DashboardTestData):
         self.assertEqual(self.shown_variables(self.dashboard()), {"temperature", "humidity", "wind", "misc"})
 
 
+class DashboardQueryTests(DashboardTestData):
+    def test_dashboard_does_not_count_telemetry_rows(self):
+        # COUNT(*) per variabel membaca seluruh tabel telemetri; dashboard tidak memerlukannya.
+        response = self.dashboard()
+        variables = [v for g in response.context["groups"] for d in g["devices"] for v in d.dash_variables]
+        self.assertTrue(variables)
+        self.assertFalse(any(hasattr(v, "telemetry_count") for v in variables))
+        temp = next(v for v in variables if v.key == "temperature")
+        self.assertEqual(temp.last_value, 25)
+
+
 class DashboardUpdatesTests(DashboardTestData):
     url = reverse("dashboard:updates")
+
+    def test_version_query_count_does_not_grow_with_variables(self):
+        # Polling dashboard harus murah: jumlah query tetap, berapa pun variabelnya
+        # (telemetri terbaru dicari per variabel di DALAM satu query, lewat index).
+        before = self.count_queries()
+        for key in ("d", "e", "f"):
+            Telemetry.objects.create(variable=Variable.objects.create(device=self.roof, key=key), value=1, ts=timezone.now())
+        self.assertEqual(self.count_queries(), before)
+
+    def count_queries(self):
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.client.get(self.url).status_code, 200)
+        return len(queries)
 
     def test_anonymous_gets_401(self):
         self.client.logout()

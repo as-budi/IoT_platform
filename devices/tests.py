@@ -900,6 +900,21 @@ class AutoRefreshTests(TestCase):
         self.add_reading(self.temperature)
         self.assertNotEqual(self.version(), before)
 
+    def test_latest_telemetry_id_takes_newest_reading_per_variable(self):
+        from .views import latest_telemetry_id
+
+        variables = Variable.objects.filter(device=self.device)
+        self.assertIsNone(latest_telemetry_id(variables))
+        now = timezone.now()
+        Telemetry.objects.create(variable=self.temperature, value=1, ts=now - timedelta(minutes=5))
+        newest = Telemetry.objects.create(variable=self.humidity, value=2, ts=now)
+        self.assertEqual(latest_telemetry_id(variables), newest.pk)
+        # Variabel dengan waktu terbaru yang dibuat LEBIH DULU tetap dihitung: hasilnya id
+        # terbesar di antara "baris terbaru" setiap variabel.
+        later = Telemetry.objects.create(variable=self.temperature, value=3, ts=now - timedelta(minutes=1))
+        self.assertEqual(latest_telemetry_id(variables), later.pk)
+        self.assertEqual(latest_telemetry_id(variables.filter(pk=self.humidity.pk)), newest.pk)
+
     def test_variable_version_ignores_other_variables(self):
         before = self.version(variable=self.temperature.pk)
         self.add_reading(self.humidity)

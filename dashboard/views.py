@@ -20,8 +20,8 @@ from django.urls import reverse
 from django.views.generic import TemplateView
 
 from cameras.models import Snapshot
-from devices.models import Telemetry, Variable
-from devices.views import visible_devices, with_latest_values
+from devices.models import Variable
+from devices.views import latest_readings, latest_telemetry_id, visible_devices
 from realtime.routing import DASHBOARD_WS_PATH
 
 from .models import DashboardPreference
@@ -39,12 +39,15 @@ def device_tree(user):
     """
     devices = list(visible_devices(user).order_by("name"))
     # Satu query untuk semua variabel; "kind" urut abjad -> ACTUATOR dulu, lalu SENSOR.
-    variables = with_latest_values(
-        Variable.objects.filter(device__in=[d.pk for d in devices])
-    ).order_by("kind", "key")
+    variables = list(Variable.objects.filter(device__in=[d.pk for d in devices]).order_by("kind", "key"))
+    # Nilai terakhir: satu baris per variabel lewat index (latest_readings). Bukan
+    # with_latest_values: subquery-nya membuat MySQL membaca SEMUA telemetri tiap variabel,
+    # dan COUNT(*)-nya (jumlah baris) tidak ditampilkan di dashboard.
+    latest = latest_readings(v.pk for v in variables)
 
     by_device = defaultdict(list)
     for variable in variables:
+        _, variable.last_value, variable.last_seen = latest.get(variable.pk, (None, None, None))
         by_device[variable.device_id].append(variable)
 
     groups = {}
@@ -62,10 +65,16 @@ def device_tree(user):
 
 
 def dashboard_version(user):
-    """Versi data seluruh dashboard; dipakai pemeriksaan cadangan (polling)."""
+    """Versi data seluruh dashboard; dipakai pemeriksaan cadangan (polling).
+
+    Dipanggil setiap 30 detik oleh setiap tab dashboard yang terbuka, jadi harus
+    murah: telemetri terbaru dicari per variabel lewat index (latest_telemetry_id),
+    tidak dengan MAX(id) atas seluruh tabel telemetri.
+    """
     devices = visible_devices(user)
-    last = Telemetry.objects.filter(variable__device__in=devices).aggregate(m=Max("pk"))["m"]
-    desired = Variable.objects.filter(device__in=devices).aggregate(s=Sum("desired_version"))["s"]
+    variables = Variable.objects.filter(device__in=devices)
+    last = latest_telemetry_id(variables)
+    desired = variables.aggregate(s=Sum("desired_version"))["s"]
     snapshot = Snapshot.objects.filter(camera__device__in=devices).aggregate(m=Max("pk"))["m"]
     return f"{last or 0}-{desired or 0}-{snapshot or 0}"
 

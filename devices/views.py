@@ -99,6 +99,55 @@ def with_latest_values(variables):
     )
 
 
+# Jumlah variabel per query UNION di latest_readings(); 200 bagian ~ 40 KB SQL.
+LATEST_CHUNK = 200
+
+
+def latest_readings(variable_ids):
+    """Baris telemetri terbaru setiap variabel: {variable_id: (id, value, ts)}.
+
+    Kenapa tidak dengan subquery per variabel (seperti with_latest_values) atau
+        Telemetry.objects.filter(variable__device__in=...).aggregate(Max("pk"))?
+    Keduanya membuat MySQL membaca SEMUA baris telemetri variabel-variabel itu:
+    dalam subquery yang bergantung pada query luar, MySQL mengambil seluruh baris
+    variabel lewat index (variable, ts) lalu mengurutkannya, walaupun index itu
+    sudah urut. Dengan id variabel yang TETAP (variable_id = 12), MySQL langsung
+    melompat ke ujung index dan membaca satu baris. Jadi di sini setiap variabel
+    mendapat query kecilnya sendiri, digabung dengan UNION ALL menjadi satu query:
+        (SELECT ... WHERE variable_id = 1 ORDER BY ts DESC, id DESC LIMIT 1)
+        UNION ALL (SELECT ... WHERE variable_id = 2 ...) ...
+    Jumlah baris yang dibaca = jumlah variabel, berapa pun besar tabel telemetri.
+    Diuji dengan EXPLAIN ANALYZE dan Handler_read (docs/tahap-27-tambahan-versi-data-ringan.md).
+    """
+    ids = list(dict.fromkeys(variable_ids))
+    found = {}
+    for start in range(0, len(ids), LATEST_CHUNK):
+        parts = [
+            Telemetry.objects.filter(variable_id=variable_id)
+            .order_by("-ts", "-id")
+            .values_list("variable_id", "id", "value", "ts")[:1]
+            for variable_id in ids[start:start + LATEST_CHUNK]
+        ]
+        query = parts[0].union(*parts[1:], all=True) if len(parts) > 1 else parts[0]
+        for variable_id, pk, value, ts in query:
+            found[variable_id] = (pk, value, ts)
+    return found
+
+
+def latest_telemetry_id(variables):
+    """id baris telemetri terbaru dari variabel-variabel ini (None bila belum ada data).
+
+    `variables`: queryset Variable. Dipakai oleh "sidik jari" data (data_version,
+    dashboard_version), yang dipanggil setiap 30 detik oleh setiap tab yang terbuka,
+    jadi harus murah (lihat latest_readings).
+
+    Akibat kecil: baris dengan waktu LEBIH LAMA dari data terakhir variabelnya
+    (ts dikirim mundur) tidak mengubah hasilnya. Data seperti itu tetap sampai lewat WebSocket.
+    """
+    latest = latest_readings(variables.order_by().values_list("pk", flat=True))
+    return max((pk for pk, _, _ in latest.values()), default=None)
+
+
 # Chart halaman variabel (tahap 26): jumlah titik rata-rata bergerak yang bisa dipilih,
 # dan warna siap pilih (tetap terbaca di mode terang dan gelap).
 SMOOTHING_OPTIONS = (3, 5, 10, 20, 50)
@@ -116,21 +165,19 @@ def data_version(device, variable=None):
     """"Sidik jari" data sebuah device (atau satu variabelnya), berupa teks pendek.
 
     Nilainya berubah setiap kali ada sesuatu yang baru:
-    - telemetri baru  -> id terbesar di tabel Telemetry bertambah
+    - telemetri baru  -> id baris telemetri terbaru berubah (latest_telemetry_id)
     - desired state   -> jumlah desired_version bertambah
     - command         -> id command terbaru, atau waktu dikirim/selesai, berubah
     Halaman cukup membandingkan teks ini dengan yang ia terima sebelumnya;
     bila berbeda, halaman dimuat ulang (lihat static/js/auto_refresh.js).
     Ini jauh lebih ringan daripada mengirim ulang seluruh data setiap beberapa detik.
     """
-    telemetry = Telemetry.objects.filter(variable__device=device)
     variables = device.variables.all()
     if variable is not None:
-        telemetry = telemetry.filter(variable=variable)
         variables = variables.filter(pk=variable.pk)
 
     parts = [
-        telemetry.aggregate(last=Max("pk"))["last"],
+        latest_telemetry_id(variables),
         variables.aggregate(total=Sum("desired_version"))["total"],
     ]
     if variable is None:
