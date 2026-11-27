@@ -20,7 +20,7 @@ from django.views.decorators.http import require_POST
 from devices.models import Device
 
 from .payload import PayloadError, parse_telemetry
-from .services import save_telemetry
+from .services import TelemetryTooFrequent, save_telemetry
 
 
 def error(status, message):
@@ -43,6 +43,8 @@ def telemetry(request, token):
       401  token tidak dikenal
       403  device dinonaktifkan
       405  bukan POST
+      429  terlalu cepat: satu pesan setiap TELEMETRY_MIN_INTERVAL_SECONDS per device;
+           header Retry-After = detik yang harus ditunggu (api/services.claim_interval)
     """
     # 1) Autentikasi: cari device pemilik token.
     device = Device.objects.filter(access_token=token).first()
@@ -67,6 +69,10 @@ def telemetry(request, token):
     # 4) Simpan. Nama kategori yang tidak dikenal baru ketahuan di sini (butuh variabelnya).
     try:
         created_keys = save_telemetry(device, rows, protocol=Device.Protocol.HTTP)
+    except TelemetryTooFrequent as exc:
+        response = JsonResponse({"error": str(exc), "retry_after": exc.retry_after}, status=429)
+        response["Retry-After"] = str(exc.retry_after)
+        return response
     except PayloadError as exc:
         message = str(exc)
         return error(400, message[:1].upper() + message[1:])

@@ -492,6 +492,7 @@ All three protocols accept the same JSON:
   - Values: numbers; `true`/`false` are stored as 1/0. Text is rejected.
   - At most 1000 values per message. A time in seconds instead of milliseconds, or more than 5 minutes in the future, is rejected.
   - A message is saved completely or rejected completely, never partly.
+  - **At most one telemetry message every 10 seconds per device**, over all protocols together. A message that comes sooner is not saved: HTTP answers `429`, CoAP `4.29`, MQTT reports it on the `errors` topic. Put all values of one moment in one message; readings taken more often can be sent together as a list with `ts`. A message with *only* actuator variables (the state reported after a requested change) is always accepted.
 
 <a id="device-api--http"></a>
 
@@ -511,6 +512,7 @@ Send the JSON as the body with the header `Content-Type: application/json`. Answ
 | 401 | unknown access token                                                                      |
 | 403 | the device is inactive                                                                    |
 | 405 | use POST                                                                                  |
+| 429 | sent too soon after the previous message (one every 10 s); the header `Retry-After` and `{"retry_after": 4}` give the seconds to wait |
 
 Try it from a computer:
 
@@ -570,7 +572,7 @@ Server `coap://iot.reslab-csub.cloud:5683` (UDP, not encrypted). All resources s
 | POST            | `coap://iot.reslab-csub.cloud:5683/api/v1/<token>/commands/<id>/response` | `{"success": true, ...}`                                                              |
 | POST            | `coap://iot.reslab-csub.cloud:5683/api/v1/<token>/firmware`               | firmware report and update progress                                                   |
 
-Error answers use CoAP codes: `4.00` wrong payload, `4.01` unknown token, `4.03` device inactive, `4.04` unknown resource. A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.
+Error answers use CoAP codes: `4.00` wrong payload, `4.01` unknown token, `4.03` device inactive, `4.04` unknown resource, `4.29` telemetry sent too soon (one every 10 s). A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.
 
 Try it with `coap-client` from the libcoap tools:
 
@@ -1264,6 +1266,7 @@ Answers: `200` success, `401 invalid_token` (missing, wrong, expired or revoked 
 | HTTP `403`                                             | The device is inactive; activate it with *Edit* on the device page.                                                                                               |
 | HTTP `301`                                             | The server accepts `https://` only. Change the address to https and fill in `ROOT_CA`.                                                                            |
 | HTTP `400`                                             | The JSON is invalid or breaks a rule (text values, keys with spaces, time in seconds). The answer explains which; see [payload](#device-api--payload).            |
+| HTTP `429`, CoAP `4.29`, or `Telemetry is limited to one message every …` on the MQTT `errors` topic | The device sends telemetry more often than once every 10 seconds, or sends each value in its own message. Send all values in one message, at most every 10 seconds ([details](#device-api--payload)). |
 | MQTT connects but nothing is saved                     | Wrong topic prefix or token in the topic. Subscribe to the device's `errors` topic to see why messages are rejected.                                              |
 | A new device cannot log in to MQTT                     | New devices and new tokens are accepted by the broker after about 2 minutes.                                                                                      |
 

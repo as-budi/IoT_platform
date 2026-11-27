@@ -8,7 +8,7 @@ import json
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -53,6 +53,7 @@ class TelemetryApiTests(TestCase):
 
     def test_existing_variable_is_reused(self):
         self.post({"temperature": 25})
+        Device.objects.filter(pk=self.device.pk).update(last_telemetry_at=None)   # lewati batas interval
         response = self.post({"temperature": 26})
         self.assertEqual(response.json()["new_variables"], [])
         self.assertEqual(self.values("temperature"), [25, 26])
@@ -165,3 +166,75 @@ class DeviceTokenPageTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.device.refresh_from_db()
         self.assertEqual(self.device.access_token, old_token)
+
+
+@override_settings(TELEMETRY_MIN_INTERVAL_SECONDS=10)
+class TelemetryIntervalTests(TestCase):
+    """Batas interval pengiriman: satu pesan telemetri setiap 10 detik per device."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.budi = User.objects.create_user("budi", password="rahasia-12345")
+        cls.device = Device.objects.create(owner=cls.budi, name="ESP32 Node")
+        cls.other = Device.objects.create(owner=cls.budi, name="Other node")
+        cls.lamp = Variable.objects.create(
+            device=cls.device, key="lamp", kind=Variable.Kind.ACTUATOR,
+            value_type=Variable.ValueType.BOOLEAN,
+        )
+
+    def post(self, payload, device=None):
+        url = reverse("api:telemetry", args=[(device or self.device).access_token])
+        return Client().post(url, data=json.dumps(payload), content_type="application/json")
+
+    def last_accepted(self, seconds_ago):
+        Device.objects.filter(pk=self.device.pk).update(last_telemetry_at=timezone.now() - timedelta(seconds=seconds_ago))
+
+    def test_second_message_within_interval_is_refused_with_429(self):
+        self.assertEqual(self.post({"temperature": 25}).status_code, 200)
+        response = self.post({"temperature": 26})
+        self.assertEqual(response.status_code, 429)
+        self.assertIn("one message every 10 s", response.json()["error"])
+        self.assertTrue(1 <= int(response["Retry-After"]) <= 10)
+        self.assertEqual(response.json()["retry_after"], int(response["Retry-After"]))
+        self.assertEqual(Telemetry.objects.filter(variable__key="temperature").count(), 1)
+
+    def test_accepted_again_after_the_interval(self):
+        self.post({"temperature": 25})
+        self.last_accepted(10)
+        self.assertEqual(self.post({"temperature": 26}).status_code, 200)
+
+    def test_small_slack_for_network_jitter(self):
+        self.last_accepted(9.5)
+        self.assertEqual(self.post({"temperature": 26}).status_code, 200)
+        self.last_accepted(8)
+        self.assertEqual(self.post({"temperature": 27}).status_code, 429)
+
+    def test_limit_is_per_device(self):
+        self.post({"temperature": 25})
+        self.assertEqual(self.post({"temperature": 25}, device=self.other).status_code, 200)
+
+    def test_actuator_only_report_is_not_limited(self):
+        self.post({"temperature": 25})
+        before = Device.objects.get(pk=self.device.pk).last_telemetry_at
+        for value in (1, 0, 1):
+            self.assertEqual(self.post({"lamp": value}).status_code, 200)
+        # ... dan tidak menggeser waktu pesan terakhir.
+        self.assertEqual(Device.objects.get(pk=self.device.pk).last_telemetry_at, before)
+        # Campuran aktuator + sensor tetap dibatasi.
+        self.assertEqual(self.post({"lamp": 1, "temperature": 26}).status_code, 429)
+
+    def test_rejected_payload_does_not_use_up_the_interval(self):
+        self.assertEqual(self.post({"temperature": "hot"}).status_code, 400)
+        self.assertEqual(self.post({"temperature": 25}).status_code, 200)
+
+    @override_settings(TELEMETRY_MIN_INTERVAL_SECONDS=0)
+    def test_zero_turns_the_limit_off(self):
+        for value in (1, 2, 3):
+            self.assertEqual(self.post({"temperature": value}).status_code, 200)
+
+    def test_platform_simulator_is_not_limited(self):
+        from .services import save_telemetry
+
+        for value in (1, 2):
+            save_telemetry(self.device, [("temperature", value, timezone.now())])   # tanpa protocol
+        self.assertEqual(Telemetry.objects.filter(variable__key="temperature").count(), 2)

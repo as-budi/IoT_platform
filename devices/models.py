@@ -169,6 +169,10 @@ class Device(models.Model):
     # masuk, sehingga halaman bisa menampilkan "via CoAP · 3 s ago" tanpa
     # menghitung ulang dari tabel telemetri.
     last_seen_at = models.DateTimeField("last data", null=True, blank=True, editable=False)
+    # Telemetri terakhir yang DITERIMA lewat HTTP, MQTT, atau CoAP; dasar batas interval
+    # pengiriman (TELEMETRY_MIN_INTERVAL_SECONDS, api/services.py). Terpisah dari last_seen_at
+    # karena snapshot kamera juga mengisi last_seen_at.
+    last_telemetry_at = models.DateTimeField("last accepted telemetry", null=True, blank=True, editable=False)
     # Pesan MQTT apa pun dari device (data, status, firmware, jawaban command, ...), tidak termasuk
     # pesan retained lama. Dipakai untuk sesi MQTT yang diam terlalu lama (devices/presence.py).
     last_heard_at = models.DateTimeField("last MQTT message", null=True, blank=True, editable=False)

@@ -9,7 +9,7 @@ from unittest import mock
 
 from asgiref.sync import sync_to_async
 from django.contrib.auth import get_user_model
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -94,6 +94,17 @@ class TelemetryTests(CoapTestData):
             self.assertEqual(reply.code, handlers.BAD_REQUEST, payload)
             self.assertIn("error", reply.body)
         self.assertFalse(Telemetry.objects.exists())
+
+
+@override_settings(TELEMETRY_MIN_INTERVAL_SECONDS=10)
+class TelemetryIntervalTests(CoapTestData):
+    def test_too_frequent_telemetry_gets_4_29(self):
+        payload = json.dumps({"temperature": 25}).encode()
+        self.assertEqual(handle("POST", [self.token, "telemetry"], payload).code, handlers.CHANGED)
+        reply = handle("POST", [self.token, "telemetry"], payload)
+        self.assertEqual(reply.code, handlers.TOO_MANY_REQUESTS)
+        self.assertIn("one message every 10 s", reply.body["error"])
+        self.assertTrue(1 <= reply.body["retry_after"] <= 10)
 
 
 class DesiredAndCommandTests(CoapTestData):

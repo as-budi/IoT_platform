@@ -67,6 +67,7 @@ def docs_context(request, token=TOKEN_PLACEHOLDER):
         },
         "limits": {
             "offline_seconds": settings.DEVICE_OFFLINE_SECONDS,
+            "telemetry_interval_seconds": settings.TELEMETRY_MIN_INTERVAL_SECONDS,
             "mqtt_silent_seconds": settings.DEVICE_MQTT_SILENT_SECONDS,
             "mqtt_silent_minutes": settings.DEVICE_MQTT_SILENT_SECONDS // 60,
             "firmware_max_mb": round(settings.OTA_MAX_FIRMWARE_SIZE / (1024 * 1024), 1),

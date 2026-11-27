@@ -336,3 +336,16 @@ class DevicePageMqttTests(MqttTestData):
         self.assertContains(response, "-h broker.example.org -p 1883")
         self.assertContains(response, topics.telemetry(PREFIX, self.device.access_token))
         self.assertContains(response, topics.desired(PREFIX, self.device.access_token))
+
+
+@override_settings(TELEMETRY_MIN_INTERVAL_SECONDS=10)
+class TelemetryIntervalTests(MqttTestData):
+    def test_too_frequent_telemetry_is_reported_on_errors(self):
+        topic = topics.telemetry(PREFIX, self.device.access_token)
+        self.assertTrue(self.receive(topic, {"temperature": 25}).ok)
+        result = self.receive(topic, {"temperature": 26})
+        self.assertFalse(result.ok)
+        self.assertEqual(result.device, self.device)     # -> pesan ke <prefix>/<token>/errors
+        self.assertIn("one message every 10 s", result.message)
+        self.assertEqual(Telemetry.objects.filter(variable__key="temperature").count(), 1)
+        self.assertTrue(self.receive(topic, {"lamp": 1}).ok)     # reported state aktuator tetap sampai

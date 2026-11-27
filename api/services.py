@@ -1,11 +1,77 @@
 """Menyimpan telemetri yang sudah divalidasi ke database."""
+import math
+from datetime import timedelta
+
+from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from devices import presence
 from devices.models import Device, Telemetry, Variable
 from realtime import events
 from rules import queue as rule_queue
+
+from .payload import PayloadError
+
+
+# Kelonggaran batas interval: device yang mengirim tepat setiap 10 detik bisa tiba 9,8 detik
+# setelah pesan sebelumnya (antrean jaringan, Wi-Fi). Tanpa kelonggaran, setiap pesan kedua
+# ditolak dan device itu efektif mengirim setiap 20 detik.
+INTERVAL_SLACK_SECONDS = 1
+
+
+class TelemetryTooFrequent(PayloadError):
+    """Telemetri datang lebih cepat dari TELEMETRY_MIN_INTERVAL_SECONDS.
+
+    Turunan PayloadError: pesannya dikirim balik ke device seperti kesalahan payload
+    (MQTT: topik errors). HTTP menjawab 429 dan CoAP 4.29 dengan `retry_after` detik.
+    """
+
+    def __init__(self, interval, retry_after):
+        self.interval = interval
+        self.retry_after = retry_after
+        super().__init__(
+            f"Telemetry is limited to one message every {interval} s per device; "
+            f"try again in {retry_after} s."
+        )
+
+
+def only_actuators(device, keys):
+    """True bila SEMUA key adalah variabel aktuator device yang sudah ada.
+
+    Laporan seperti itu adalah "reported state" setelah device menjalankan desired
+    state (template firmware: reportLamp()). Laporan itu harus selalu sampai, supaya
+    dashboard tahu aktuatornya sudah berubah, jadi tidak ikut batas interval.
+    """
+    keys = set(keys)
+    actuators = Variable.objects.filter(device=device, key__in=keys, kind=Variable.Kind.ACTUATOR)
+    return actuators.count() == len(keys)
+
+
+def claim_interval(device, rows, now):
+    """Catat telemetri yang diterima, atau tolak bila terlalu cepat (TelemetryTooFrequent).
+
+    Satu UPDATE bersyarat, jadi aman walaupun pesan dari satu device datang bersamaan
+    ke proses berbeda (web untuk HTTP, mqtt_bridge, coap_server):
+        UPDATE devices_device SET last_telemetry_at = now
+        WHERE id = 7 AND (last_telemetry_at IS NULL OR last_telemetry_at <= now - 9 s)
+    1 baris berubah = diterima; 0 = pesan sebelumnya terlalu baru. Dipanggil di DALAM
+    transaksi save_telemetry(): bila penyimpanan gagal, catatan waktunya ikut batal.
+    """
+    interval = settings.TELEMETRY_MIN_INTERVAL_SECONDS
+    if interval <= 0 or only_actuators(device, (key for key, _, _ in rows)):
+        return
+    allowed_after = now - timedelta(seconds=max(0, interval - INTERVAL_SLACK_SECONDS))
+    accepted = (
+        Device.objects.filter(pk=device.pk)
+        .filter(Q(last_telemetry_at__isnull=True) | Q(last_telemetry_at__lte=allowed_after))
+        .update(last_telemetry_at=now)
+    )
+    if not accepted:
+        last = Device.objects.filter(pk=device.pk).values_list("last_telemetry_at", flat=True).first() or now
+        wait = interval - (now - last).total_seconds()
+        raise TelemetryTooFrequent(interval, max(1, math.ceil(wait)))
 
 
 def save_telemetry(device, rows, protocol=""):
@@ -28,10 +94,16 @@ def save_telemetry(device, rows, protocol=""):
     `protocol` (Device.Protocol.HTTP/MQTT/COAP) dicatat di device sebagai
     jalur pengiriman terakhir; kosong untuk sumber lain (simulator).
 
+    Dari device (`protocol` diisi), telemetri dibatasi satu pesan setiap
+    TELEMETRY_MIN_INTERVAL_SECONDS (claim_interval); pesan yang terlalu cepat
+    melempar TelemetryTooFrequent dan tidak disimpan sama sekali.
+
     Mengembalikan daftar key yang baru dibuat.
     """
     created_keys = []
     with transaction.atomic():
+        if protocol:
+            claim_interval(device, rows, timezone.now())
         variables = {}
         # dict.fromkeys: daftar key unik dengan urutan tetap.
         for key in dict.fromkeys(key for key, _, _ in rows):
@@ -65,7 +137,6 @@ def encode_value(variable, key, value, created_keys=()):
     """Nilai dari payload -> angka yang disimpan (lihat Variable.encode)."""
     if not isinstance(value, str) and not variable.is_categorical:
         return value
-    from .payload import PayloadError
 
     try:
         return variable.encode(value)

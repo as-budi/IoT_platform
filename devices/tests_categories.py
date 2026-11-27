@@ -100,6 +100,7 @@ class IngestionTests(CategoryData):
     def test_names_and_codes(self):
         response = self.post_telemetry({"door": "Open", "temperature": 21.5})
         self.assertEqual(response.status_code, 200, response.content)
+        Device.objects.update(last_telemetry_at=None)   # lewati batas interval pengiriman
         self.post_telemetry({"door": 2})
         self.assertEqual(list(self.door.telemetry.order_by("ts").values_list("value", flat=True)), [1.0, 2.0])
 

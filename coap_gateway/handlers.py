@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from django.utils import timezone
 
 from api.payload import PayloadError, parse_telemetry
-from api.services import save_telemetry
+from api.services import TelemetryTooFrequent, save_telemetry
 from devices import control
 from devices.models import Device
 
@@ -33,6 +33,7 @@ UNAUTHORIZED = "4.01"
 FORBIDDEN = "4.03"
 NOT_FOUND = "4.04"
 METHOD_NOT_ALLOWED = "4.05"
+TOO_MANY_REQUESTS = "4.29"   # RFC 8516: telemetri lebih cepat dari batas interval
 
 TELEMETRY = "telemetry"
 DESIRED = "desired"
@@ -146,6 +147,10 @@ def handle(method, segments, payload=b""):
 
         command = control.record_command_result(device, command_id, decode_json(payload))
         return Reply(CHANGED, {"id": command.pk, "status": command.status}, device)
+    except TelemetryTooFrequent as exc:
+        reply = error(TOO_MANY_REQUESTS, str(exc), device)
+        reply.body["retry_after"] = exc.retry_after
+        return reply
     except PayloadError as exc:
         message = str(exc)
         return error(BAD_REQUEST, message[:1].upper() + message[1:], device)

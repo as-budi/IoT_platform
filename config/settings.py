@@ -427,6 +427,13 @@ if _micro_rules not in ("all", "admin", "off"):
     raise ImproperlyConfigured(f"MICRO_RULES in .env must be all, admin or off (got {_micro_rules!r}).")
 MICRO_RULES = {"VISIBILITY": _micro_rules}
 
+# --- Interval pengiriman telemetri (docs/tahap-27-tambahan-interval-telemetri.md) -----------
+# Satu device boleh mengirim telemetri (HTTP, MQTT, CoAP) paling sering sekali setiap N detik.
+# Pesan yang terlalu cepat ditolak: HTTP 429 + Retry-After, CoAP 4.29, MQTT pesan di topik errors.
+# Laporan yang HANYA berisi variabel aktuator (reported state setelah desired) tidak dibatasi.
+# 0 = tanpa batas.
+TELEMETRY_MIN_INTERVAL_SECONDS = int(os.getenv("TELEMETRY_MIN_INTERVAL_SECONDS", "10"))
+
 # --- Housekeeping (tahap 16): status online/offline dan tabel ringkasan ------------
 # Worker `manage.py housekeeping` (systemd: iot-housekeeping, runall: "housekeeping").
 # Device tanpa data selama ini (detik) dianggap offline, kecuali punya sesi MQTT.

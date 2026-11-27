@@ -16,6 +16,10 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
   <li>Values: numbers; <code>true</code>/<code>false</code> are stored as 1/0. Text only as the name of a category, for variables with the value type <a href="{% url 'userdocs:page' 'variables' %}#categories">Categories</a> (stored as its number); other text is rejected.</li>
   <li>At most 1000 values per message. A time in seconds instead of milliseconds, or more than 5 minutes in the future, is rejected.</li>
   <li>A message is saved completely or rejected completely, never partly.</li>
+  {% if limits.telemetry_interval_seconds %}<li id="interval"><strong>At most one telemetry message every {{ limits.telemetry_interval_seconds }} seconds per device</strong>, over all
+    protocols together. A message that comes sooner is not saved: HTTP answers <code>429</code>, CoAP <code>4.29</code>, MQTT reports it on the
+    <code>errors</code> topic. Put all values of one moment in one message; readings taken more often can be sent together as a list with
+    <code>ts</code>. A message with <em>only</em> actuator variables (the state reported after a requested change) is always accepted.</li>{% endif %}
 </ul>
 
 <h2 id="http">HTTP</h2>
@@ -34,6 +38,7 @@ device's access token{% if token == "<token>" %} (copy it from the device page){
     <tr><th>401</th><td>unknown access token</td></tr>
     <tr><th>403</th><td>the device is inactive</td></tr>
     <tr><th>405</th><td>use POST</td></tr>
+    {% if limits.telemetry_interval_seconds %}<tr><th>429</th><td>sent too soon after the previous message (<a href="#interval">one every {{ limits.telemetry_interval_seconds }} s</a>); the header <code>Retry-After</code> and <code>{"retry_after": 4}</code> give the seconds to wait</td></tr>{% endif %}
   </tbody>
 </table>
 <p>Try it from a computer:</p>
@@ -124,7 +129,7 @@ Every device receives the <strong>same message</strong>: the rule JSON with a <c
     <tr><td>POST</td><td><code>{{ coap.base }}/firmware</code></td><td>firmware report and update progress</td></tr>
   </tbody>
 </table>
-<p>Error answers use CoAP codes: <code>4.00</code> wrong payload, <code>4.01</code> unknown token, <code>4.03</code> device inactive, <code>4.04</code> unknown resource.
+<p>Error answers use CoAP codes: <code>4.00</code> wrong payload, <code>4.01</code> unknown token, <code>4.03</code> device inactive, <code>4.04</code> unknown resource{% if limits.telemetry_interval_seconds %}, <code>4.29</code> telemetry sent too soon (<a href="#interval">one every {{ limits.telemetry_interval_seconds }} s</a>){% endif %}.
 A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.</p>
 <p>Try it with <code>coap-client</code> from the libcoap tools:</p>
 <pre>coap-client -m post -t json -e '{"temperature": 25.1}' {{ coap.base }}/telemetry</pre>
