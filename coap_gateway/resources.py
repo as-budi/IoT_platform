@@ -47,6 +47,7 @@ CODES = {
     handlers.FORBIDDEN: aiocoap.FORBIDDEN,
     handlers.NOT_FOUND: aiocoap.NOT_FOUND,
     handlers.METHOD_NOT_ALLOWED: aiocoap.METHOD_NOT_ALLOWED,
+    handlers.CONFLICT: aiocoap.CONFLICT,
     handlers.TOO_MANY_REQUESTS: aiocoap.TOO_MANY_REQUESTS,
 }
 

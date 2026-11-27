@@ -22,9 +22,18 @@
       key <code>{{ variable.key }}</code>{% if variable.unit %} · unit {{ variable.unit }}{% endif %}
       · device <a href="{% url 'devices:detail' device.pk %}">{{ device.name }}</a>
     </div>
+    {# Batas baris per variabel (devices/row_limit.py): penghitung Variable.telemetry_rows, tanpa COUNT(*). #}
+    <div class="small mt-1" id="row-usage">
+      {{ variable.telemetry_rows|intcomma }}{% if row_limit %} / {{ row_limit|intcomma }}{% endif %} row{{ variable.telemetry_rows|pluralize }} stored
+      {% if row_limit and variable.telemetry_rows >= row_limit %}
+      <span class="badge text-bg-danger ms-1">Full</span>
+      <span class="text-danger">New data for this variable is refused.{% if can_edit %} Delete its data to receive data again.{% endif %}</span>
+      {% endif %}
+    </div>
   </div>
   <div class="text-nowrap">
     <a class="btn btn-outline-secondary" href="{% url 'devices:variable_edit' device.pk variable.pk %}">Edit</a>
+    {% if can_edit %}<a class="btn btn-outline-danger" href="{% url 'devices:variable_data_delete' device.pk variable.pk %}" id="delete-data">Delete data</a>{% endif %}
     <a class="btn btn-outline-danger" href="{% url 'devices:variable_delete' device.pk variable.pk %}">Delete</a>
   </div>
 </div>

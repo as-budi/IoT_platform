@@ -114,6 +114,7 @@
         </div>
         <div class="small text-muted" data-live="meta" title="{{ variable.last_seen|date:'d M Y H:i:s' }}">
           {{ variable.last_seen|timesince }} ago · {{ variable.telemetry_count|intcomma }} rows
+          {% if row_limit and variable.telemetry_rows >= row_limit %}<span class="badge text-bg-danger ms-1" title="{{ row_limit|intcomma }} rows: new data is refused">Full</span>{% endif %}
         </div>
         {% else %}
         <div class="value text-muted" data-live="value">—</div>

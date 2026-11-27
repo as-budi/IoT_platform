@@ -6,13 +6,14 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.messages.views import SuccessMessageMixin
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Count, F, Func, IntegerField, Max, OuterRef, Q, Subquery, Sum
 from django.db.models.deletion import ProtectedError, RestrictedError
 from django.db.models.functions import Coalesce
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.utils.datastructures import MultiValueDict
 from django.utils.http import urlencode
-from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -333,6 +334,7 @@ class DeviceDetailView(OwnedDeviceMixin, DetailView):
             can_operate=access.has(role, access.OPERATOR),
             can_edit=access.has(role, access.EDITOR),
             is_owner=role == access.OWNER,
+            row_limit=device.owner.telemetry_row_limit,     # batas baris per variabel, 0 = tanpa batas
             # Tautan lokasi hanya untuk yang boleh membuka halaman lokasinya.
             location_visible=bool(device.location_id) and visible_locations(self.request.user).filter(
                 pk=device.location_id).exists(),
@@ -606,6 +608,8 @@ class OwnedVariableMixin(LoginRequiredMixin):
         context["device"] = self.get_device()
         context["can_operate"] = access.has(self.access_role, access.OPERATOR)
         context["can_edit"] = access.has(self.access_role, access.EDITOR)
+        # Batas baris per variabel milik pemilik device (devices/row_limit.py); 0 = tanpa batas.
+        context["row_limit"] = self.get_device().owner.telemetry_row_limit
         return context
 
 
@@ -763,6 +767,10 @@ class VariableExportView(OwnedVariableMixin, View):
             raise Http404("Unknown format.")
         variable = get_object_or_404(self.get_queryset().select_related("device"), pk=pk)
         telemetry = variable.telemetry.all()
+        # ?up_to=<id>: hanya baris sampai id itu. Dipakai "Delete data": CSV yang diunduh berisi
+        # TEPAT baris yang kemudian dihapus; data yang datang di antaranya tidak ikut hilang.
+        if request.GET.get("up_to", "").isdigit():
+            telemetry = telemetry.filter(pk__lte=int(request.GET["up_to"]))
         start = end = None
         if request.GET.get("range") != "all":
             _period, start, end = ChartPeriodForm(request.GET).get_window(timezone.now())
@@ -782,6 +790,75 @@ class VariableExportView(OwnedVariableMixin, View):
             export.xlsx_file(variable, telemetry), as_attachment=True, filename=name,
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+
+class VariableDataDeleteView(OwnedVariableMixin, View):
+    """Hapus seluruh data telemetri satu variabel, setelah CSV-nya diunduh.
+
+    GET  -> halaman konfirmasi. Tombolnya (static/js/delete_data.js) lebih dulu MENGUNDUH
+            CSV seluruh data sampai baris terakhir saat halaman dibuka (?range=all&up_to=<id>),
+            dan baru mengirim POST setelah unduhan selesai. Unduhan gagal -> tidak ada yang dihapus.
+    POST up_to=<id> -> hapus baris variabel ini dengan id <= up_to, beserta ringkasannya
+            (rollup) sampai waktu baris itu, lalu kurangi penghitung baris
+            (devices/row_limit.release). Baris yang datang setelah halaman dibuka tetap ada.
+
+    Hak akses: Editor ke atas (sama dengan menghapus variabel). Dicatat di log aktivitas.
+    """
+
+    access_level = access.EDITOR
+    http_method_names = ["get", "post"]
+
+    def get_variable(self):
+        return get_object_or_404(self.get_queryset().select_related("device", "device__owner"), pk=self.kwargs["pk"])
+
+    def get(self, request, device_pk, pk):
+        from . import export
+
+        variable = self.get_variable()
+        up_to = variable.telemetry.aggregate(m=Max("pk"))["m"]
+        csv_url = reverse("devices:variable_export", args=[device_pk, pk, "csv"])
+        return render(request, "devices/variable_data_confirm_delete.html", {
+            "device": variable.device,
+            "variable": variable,
+            "rows": variable.telemetry_rows,
+            "limit": variable.device.owner.telemetry_row_limit,
+            "up_to": up_to,
+            "csv_url": f"{csv_url}?{urlencode({'range': 'all', 'up_to': up_to or 0})}",
+            "csv_name": export.filename(variable, None, None, "csv"),
+        })
+
+    def post(self, request, device_pk, pk):
+        from activity import log as activity
+
+        from .models import TelemetryRollup
+        from .row_limit import release
+
+        variable = self.get_variable()
+        back = reverse("devices:variable_detail", args=[device_pk, pk])
+        up_to = request.POST.get("up_to", "")
+        if not up_to.isdigit():
+            messages.error(request, "Nothing was deleted: open Delete data again.")
+            return self.answer(request, back, status=400)
+        rows = variable.telemetry.filter(pk__lte=int(up_to))
+        with transaction.atomic():
+            last_ts = rows.aggregate(m=Max("ts"))["m"]
+            # Satu DELETE (Telemetry tidak punya relasi atau sinyal yang perlu diproses per baris).
+            deleted, _ = rows.delete()
+            if last_ts is not None:
+                TelemetryRollup.objects.filter(variable=variable, bucket__lte=last_ts).delete()
+            release(variable, deleted)
+        activity.record(
+            "variable.data_deleted", f"Deleted {deleted:,} rows of variable {variable.key} (downloaded as CSV first).",
+            category=activity.Category.DEVICE, owner=variable.device.owner, device=variable.device,
+        )
+        messages.success(request, f"Deleted {deleted:,} row{'s' if deleted != 1 else ''} of {variable.display_name}.")
+        return self.answer(request, back)
+
+    def answer(self, request, url, status=200):
+        # fetch() dari delete_data.js minta JSON (lalu pindah halaman sendiri); form biasa -> redirect.
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JsonResponse({"redirect": url}, status=status)
+        return redirect(url)
 
 
 class VariableFormMixin(OwnedVariableMixin, SuccessMessageMixin):

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% load humanize static %}
+
+{% block title %}Delete data · {{ variable.display_name }} · IoT Platform{% endblock %}
+
+{% block content %}
+{# VariableDataDeleteView: CSV diunduh dulu (static/js/delete_data.js), baru datanya dihapus. #}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h1 class="h4">Delete the data of {{ variable.display_name }}?</h1>
+        {% if up_to %}
+        <p>
+          {{ rows|intcomma }} row{{ rows|pluralize }} of telemetry{% if limit %} (limit {{ limit|intcomma }} per variable){% endif %}.
+          Your browser first <strong>downloads all of it as CSV</strong> (<code>{{ csv_name }}</code>), then the data is deleted,
+          together with its averages in the charts. The variable itself, its settings and its requested state stay.
+        </p>
+        <p class="text-muted small">Data that arrives while this page is open is kept. This cannot be undone.</p>
+        <form method="post" action="{% url 'devices:variable_data_delete' device.pk variable.pk %}" id="delete-data-form"
+              data-csv-url="{{ csv_url }}" data-filename="{{ csv_name }}">
+          {% csrf_token %}
+          <input type="hidden" name="up_to" value="{{ up_to }}">
+          <button type="submit" class="btn btn-danger">Download CSV and delete</button>
+          <a class="btn btn-link" href="{% url 'devices:variable_detail' device.pk variable.pk %}">Cancel</a>
+          <div id="delete-data-status" class="small mt-2" role="status" aria-live="polite"></div>
+        </form>
+        <noscript>
+          <p class="alert alert-warning small mt-3 mb-0">JavaScript is off, so the button deletes without downloading.
+            <a href="{{ csv_url }}">Download the CSV</a> first.</p>
+        </noscript>
+        {% else %}
+        <p class="text-muted">This variable has no data.</p>
+        <a class="btn btn-outline-secondary" href="{% url 'devices:variable_detail' device.pk variable.pk %}">Back</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/delete_data.js' %}"></script>
+{% endblock %}

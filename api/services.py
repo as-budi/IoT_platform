@@ -7,7 +7,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from devices import presence
+from devices import presence, row_limit
 from devices.models import Device, Telemetry, Variable
 from realtime import events
 from rules import queue as rule_queue
@@ -94,6 +94,9 @@ def save_telemetry(device, rows, protocol=""):
     `protocol` (Device.Protocol.HTTP/MQTT/COAP) dicatat di device sebagai
     jalur pengiriman terakhir; kosong untuk sumber lain (simulator).
 
+    Setiap variabel menyimpan paling banyak N baris (devices/row_limit.py); variabel yang
+    penuh membuat seluruh pesan ditolak dengan VariableFull (juga untuk sumber lain).
+
     Dari device (`protocol` diisi), telemetri dibatasi satu pesan setiap
     TELEMETRY_MIN_INTERVAL_SECONDS (claim_interval); pesan yang terlalu cepat
     melempar TelemetryTooFrequent dan tidak disimpan sama sekali.
@@ -114,9 +117,14 @@ def save_telemetry(device, rows, protocol=""):
         # Kategori: nama atau kode -> kode 0, 1, ... Kesalahan membatalkan seluruh
         # transaksi (termasuk variabel yang baru dibuat): payload diterima utuh atau ditolak utuh.
         rows = [(key, encode_value(variables[key], key, value, created_keys), ts) for key, value, ts in rows]
+        # Batas baris per variabel (devices/row_limit.py): satu variabel penuh -> VariableFull,
+        # seluruh pesan ditolak (transaksi batal, termasuk catatan interval di atas).
+        became_full = row_limit.reserve(device, variables, rows)
         Telemetry.objects.bulk_create(
             [Telemetry(variable=variables[key], value=value, ts=ts) for key, value, ts in rows]
         )
+        for variable in became_full:
+            _log_full(device, variable)
         # Catat kapan dan lewat jalur apa device terakhir mengirim data.
         # update() langsung ke database: tidak menimpa kolom device lain.
         changes = {"last_seen_at": timezone.now()}
@@ -131,6 +139,19 @@ def save_telemetry(device, rows, protocol=""):
         # Serahkan juga ke rule engine (setelah commit; lihat rules/queue.py).
         rule_queue.publish(rule_queue.telemetry_message(device, saved, protocol))
     return created_keys
+
+
+def _log_full(device, variable):
+    """Log aktivitas SEKALI, saat variabel tepat mencapai batasnya (bukan setiap penolakan)."""
+    from activity import log as activity
+
+    activity.record(
+        "variable.full",
+        f"Variable {variable.key} reached its limit of {variable.telemetry_rows:,} rows; new data is refused "
+        "until its data is deleted.",
+        category=activity.Category.DEVICE, level=activity.Level.WARNING,
+        owner=device.owner, device=device, actor_name="system",
+    )
 
 
 def encode_value(variable, key, value, created_keys=()):

@@ -50,5 +50,18 @@ and always for actuators.</p>
   <li>An actuator reports its real state with the same key, e.g. the pump sends <code>{"pump": 1}</code> after switching on.</li>
 </ul>
 
+<h2 id="row-limit">Row limit and deleting data</h2>
+<p>Each variable stores at most <strong>{% if limits.rows_per_variable %}{{ limits.rows_per_variable }}{% else %}an unlimited number of{% endif %} rows</strong>
+  of telemetry (the server default; an Admin can set another number for your account). The variable page shows how many it has, e.g.
+  <em>950 / 1000 rows stored</em>. A full variable is marked <span class="badge text-bg-danger">Full</span> on the variable and device pages,
+  and the activity log notes when it became full.</p>
+<ul>
+  <li>A message that contains a value for a full variable is <strong>refused completely</strong>, also its other values: HTTP <code>409</code>,
+    CoAP <code>4.09</code>, or a message on the MQTT <code>errors</code> topic. Actuators count too.</li>
+  <li><em>Delete data</em> on the variable page (Editors and owners) first <strong>downloads all the data as CSV</strong>, then deletes it,
+    with its averages in the charts. The variable, its settings and requested state stay, and it accepts data again.
+    Data that arrives while the page is open is kept.</li>
+</ul>
+
 <h2 id="delete">Deleting a variable</h2>
 <p><em>Delete</em> on the variable page removes the variable and all its data. If the device keeps sending that key, the variable is created again.</p>

@@ -305,6 +305,10 @@ class Variable(models.Model):
     # Naik 1 setiap kali desired diubah. Nanti device memakainya untuk tahu
     # apakah ada permintaan baru sejak terakhir kali ia mengecek.
     desired_version = models.PositiveIntegerField("desired version", default=0)
+    # Jumlah baris telemetri variabel ini, dijaga oleh devices/row_limit.py (naik di
+    # save_telemetry, turun di "Delete data"). Dasar batas baris per variabel, jadi
+    # batas itu diperiksa tanpa COUNT(*) atas tabel telemetri.
+    telemetry_rows = models.PositiveIntegerField("telemetry rows", default=0, editable=False)
     # Warna garis chart di halaman variabel (tahap 26), "#rrggbb"; kosong = warna tema.
     chart_color = models.CharField("chart color", max_length=7, blank=True, default="")
     created_at = models.DateTimeField("created", auto_now_add=True)
@@ -322,6 +326,20 @@ class Variable(models.Model):
             # Dalam satu device, nama variabel tidak boleh kembar.
             models.UniqueConstraint(fields=["device", "key"], name="unique_variable_key_per_device"),
         ]
+
+    def save(self, *args, **kwargs):
+        """Simpan semua kolom KECUALI telemetry_rows (untuk variabel yang sudah ada).
+
+        Penghitung itu hanya diubah lewat UPDATE atomik di devices/row_limit.py. Tanpa ini,
+        variable.save() pada objek yang dibaca beberapa detik lalu (form Edit, desired state)
+        akan menimpanya dengan angka lama, padahal telemetri terus masuk di proses lain.
+        """
+        if self.pk and not self._state.adding and kwargs.get("update_fields") is None:
+            kwargs["update_fields"] = [
+                field.name for field in self._meta.concrete_fields
+                if not field.primary_key and field.name != "telemetry_rows"
+            ]
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.device} · {self.key}"

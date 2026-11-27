@@ -27,6 +27,7 @@ from django.utils import timezone
 # Diberi alias karena class wajib di file ini juga bernama `Command`
 # (aturan Django untuk management command).
 from api.services import save_telemetry
+from devices.row_limit import VariableFull
 from devices.models import Command as DeviceCommand
 from devices.models import CommandStatus, Variable
 
@@ -90,7 +91,11 @@ class Command(BaseCommand):
                         reported = reported + 1
             # Disimpan lewat jalur yang sama dengan API, sehingga dashboard
             # yang terbuka ikut diberi kabar lewat WebSocket.
-            save_telemetry(variable.device, [(variable.key, reported, timezone.now())])
+            try:
+                save_telemetry(variable.device, [(variable.key, reported, timezone.now())])
+            except VariableFull as exc:      # batas baris per variabel (devices/row_limit.py)
+                self.stdout.write(f"{variable}: not reported, {exc}")
+                continue
             self.stdout.write(f"{variable}: reported {reported:g} (requested {variable.desired_value:g})")
 
         # --- 2) pola command ---

@@ -250,6 +250,15 @@ When a device sends a key that does not exist yet, the variable is created autom
   - One message may contain many keys, and several readings with their own time ([payload formats](#device-api--payload)).
   - An actuator reports its real state with the same key, e.g. the pump sends `{"pump": 1}` after switching on.
 
+<a id="variables--row-limit"></a>
+
+#### Row limit and deleting data
+
+Each variable stores at most **1000 rows** of telemetry (the server default; an Admin can set another number for your account). The variable page shows how many it has, e.g. *950 / 1000 rows stored*. A full variable is marked **Full** on the variable and device pages, and the activity log notes when it became full.
+
+  - A message that contains a value for a full variable is **refused completely**, also its other values: HTTP `409`, CoAP `4.09`, or a message on the MQTT `errors` topic. Actuators count too.
+  - *Delete data* on the variable page (Editors and owners) first **downloads all the data as CSV**, then deletes it, with its averages in the charts. The variable, its settings and requested state stay, and it accepts data again. Data that arrives while the page is open is kept.
+
 <a id="variables--delete"></a>
 
 #### Deleting a variable
@@ -492,6 +501,7 @@ All three protocols accept the same JSON:
   - Values: numbers; `true`/`false` are stored as 1/0. Text is rejected.
   - At most 1000 values per message. A time in seconds instead of milliseconds, or more than 5 minutes in the future, is rejected.
   - A message is saved completely or rejected completely, never partly.
+  - Each variable stores at most a fixed number of rows (1000 by default; [row limit](#variables--row-limit)). When a variable is full, every message with a value for it is refused: HTTP `409`, CoAP `4.09`, MQTT `errors` topic, until its data is deleted.
   - **At most one telemetry message every 10 seconds per device**, over all protocols together. A message that comes sooner is not saved: HTTP answers `429`, CoAP `4.29`, MQTT reports it on the `errors` topic. Put all values of one moment in one message; readings taken more often can be sent together as a list with `ts`. A message with *only* actuator variables (the state reported after a requested change) is always accepted.
 
 <a id="device-api--http"></a>
@@ -512,6 +522,7 @@ Send the JSON as the body with the header `Content-Type: application/json`. Answ
 | 401 | unknown access token                                                                      |
 | 403 | the device is inactive                                                                    |
 | 405 | use POST                                                                                  |
+| 409 | a variable in the message is full ([row limit](#variables--row-limit)); `{"full": ["temperature"], "limit": 1000}`; nothing was saved |
 | 429 | sent too soon after the previous message (one every 10 s); the header `Retry-After` and `{"retry_after": 4}` give the seconds to wait |
 
 Try it from a computer:
@@ -572,7 +583,7 @@ Server `coap://iot.reslab-csub.cloud:5683` (UDP, not encrypted). All resources s
 | POST            | `coap://iot.reslab-csub.cloud:5683/api/v1/<token>/commands/<id>/response` | `{"success": true, ...}`                                                              |
 | POST            | `coap://iot.reslab-csub.cloud:5683/api/v1/<token>/firmware`               | firmware report and update progress                                                   |
 
-Error answers use CoAP codes: `4.00` wrong payload, `4.01` unknown token, `4.03` device inactive, `4.04` unknown resource, `4.29` telemetry sent too soon (one every 10 s). A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.
+Error answers use CoAP codes: `4.00` wrong payload, `4.01` unknown token, `4.03` device inactive, `4.04` unknown resource, `4.09` a variable is full (row limit), `4.29` telemetry sent too soon (one every 10 s). A device that uses Observe should send something at least every few minutes, so routers keep the UDP path open, and should observe again if notifications stop.
 
 Try it with `coap-client` from the libcoap tools:
 
@@ -1266,6 +1277,7 @@ Answers: `200` success, `401 invalid_token` (missing, wrong, expired or revoked 
 | HTTP `403`                                             | The device is inactive; activate it with *Edit* on the device page.                                                                                               |
 | HTTP `301`                                             | The server accepts `https://` only. Change the address to https and fill in `ROOT_CA`.                                                                            |
 | HTTP `400`                                             | The JSON is invalid or breaks a rule (text values, keys with spaces, time in seconds). The answer explains which; see [payload](#device-api--payload).            |
+| HTTP `409`, CoAP `4.09`, or `Variable … is full` on the MQTT `errors` topic | A variable in the message has reached its [row limit](#variables--row-limit), so the whole message is refused. Use *Delete data* on that variable's page (it downloads the data as CSV first), or ask an Admin for a higher limit. |
 | HTTP `429`, CoAP `4.29`, or `Telemetry is limited to one message every …` on the MQTT `errors` topic | The device sends telemetry more often than once every 10 seconds, or sends each value in its own message. Send all values in one message, at most every 10 seconds ([details](#device-api--payload)). |
 | MQTT connects but nothing is saved                     | Wrong topic prefix or token in the topic. Subscribe to the device's `errors` topic to see why messages are rejected.                                              |
 | A new device cannot log in to MQTT                     | New devices and new tokens are accepted by the broker after about 2 minutes.                                                                                      |
@@ -1343,6 +1355,7 @@ The *Users* menu (Administration) lists every account with its role, status and 
 
   - **Add user**: username, name, email, role and password. Use it for accounts that should not sign up themselves.
   - **Edit**: change the username, name, email, role, or make the account inactive (an inactive user cannot log in; their devices stay).
+  - **Telemetry rows per variable** (in *Add* and *Edit*): the [row limit](#variables--row-limit) for every variable of this account's devices. Empty = the server default (1000); `0` = no limit. The *Row limit* column of the list shows the number that applies (grey = server default).
   - **Delete**: removes the user together with all their devices and data. This cannot be undone.
   - *Awaiting email confirmation* marks accounts that signed up but have not activated yet.
 

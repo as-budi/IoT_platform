@@ -203,6 +203,11 @@ class Command(BaseCommand):
                     continue
                 self.seed_actuator(variable, owner, states, now, steps)
 
+        # Telemetri di atas dibuat langsung (bulk_create), tidak lewat save_telemetry():
+        # samakan penghitung baris per variabel (devices/row_limit.py).
+        from devices.row_limit import recount
+
+        recount()
         self.stdout.write(self.style.SUCCESS("Done."))
         self.stdout.write("Sample rules: python manage.py seed_rules")
 

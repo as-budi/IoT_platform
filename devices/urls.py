@@ -30,6 +30,9 @@ urlpatterns = [
     # Unduh data history sebagai CSV atau XLSX (rentang = chart, atau ?range=all).
     path("<int:device_pk>/variables/<int:pk>/export/<str:fmt>/", views.VariableExportView.as_view(),
          name="variable_export"),
+    # Hapus seluruh data variabel (setelah browser mengunduh CSV-nya), batas baris per variabel.
+    path("<int:device_pk>/variables/<int:pk>/data/delete/", views.VariableDataDeleteView.as_view(),
+         name="variable_data_delete"),
     # Kontrol (hanya POST):
     #   pola 1 — ubah desired state sebuah aktuator
     path("<int:device_pk>/variables/<int:pk>/set/", views.SetDesiredView.as_view(), name="variable_set"),

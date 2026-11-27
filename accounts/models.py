@@ -40,6 +40,24 @@ class User(AbstractUser):
     # Gaya tampilan pilihan pengguna; kosong = gaya bawaan situs (.env UI_STYLE).
     ui_style = models.CharField("interface style", max_length=10, choices=UiStyle.choices, blank=True)
 
+    # Batas baris telemetri per variabel untuk device milik akun ini (devices/row_limit.py).
+    # Kosong = bawaan server (.env TELEMETRY_MAX_ROWS_PER_VARIABLE); 0 = tanpa batas. Diatur Admin.
+    telemetry_max_rows = models.PositiveIntegerField(
+        "telemetry rows per variable",
+        null=True,
+        blank=True,
+        help_text="Empty = server default. 0 = no limit. Applies to every variable of this account's devices.",
+    )
+
+    @property
+    def telemetry_row_limit(self):
+        """Batas yang berlaku untuk akun ini: angka, atau 0 bila tanpa batas."""
+        from django.conf import settings
+
+        if self.telemetry_max_rows is not None:
+            return self.telemetry_max_rows
+        return settings.TELEMETRY_MAX_ROWS_PER_VARIABLE
+
     @property
     def is_admin(self):
         """True bila pengguna boleh mengelola seluruh platform.

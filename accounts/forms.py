@@ -86,7 +86,7 @@ class UserCreateForm(BootstrapFormMixin, UserCreationForm):
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "first_name", "last_name", "email", "role")
+        fields = ("username", "first_name", "last_name", "email", "role", "telemetry_max_rows")
 
     def clean_email(self):
         email = self.cleaned_data["email"]
@@ -127,7 +127,8 @@ class UserUpdateForm(BootstrapFormMixin, forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ("username", "first_name", "last_name", "email", "role", "is_active")
+        # telemetry_max_rows: batas baris telemetri per variabel akun ini (devices/row_limit.py).
+        fields = ("username", "first_name", "last_name", "email", "role", "is_active", "telemetry_max_rows")
 
     def clean_email(self):
         email = self.cleaned_data["email"]

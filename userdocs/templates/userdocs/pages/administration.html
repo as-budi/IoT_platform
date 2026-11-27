@@ -5,6 +5,9 @@
 <ul>
   <li><strong>Add user</strong>: username, name, email, role and password. Use it for accounts that should not sign up themselves.</li>
   <li><strong>Edit</strong>: change the username, name, email, role, or make the account inactive (an inactive user cannot log in; their devices stay).</li>
+  <li><strong>Telemetry rows per variable</strong> (in <em>Add</em> and <em>Edit</em>): the <a href="{% url 'userdocs:page' 'variables' %}#row-limit">row limit</a>
+    for every variable of this account's devices. Empty = the server default ({% if limits.rows_per_variable %}{{ limits.rows_per_variable }}{% else %}no limit{% endif %});
+    <code>0</code> = no limit. The <em>Row limit</em> column of the list shows the number that applies (grey = server default).</li>
   <li><strong>Delete</strong>: removes the user together with all their devices and data. This cannot be undone.</li>
   <li><em>Awaiting email confirmation</em> marks accounts that signed up but have not activated yet.</li>
 </ul>

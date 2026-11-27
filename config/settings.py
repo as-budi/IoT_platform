@@ -434,6 +434,12 @@ MICRO_RULES = {"VISIBILITY": _micro_rules}
 # 0 = tanpa batas.
 TELEMETRY_MIN_INTERVAL_SECONDS = int(os.getenv("TELEMETRY_MIN_INTERVAL_SECONDS", "10"))
 
+# --- Batas baris telemetri per variabel (docs/tahap-27-tambahan-batas-baris-variabel.md) ----
+# Variabel yang sudah menyimpan N baris tidak menerima data lagi: pesan yang membawa nilainya
+# ditolak utuh (HTTP 409, CoAP 4.09, MQTT topik errors) sampai pemilik memakai "Delete data".
+# Bawaan untuk semua akun; Admin bisa memberi angka lain per akun (Users -> Edit). 0 = tanpa batas.
+TELEMETRY_MAX_ROWS_PER_VARIABLE = int(os.getenv("TELEMETRY_MAX_ROWS_PER_VARIABLE", "1000"))
+
 # --- Housekeeping (tahap 16): status online/offline dan tabel ringkasan ------------
 # Worker `manage.py housekeeping` (systemd: iot-housekeeping, runall: "housekeeping").
 # Device tanpa data selama ini (detik) dianggap offline, kecuali punya sesi MQTT.
